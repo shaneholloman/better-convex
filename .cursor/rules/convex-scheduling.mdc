@@ -1,0 +1,352 @@
+---
+description: Guidelines for scheduling tasks, cron jobs, and delayed function execution in Convex
+globs: **/*.ts,**/*.tsx
+alwaysApply: false
+---
+
+# Convex Scheduling Guidelines
+
+## Cron Jobs
+
+### Basic Setup
+
+- Only use `crons.interval` or `crons.cron` methods. Do NOT use `crons.hourly`, `crons.daily`, or `crons.weekly` helpers.
+- Both methods take a FunctionReference. Do NOT pass the function directly.
+- Define crons by declaring the top-level `crons` object and export it as default.
+
+### Example: Basic Cron Job
+
+```typescript
+// convex/crons.ts
+import { cronJobs } from 'convex/server';
+import { internal } from './_generated/api';
+
+const crons = cronJobs();
+
+// Run every 2 hours
+crons.interval(
+  'cleanup stale data',
+  { hours: 2 },
+  internal.crons.cleanupStaleData,
+  {}
+);
+
+// Run at specific times using cron syntax
+crons.cron(
+  'daily report',
+  '0 9 * * *', // Every day at 9 AM
+  internal.crons.generateDailyReport,
+  {}
+);
+
+export default crons;
+```
+
+### Cron Handler Implementation
+
+```typescript
+// Still in convex/crons.ts
+import { createInternalMutation } from './functions';
+import { z } from 'zod';
+
+export const cleanupStaleData = createInternalMutation()({
+  args: {},
+  returns: z.object({
+    deletedCount: z.number(),
+  }),
+  handler: async (ctx) => {
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+    // Find stale sessions
+    const staleSessions = await ctx
+      .table('sessions')
+      .filter((q) => q.lt(q.field('lastActiveAt'), thirtyDaysAgo));
+
+    // Delete them
+    for (const session of staleSessions) {
+      await ctx.table('sessions').getX(session._id).delete();
+    }
+
+    return { deletedCount: staleSessions.length };
+  },
+});
+
+export const generateDailyReport = createInternalAction()({
+  args: {},
+  returns: z.null(),
+  handler: async (ctx) => {
+    // Gather stats
+    const stats = await ctx.runQuery(internal.analytics.getDailyStats, {});
+
+    // Send email or store report
+    await ctx.runMutation(internal.reports.createReport, {
+      type: 'daily',
+      data: stats,
+    });
+
+    return null;
+  },
+});
+```
+
+### Cron Patterns
+
+Common cron expressions:
+
+- `0 * * * *` - Every hour
+- `0 0 * * *` - Every day at midnight
+- `0 9 * * 1-5` - Weekdays at 9 AM
+- `*/15 * * * *` - Every 15 minutes
+- `0 0 1 * *` - First day of every month
+
+### Important Notes
+
+- Always import `internal` from `./_generated/api`, even for functions in the same file
+- You can register Convex functions within `crons.ts` like any other file
+- Cron jobs run in UTC timezone
+- Minimum interval is 1 minute
+
+## Scheduled Functions
+
+### Delay Execution with scheduler.runAfter
+
+```typescript
+export const processPayment = createAuthMutation()({
+  args: {
+    orderId: zid('orders'),
+  },
+  returns: z.null(),
+  handler: async (ctx, args) => {
+    // Update order status
+    await ctx.table('orders').getX(args.orderId).patch({
+      status: 'processing',
+    });
+
+    // Schedule payment processing after 5 seconds
+    await ctx.scheduler.runAfter(5000, internal.payments.chargeCard, {
+      orderId: args.orderId,
+    });
+
+    return null;
+  },
+});
+```
+
+### Schedule at Specific Time with scheduler.runAt
+
+```typescript
+export const scheduleReminder = createAuthMutation()({
+  args: {
+    message: z.string(),
+    sendAt: z.number(), // Unix timestamp
+  },
+  returns: z.null(),
+  handler: async (ctx, args) => {
+    // Validate time is in future
+    if (args.sendAt <= Date.now()) {
+      throw new ConvexError({
+        code: 'INVALID_TIME',
+        message: 'Reminder time must be in the future',
+      });
+    }
+
+    // Schedule reminder
+    await ctx.scheduler.runAt(args.sendAt, internal.reminders.send, {
+      userId: ctx.userId,
+      message: args.message,
+    });
+
+    return null;
+  },
+});
+```
+
+### Cancel Scheduled Functions
+
+```typescript
+export const createSubscription = createAuthMutation()({
+  args: {
+    planId: zid('plans'),
+  },
+  returns: zid('subscriptions'),
+  handler: async (ctx, args) => {
+    // Schedule expiration
+    const expirationJobId = await ctx.scheduler.runAfter(
+      30 * 24 * 60 * 60 * 1000, // 30 days
+      internal.subscriptions.expire,
+      { userId: ctx.userId }
+    );
+
+    // Store job ID for potential cancellation
+    const subId = await ctx.table('subscriptions').insert({
+      userId: ctx.userId,
+      planId: args.planId,
+      expirationJobId,
+    });
+
+    return subId;
+  },
+});
+
+export const cancelSubscription = createAuthMutation()({
+  args: {
+    subscriptionId: zid('subscriptions'),
+  },
+  returns: z.null(),
+  handler: async (ctx, args) => {
+    const subscription = await ctx
+      .table('subscriptions')
+      .getX(args.subscriptionId);
+    if (subscription.userId !== ctx.userId) {
+      throw new ConvexError({
+        code: 'UNAUTHORIZED',
+        message: 'You are not authorized to cancel this subscription',
+      });
+    }
+
+    // Cancel scheduled expiration
+    if (subscription.expirationJobId) {
+      await ctx.scheduler.cancel(subscription.expirationJobId);
+    }
+
+    // Delete subscription
+    await ctx.table('subscriptions').getX(subscription._id).delete();
+
+    return null;
+  },
+});
+```
+
+## Recurring Tasks Pattern
+
+For tasks that need to run repeatedly:
+
+```typescript
+export const startRecurringTask = createInternalMutation()({
+  args: {
+    taskId: z.string(),
+    intervalMs: z.number(),
+  },
+  returns: z.null(),
+  handler: async (ctx, args) => {
+    // Do the work
+    console.info(`Running task ${args.taskId}`);
+
+    // Check if should continue
+    const config = await ctx
+      .table('taskConfigs', 'taskId', (q) => q.eq('taskId', args.taskId))
+      .unique();
+
+    if (config?.enabled) {
+      // Schedule next run
+      await ctx.scheduler.runAfter(
+        args.intervalMs,
+        internal.tasks.startRecurringTask,
+        args
+      );
+    }
+
+    return null;
+  },
+});
+```
+
+## Rate-Limited Processing
+
+Process items in batches with delays:
+
+```typescript
+export const processBatch = createInternalMutation()({
+  args: {
+    cursor: z.string().nullable(),
+    batchSize: z.number().default(100),
+    delayMs: z.number().default(1000),
+  },
+  returns: z.null(),
+  handler: async (ctx, args) => {
+    // Get next batch
+    const results = await ctx
+      .table('items')
+      .filter((q) => q.eq(q.field('processed'), false))
+      .paginate({ numItems: args.batchSize, cursor: args.cursor });
+
+    // Process items
+    for (const item of results.page) {
+      await ctx.table('items').getX(item._id).patch({ processed: true });
+      // Do processing work
+    }
+
+    // Schedule next batch if more items
+    if (!results.isDone) {
+      await ctx.scheduler.runAfter(args.delayMs, internal.batch.processBatch, {
+        cursor: results.continueCursor,
+        batchSize: args.batchSize,
+        delayMs: args.delayMs,
+      });
+    }
+
+    return null;
+  },
+});
+```
+
+## Timeout Pattern
+
+Implement timeouts for long-running operations:
+
+```typescript
+export const createWithTimeout = createAuthMutation()({
+  args: {
+    data: z.object({
+      /* ... */
+    }),
+    timeoutMs: z.number().default(30000),
+  },
+  returns: zid('requests'),
+  handler: async (ctx, args) => {
+    // Create request
+    const requestId = await ctx.table('requests').insert({
+      ...args.data,
+      status: 'pending',
+      userId: ctx.userId,
+    });
+
+    // Schedule timeout
+    await ctx.scheduler.runAfter(args.timeoutMs, internal.requests.timeout, {
+      requestId,
+    });
+
+    // Start processing
+    await ctx.scheduler.runAfter(0, internal.requests.process, { requestId });
+
+    return requestId;
+  },
+});
+
+export const timeout = createInternalMutation()({
+  args: { requestId: zid('requests') },
+  returns: z.null(),
+  handler: async (ctx, args) => {
+    const request = await ctx.table('requests').get(args.requestId);
+
+    // Only timeout if still pending
+    if (request?.status === 'pending') {
+      await request.patch({
+        status: 'timeout',
+        completedAt: Date.now(),
+      });
+    }
+
+    return null;
+  },
+});
+```
+
+## Best Practices
+
+1. **Use internal functions** for scheduled work to prevent external access
+2. **Store job IDs** when you need to cancel scheduled functions
+3. **Check conditions** before executing scheduled work (item might be deleted)
+4. **Handle errors gracefully** - scheduled functions that throw will retry
+5. **Use appropriate delays** to avoid overwhelming the system
+6. **Consider idempotency** - scheduled functions might run multiple times

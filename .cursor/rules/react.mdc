@@ -1,0 +1,238 @@
+---
+description: ALL react patterns to follow
+globs: *.tsx
+alwaysApply: false
+---
+
+# React Patterns
+
+<version>1.0.0</version>
+
+## Context
+
+- @.cursor/rules/nextjs.mdc - Next.js patterns
+- @.cursor/rules/global-css.mdc - CSS configuration
+- @.cursor/rules/tailwind-v4.mdc - Tailwind v4 features
+- When creating or modifying React components
+- When defining component props and their types
+- Applies to both functional and class components
+
+## Requirements
+
+- Always use destructured props in function parameters
+- Define TypeScript types inline with the destructured props
+- Avoid creating separate interfaces for component props
+- Avoid non-destructured props that require additional destructuring inside the component
+- Use available UI components from the component library
+- Use CSS variables from globals.css for consistent theming
+- Use Tailwind v4: [tailwind-v4.mdc](mdc:.cursor/rules/tailwind-v4.mdc)
+- DO NOT add icon margin in Button, DropdownMenuItem: use gap-2 instead
+- Use custom breakpoint syntax for responsive design:
+  - Use `@xl:` instead of `sm:`
+  - Use `@3xl:` instead of `md:`
+  - Use `@5xl:` instead of `lg:`
+  - Use `@max-xl:` instead of `max-sm:`
+  - Use `@max-3xl:` instead of `max-md:`
+  - Use `@max-5xl:` instead of `max-lg:`
+
+## Available UI Components
+
+The project includes the following UI components that can be imported from `src/components/ui`:
+
+### Core UI Components
+
+- Accordion (`accordion.tsx`)
+- Alert (`alert.tsx`) / AlertDialog (`alert-dialog.tsx`)
+- Avatar (`avatar.tsx`) / AvatarUpload (`avatar-upload.tsx`)
+- Badge (`badge.tsx`)
+- Breadcrumb (`breadcrumb.tsx`)
+- Button [button.tsx](mdc:src/components/ui/button.tsx) (note `tooltip` prop)
+  - Has `gap-2`, so icons should not have `mr-2`
+- Card (`card.tsx`)
+- Chart (`chart.tsx`)
+- Checkbox (`checkbox.tsx`)
+- Collapsible (`collapsible.tsx`)
+- Command (`command.tsx`)
+  - Has `gap-2`, so icons should not have `mr-2`
+- CopyButton (`copy-button.tsx`)
+- CursorOverlay (`cursor-overlay.tsx`)
+- DataTable (`data-table.tsx`)
+- Dialog (`dialog.tsx`)
+- Drawer (`drawer.tsx`)
+- DropdownMenu (`dropdown-menu.tsx`)
+  - Has `gap-2`, so icons should not have `mr-2`
+  - ALWAYS wrap items into `DropdownMenuGroup`
+- Dropzone (`dropzone.tsx`)
+- Form (`form.tsx`)
+- HoverCard (`hover-card.tsx`)
+- Input (`input.tsx`) / PhoneInput (`phone-input.tsx`)
+- Label (`label.tsx`)
+- Loader (`loader.tsx`)
+- Menu (`menu.tsx`) / NavigationMenu (`navigation-menu.tsx`)
+- Placeholder (`placeholder.tsx`)
+- Popover (`popover.tsx`)
+- Progress (`progress.tsx`)
+- RadioGroup (`radio-group.tsx`)
+- Resizable (`resizable.tsx`)
+- ScrollArea (`scroll-area.tsx`)
+- Section (`section.tsx`)
+- Select (`select.tsx`) / SelectEditor (`select-editor.tsx`)
+- Separator (`separator.tsx`)
+- Sheet (`sheet.tsx`)
+- Sidebar (`sidebar.tsx`) / SidebarNewButton (`sidebar-new-button.tsx`)
+- Skeleton (`skeleton.tsx`)
+- Slider (`slider.tsx`)
+- Spinner (`spinner.tsx`)
+- SrOnly (`sr-only.tsx`)
+- Status (`status.tsx`)
+- Steps (`steps.tsx`)
+- Switch (`switch.tsx`)
+- Table (`table.tsx`)
+- Tabs (`tabs.tsx`) / TabsVercel (`tabs-vercel.tsx`)
+- Textarea (`textarea.tsx`)
+- Toggle (`toggle.tsx`) / ToggleGroup (`toggle-group.tsx`)
+- Toolbar (`toolbar.tsx`)
+- Tooltip (`tooltip.tsx`), use `tooltip` prop when available.
+
+## CSS Variables
+
+Use these CSS variables from globals.css for consistent theming:
+
+### Light Mode Colors
+
+```css
+--background: oklch(1 0 0); /* --color-white */
+--foreground: oklch(0.141 0.005 285.823); /* --color-zinc-950 */
+--card: oklch(1 0 0); /* --color-white */
+--card-foreground: oklch(0.141 0.005 285.823); /* --color-zinc-950 */
+--popover: oklch(1 0 0); /* --color-white */
+--popover-foreground: oklch(0.141 0.005 285.823); /* --color-zinc-950 */
+--primary: oklch(0.21 0.006 285.885); /* --color-zinc-900 */
+--primary-foreground: oklch(0.985 0 0); /* --color-zinc-50 */
+--secondary: oklch(0.967 0.001 286.375); /* --color-zinc-100 */
+--secondary-foreground: oklch(0.21 0.006 285.885); /* --color-zinc-900 */
+--muted: oklch(0.967 0.001 286.375); /* --color-zinc-100 */
+--muted-foreground: oklch(0.55 0.01 286); /* --color-zinc-500 */
+--accent: oklch(0.967 0.001 286.375); /* --color-zinc-100 */
+--accent-foreground: oklch(0.21 0.006 285.885); /* --color-zinc-900 */
+--destructive: oklch(0.637 0.237 25.331); /* --color-red-500 */
+--destructive-foreground: oklch(0.637 0.237 25.331); /* --color-red-500 */
+--border: oklch(0.92 0 286); /* --color-zinc-200 */
+--input: oklch(0.871 0.006 286.286); /* --color-zinc-300 */
+--ring: oklch(0.871 0.006 286.286); /* --color-zinc-300 */
+--chart-1: oklch(0.646 0.222 41.116);
+--chart-2: oklch(0.6 0.118 184.704);
+--chart-3: oklch(0.398 0.07 227.392);
+--chart-4: oklch(0.828 0.189 84.429);
+--chart-5: oklch(0.769 0.188 70.08);
+--radius: 0.625rem;
+--sidebar: oklch(0.985 0 0); /* --color-zinc-50 */
+--sidebar-foreground: oklch(0.141 0.005 285.823); /* --color-zinc-950 */
+--sidebar-primary: oklch(0.21 0.006 285.885); /* --color-zinc-900 */
+--sidebar-primary-foreground: oklch(0.985 0 0); /* --color-zinc-50 */
+--sidebar-accent: oklch(0.967 0.001 286.375); /* --color-zinc-100 */
+--sidebar-accent-foreground: oklch(0.21 0.006 285.885); /* --color-zinc-900 */
+--sidebar-border: oklch(0.92 0.004 286.32); /* --color-zinc-200 */
+--sidebar-ring: oklch(0.871 0.006 286.286); /* --color-zinc-300 */
+
+--brand: oklch(0.621 0.173 227.766); /* --color-sky-500 */
+--subtle-foreground: oklch(0.442 0.017 285.786); /* --color-zinc-600 */
+```
+
+## Responsive Design
+
+Use custom breakpoint syntax for consistent responsive design:
+
+```tsx
+// ❌ Don't use default Tailwind breakpoints
+<div className="w-full sm:w-1/2 md:w-1/3 lg:w-1/4">
+  {/* content */}
+</div>
+
+// ✅ Use custom breakpoint syntax
+<div className="w-full @xl:w-1/2 @3xl:w-1/3 @5xl:w-1/4">
+  {/* content */}
+</div>
+
+// ❌ Don't use default max-width breakpoints
+<div className="block max-sm:hidden max-md:flex-col max-lg:gap-2">
+  {/* content */}
+</div>
+
+// ✅ Use custom max-width breakpoint syntax
+<div className="block @max-xl:hidden @max-3xl:flex-col @max-5xl:gap-2">
+  {/* content */}
+</div>
+```
+
+### Breakpoint Reference
+
+```css
+/* Min-width breakpoints */
+@xl: 640px    /* replaces sm: */
+@3xl: 1024px  /* replaces md: */
+@5xl: 1280px  /* replaces lg: */
+
+/* Max-width breakpoints */
+@max-xl: 639px    /* replaces max-sm: */
+@max-3xl: 1023px  /* replaces max-md: */
+@max-5xl: 1279px; /* replaces max-lg: */
+```
+
+## Examples
+
+<example>
+```tsx
+function MyComponent({ 
+  title, 
+  description, 
+  isActive = false 
+}: { 
+  title: string; 
+  description?: string; 
+  isActive?: boolean 
+}) {
+  return (
+    <div className="bg-background text-foreground p-4 rounded-[var(--radius)]">
+      <h2 className="text-primary font-bold">{title}</h2>
+      {description && <p className="text-muted-foreground">{description}</p>}
+      {isActive && <Badge variant="outline">Active</Badge>}
+    </div>
+  );
+}
+```
+This pattern uses destructured props with inline TypeScript types, making the component cleaner and more readable. It also uses CSS variables from globals.css and UI components from the component library.
+</example>
+
+<example type="invalid">
+```tsx
+interface MyComponentProps {
+  title: string;
+  description?: string;
+  isActive?: boolean;
+}
+
+function MyComponent(props: MyComponentProps) {
+const { title, description, isActive = false } = props;
+return (
+
+<div className="bg-white p-4 rounded-md">
+<h2 className="text-zinc-900 font-bold">{title}</h2>
+{description && <p className="text-zinc-500">{description}</p>}
+{isActive && <span className="px-2 py-1 bg-zinc-100 text-zinc-900 text-xs rounded-full">Active</span>}
+</div>
+);
+}
+
+```
+This pattern creates unnecessary interfaces and requires additional destructuring inside the component. It also uses hardcoded color values instead of CSS variables and doesn't leverage the UI component library.
+</example>
+
+<critical>
+  - Always prefer inline prop types over separate interfaces
+  - Destructure props directly in the function signature
+  - Keep component definitions concise and readable
+  - Use CSS variables from globals.css for consistent theming
+  - Leverage existing UI components from the component library
+</critical>
+```
