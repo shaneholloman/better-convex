@@ -104,23 +104,23 @@ Instead of using raw Convex `query`/`mutation`/`action`, this template provides 
 ```typescript
 // Public query - auth optional
 export const example = createPublicQuery()({
-  args: { id: zid('items') }, // Always use zid() for IDs
+  args: { id: zid("items") }, // Always use zid() for IDs
   returns: z.object({ name: z.string() }).nullable(),
   handler: async (ctx, args) => {
-    return await ctx.table('items').get(args.id);
+    return await ctx.table("items").get(args.id);
   },
 });
 
 // Protected mutation with rate limiting
 export const createItem = createAuthMutation({
-  rateLimit: 'item/create', // Auto tier limits
-  role: 'ADMIN', // Optional role check
+  rateLimit: "item/create", // Auto tier limits
+  role: "ADMIN", // Optional role check
 })({
   args: { name: z.string().min(1).max(100) },
-  returns: zid('items'),
+  returns: zid("items"),
   handler: async ({ user, table }, args) => {
     // ctx.user is pre-loaded EntWriter<'users'>
-    return await table('items').insert({
+    return await table("items").insert({
       name: args.name,
       userId: user._id,
     });
@@ -145,20 +145,20 @@ Available function types:
 ```typescript
 // Never use useQuery directly - use these wrappers
 const { data, isPending } = usePublicQuery(api.items.list, {});
-const { data } = useAuthQuery(api.user.getProfile, {}); // Skips if not auth
+const { data } = useAuthQuery(api.users.getProfile, {}); // Skips if not auth
 
 // Mutations with toast integration
-const updateSettings = useAuthMutation(api.user.updateSettings);
-toast.promise(updateSettings.mutateAsync({ name: 'New' }), {
-  loading: 'Updating...',
-  success: 'Updated!',
-  error: (e) => e.data?.message ?? 'Failed',
+const updateSettings = useAuthMutation(api.users.updateSettings);
+toast.promise(updateSettings.mutateAsync({ name: "New" }), {
+  loading: "Updating...",
+  success: "Updated!",
+  error: (e) => e.data?.message ?? "Failed",
 });
 
 // Paginated queries
 const { data, hasNextPage, fetchNextPage } = usePublicPaginatedQuery(
   api.messages.list,
-  { author: 'alice' },
+  { author: "alice" },
   { initialNumItems: 10 }
 );
 ```
@@ -172,8 +172,8 @@ const user = await getSessionUser();
 const isAuthenticated = await isAuth();
 
 // Fetch with auth
-const data = await fetchAuthQuery(api.user.getData, { id });
-const data = await fetchAuthQueryOrThrow(api.user.getData, { id });
+const data = await fetchAuthQuery(api.users.getData, { id });
+const data = await fetchAuthQueryOrThrow(api.users.getData, { id });
 ```
 
 ## Schema & Database
@@ -187,16 +187,16 @@ const schema = defineEntSchema({
     name: v.optional(v.string()),
     bio: v.optional(v.string()),
   })
-    .field('email', v.string(), { unique: true })
-    .field('emailVerified', v.boolean(), { default: false }),
+    .field("email", v.string(), { unique: true })
+    .field("emailVerified", v.boolean(), { default: false }),
 
   todos: defineEnt({
     title: v.string(),
     completed: v.boolean(),
-    userId: v.id('users'),
+    userId: v.id("users"),
   })
-    .index('by_user', ['userId'])
-    .index('by_user_completed', ['userId', 'completed']),
+    .index("by_user", ["userId"])
+    .index("by_user_completed", ["userId", "completed"]),
 });
 ```
 
@@ -209,7 +209,7 @@ In authenticated functions, `ctx.user` is a pre-loaded `EntWriter<'users'>` with
 ```typescript
 handler: async (ctx, args) => {
   // ❌ Don't refetch the user
-  const user = await ctx.table('users').get(ctx.userId);
+  const user = await ctx.table("users").get(ctx.userId);
 
   // ✅ Use pre-loaded user
   await ctx.user.patch({ credits: ctx.user.credits - 1 });
@@ -236,8 +236,8 @@ Always throw `ConvexError` with proper codes:
 
 ```typescript
 throw new ConvexError({
-  code: 'UNAUTHENTICATED',
-  message: 'Not authenticated',
+  code: "UNAUTHENTICATED",
+  message: "Not authenticated",
 });
 ```
 
@@ -337,6 +337,127 @@ This template includes specialized AI agents and coding rules to enhance your de
 - **global-css.mdc** - CSS configuration
 - **jotai-x.mdc** - State management patterns
 - **toast.mdc** - Notification patterns
+
+## Start from Scratch
+
+To remove all starter code and keep only auth/user functionality:
+
+### Backend Files to Delete (convex/)
+
+```bash
+# Function files
+rm convex/todos.ts
+rm convex/todoInternal.ts
+rm convex/todoComments.ts
+rm convex/projects.ts
+rm convex/tags.ts
+rm convex/seed.ts
+rm convex/reset.ts
+```
+
+### Frontend Files to Delete (src/)
+
+```bash
+# Page routes
+rm -rf src/app/projects/
+rm -rf src/app/tags/
+
+# Components
+rm -rf src/components/todos/
+rm -rf src/components/projects/
+
+# Breadcrumb navigation (optional - uses todo examples)
+rm src/components/breadcrumb-nav.tsx
+```
+
+### Schema Updates (convex/schema.ts)
+
+Remove these tables and their edges from the schema:
+
+- `todos` table
+- `projects` table
+- `tags` table
+- `todoComments` table
+- `projectMembers` table (join table)
+- `todoTags` table (join table)
+- `commentReplies` table (join table)
+
+Update the `users` table to remove edges:
+
+```typescript
+users: defineEnt({
+  // Keep profile fields
+  name: v.optional(v.string()),
+  bio: v.optional(v.string()),
+  image: v.optional(v.string()),
+  role: v.optional(v.string()),
+  deletedAt: v.optional(v.number()),
+})
+  .field("emailVerified", v.boolean(), { default: false })
+  .field("email", v.string(), { unique: true });
+// Remove all todo/project related edges
+```
+
+### Aggregates Updates (convex/aggregates.ts)
+
+Keep only:
+
+- `aggregateUsers`
+
+Remove:
+
+- `aggregateTodosByUser`
+- `aggregateTodosByProject`
+- `aggregateTodosByStatus`
+- `aggregateTagUsage`
+- `aggregateProjectMembers`
+- `aggregateCommentsByTodo`
+
+### Config Updates (convex/convex.config.ts)
+
+Remove aggregate registrations:
+
+```typescript
+// Keep only:
+app.use(aggregate, { name: "aggregateUsers" });
+
+// Remove all todo/project/tag related aggregates
+```
+
+### Triggers Updates (convex/triggers.ts)
+
+Remove all todo/project/tag related triggers if any exist.
+
+### Home Page Update (src/app/page.tsx)
+
+Replace with a simple authenticated landing page:
+
+```tsx
+export default async function HomePage() {
+  return (
+    <div className="container mx-auto py-6 px-4">
+      <h1 className="text-3xl font-bold mb-4">Welcome</h1>
+      <p>Your authenticated app starts here.</p>
+    </div>
+  );
+}
+```
+
+### Clean Generated Files
+
+After making these changes:
+
+```bash
+# Regenerate Convex types
+pnpm dev
+```
+
+This will give you a clean authentication-only starter with:
+
+- ✅ Better Auth integration
+- ✅ User management
+- ✅ Rate limiting
+- ❌ No todo/project/tag starter code
 
 ## Resources
 

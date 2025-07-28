@@ -186,8 +186,9 @@ export const getSessionUserWriter = async (ctx: MutationCtx) => {
     return null;
   }
 
+  const sessionUser = mapSessionToUser(user);
   return {
-    ...mapSessionToUser(user),
+    ...sessionUser,
     delete: user.delete,
     doc: user.doc,
     edge: user.edge,

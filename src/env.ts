@@ -1,8 +1,8 @@
-import { createEnv } from '@t3-oss/env-nextjs';
-import { z } from 'zod';
+import { createEnv } from "@t3-oss/env-nextjs";
+import { z } from "zod";
 
 const DEFAULT = {
-  PORT: '3000',
+  PORT: "3000",
 };
 
 export const env = createEnv({
@@ -31,7 +31,6 @@ export const env = createEnv({
     NEXT_PUBLIC_ENVIRONMENT: process.env.NEXT_PUBLIC_ENVIRONMENT,
     NEXT_PUBLIC_CONVEX_SITE_URL: process.env.NEXT_PUBLIC_CONVEX_SITE_URL,
     NEXT_PUBLIC_CONVEX_URL: process.env.NEXT_PUBLIC_CONVEX_URL,
-    NEXT_PUBLIC_R2_URL: process.env.NEXT_PUBLIC_R2_URL,
     NEXT_PUBLIC_SITE_URL:
       process.env.NEXT_PUBLIC_SITE_URL ||
       (process.env.VERCEL_URL
@@ -46,20 +45,15 @@ export const env = createEnv({
    */
   server: {
     PORT: z.string().optional().default(DEFAULT.PORT),
-    R2_ACCESS_KEY_ID: z.string().optional().default(''),
-    R2_ACCOUNT_ID: z.string().optional().default(''),
-    R2_BUCKET_NAME: z.string().optional().default(''),
-    R2_SECRET_ACCESS_KEY: z.string().optional().default(''),
   },
 
   shared: {
     NEXT_PUBLIC_CONVEX_URL: z.string(),
-    NEXT_PUBLIC_ENVIRONMENT: z.string().default('production'),
-    NEXT_PUBLIC_R2_URL: z.string().optional().default(''),
-    NEXT_PUBLIC_SITE_URL: z.string().optional().default(''),
+    NEXT_PUBLIC_ENVIRONMENT: z.string().default("production"),
+    NEXT_PUBLIC_SITE_URL: z.string().optional().default(""),
     NODE_ENV: z
-      .enum(['development', 'test', 'production'])
-      .default('production'),
+      .enum(["development", "test", "production"])
+      .default("production"),
   },
   /**
    * Run `build` or `dev` with `SKIP_ENV_VALIDATION` to skip env validation.

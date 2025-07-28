@@ -2,7 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { Home, FolderOpen, Tags, LogOut, LogIn, CheckSquare } from 'lucide-react';
+import { Home, FolderOpen, Tags, LogOut, LogIn, CheckSquare, RotateCcw, TestTube2 } from 'lucide-react';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -12,12 +12,22 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
-import { useCurrentUser } from '@/lib/convex/hooks';
+import { useCurrentUser, useAuthMutation, usePublicQuery, useAuthAction } from '@/lib/convex/hooks';
 import { signOut } from '@/lib/convex/auth-client';
+import { api } from '@convex/_generated/api';
+import { toast } from 'sonner';
 
 export function BreadcrumbNav() {
   const pathname = usePathname();
   const user = useCurrentUser();
+  const resetAppData = useAuthMutation(api.reset.resetAppData);
+  const generateSamplesAction = useAuthAction(api.seed.generateSamples);
+  
+  // Check if there's any data (projects)
+  const { data: projectsData } = usePublicQuery(api.projects.list, { paginationOpts: { numItems: 1, cursor: null } }, {
+    placeholderData: { page: [], isDone: true, continueCursor: '' }
+  });
+  const hasData = projectsData && projectsData.page.length > 0;
   
   // Parse the pathname into segments
   const segments = pathname.split('/').filter(Boolean);
@@ -127,16 +137,53 @@ export function BreadcrumbNav() {
           </div>
           
           {/* Right side - Auth */}
-          <div>
+          <div className="flex items-center gap-2">
             {user && user.id ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => signOut()}
-              >
-                <LogOut className="h-4 w-4" />
-                Sign out
-              </Button>
+              <>
+                {hasData ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (confirm('Are you sure you want to reset all app data? This will delete all projects, todos, tags, and comments. User accounts will be preserved.')) {
+                        toast.promise(resetAppData.mutateAsync({}), {
+                          loading: 'Resetting app data...',
+                          success: (result) => `Reset complete! Deleted ${result.totalDeleted} items from ${Object.keys(result.deletedCounts).length} tables`,
+                          error: (e) => e.data?.message ?? 'Failed to reset data',
+                        });
+                      }
+                    }}
+                    disabled={resetAppData.isPending}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Reset Data
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      toast.promise(generateSamplesAction.mutateAsync({ count: 100 }), {
+                        loading: 'Generating sample projects with todos...',
+                        success: (result) => `Created ${result.created} projects with ${result.todosCreated} todos!`,
+                        error: (e) => e.data?.message ?? 'Failed to generate samples',
+                      });
+                    }}
+                    disabled={generateSamplesAction.isPending}
+                  >
+                    <TestTube2 className="h-4 w-4" />
+                    Add Samples
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => signOut()}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </Button>
+              </>
             ) : (
               <Link href="/login">
                 <Button

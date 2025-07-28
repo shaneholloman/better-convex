@@ -44,7 +44,7 @@ export const getSessionUser = async (): Promise<
   // Fetch minimal user data with token
   const user = await (async () => {
     try {
-      return await fetchAuthQuery(api.user.getCurrentUser, {});
+      return await fetchAuthQuery(api.users.getCurrentUser, {});
     } catch (error) {
       return null;
     }

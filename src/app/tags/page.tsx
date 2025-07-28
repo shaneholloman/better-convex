@@ -38,7 +38,6 @@ import {
   GitMerge,
   Tag,
   Hash,
-  TestTube2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { WithSkeleton } from "@/components/ui/skeleton";
@@ -131,8 +130,6 @@ export default function TagsPage() {
     },
   });
 
-  const generateSamples = useAuthMutation(api.tags.generateSamples);
-
   const handleCreateTag = () => {
     if (!newTag.name.trim()) {
       toast.error("Tag name is required");
@@ -209,93 +206,70 @@ export default function TagsPage() {
             Organize your todos with tags
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              toast.promise(
-                generateSamples.mutateAsync({ count: 100 }),
-                {
-                  loading: "Generating sample tags...",
-                  success: (result) => `Created ${result.created} sample tags!`,
-                  error: (e) => e.data?.message ?? "Failed to generate samples",
-                }
-              );
-            }}
-            disabled={generateSamples.isPending}
-          >
-            <TestTube2 className="h-4 w-4" />
-            Add Samples
-          </Button>
-          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="h-4 w-4" />
-                New Tag
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create Tag</DialogTitle>
-                <DialogDescription>
-                  Create a new tag to organize your todos
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="tag-name">Name</Label>
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4" />
+              New Tag
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Tag</DialogTitle>
+              <DialogDescription>
+                Create a new tag to organize your todos
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="tag-name">Name</Label>
+                <Input
+                  id="tag-name"
+                  value={newTag.name}
+                  onChange={(e) =>
+                    setNewTag({ ...newTag, name: e.target.value })
+                  }
+                  placeholder="e.g., Work, Personal, Urgent"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tag-color">Color (optional)</Label>
+                <div className="flex gap-2 items-center">
                   <Input
-                    id="tag-name"
-                    value={newTag.name}
+                    id="tag-color"
+                    type="color"
+                    value={newTag.color || "#3B82F6"}
                     onChange={(e) =>
-                      setNewTag({ ...newTag, name: e.target.value })
+                      setNewTag({ ...newTag, color: e.target.value })
                     }
-                    placeholder="e.g., Work, Personal, Urgent"
+                    className="w-20 h-10 cursor-pointer"
+                  />
+                  <Input
+                    value={newTag.color}
+                    onChange={(e) =>
+                      setNewTag({ ...newTag, color: e.target.value })
+                    }
+                    placeholder="#3B82F6"
+                    className="flex-1"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="tag-color">Color (optional)</Label>
-                  <div className="flex gap-2 items-center">
-                    <Input
-                      id="tag-color"
-                      type="color"
-                      value={newTag.color || "#3B82F6"}
-                      onChange={(e) =>
-                        setNewTag({ ...newTag, color: e.target.value })
-                      }
-                      className="w-20 h-10 cursor-pointer"
-                    />
-                    <Input
-                      value={newTag.color}
-                      onChange={(e) =>
-                        setNewTag({ ...newTag, color: e.target.value })
-                      }
-                      placeholder="#3B82F6"
-                      className="flex-1"
-                    />
-                  </div>
-                </div>
               </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowCreateDialog(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleCreateTag}
-                  disabled={createTag.isPending}
-                >
-                  Create
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowCreateDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleCreateTag} disabled={createTag.isPending}>
+                Create
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
-      {/* Popular Tags */}
       {popularTags && popularTags.length > 0 && (
         <Card className="mb-6">
           <CardHeader>
@@ -327,7 +301,6 @@ export default function TagsPage() {
         </Card>
       )}
 
-      {/* User's Tags */}
       <Card>
         <CardHeader>
           <CardTitle>Your Tags</CardTitle>
@@ -370,7 +343,7 @@ export default function TagsPage() {
                         <Edit2 className="h-4 w-4" />
                         Edit
                       </DropdownMenuItem>
-                      {tags.length > 1 && (
+                      {tags?.length && tags.length > 1 && (
                         <DropdownMenuItem onClick={() => openMergeDialog(tag)}>
                           <GitMerge className="h-4 w-4" />
                           Merge into...

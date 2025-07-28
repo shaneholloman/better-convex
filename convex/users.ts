@@ -1,7 +1,7 @@
-import { z } from 'zod';
+import { z } from "zod";
 
-import { createAuthMutation, createPublicQuery } from './functions';
-import { updateSettingsSchema } from './userShared';
+import { createAuthMutation, createPublicQuery } from "./functions";
+import { updateSettingsSchema } from "./userShared";
 
 // Get full user data for the authenticated user
 export const getCurrentUser = createPublicQuery()({
@@ -10,9 +10,12 @@ export const getCurrentUser = createPublicQuery()({
       return null;
     }
 
+    const doc = user.doc();
     return {
-      ...user.doc(),
+      ...doc,
       id: user._id,
+      isAdmin: doc.role === "ADMIN" || doc.role === "SUPERADMIN",
+      isSuperAdmin: doc.role === "SUPERADMIN",
     };
   },
 });

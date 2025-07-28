@@ -72,9 +72,9 @@ export const update = createAuthMutation({
   },
   returns: z.null(),
   handler: async (ctx, args) => {
-    const tag = await ctx.table('tags').get(args.tagId);
+    const tag = await ctx.table('tags').getX(args.tagId);
     
-    if (!tag || tag.createdBy !== ctx.user._id) {
+    if (tag.createdBy !== ctx.user._id) {
       throw new ConvexError({
         code: 'NOT_FOUND',
         message: 'Tag not found',
@@ -117,9 +117,9 @@ export const deleteTag = createAuthMutation({
   },
   returns: z.null(),
   handler: async (ctx, args) => {
-    const tag = await ctx.table('tags').get(args.tagId);
+    const tag = await ctx.table('tags').getX(args.tagId);
     
-    if (!tag || tag.createdBy !== ctx.user._id) {
+    if (tag.createdBy !== ctx.user._id) {
       throw new ConvexError({
         code: 'NOT_FOUND',
         message: 'Tag not found',
@@ -150,17 +150,17 @@ export const merge = createAuthMutation({
       });
     }
     
-    const sourceTag = await ctx.table('tags').get(args.sourceTagId);
-    const targetTag = await ctx.table('tags').get(args.targetTagId);
+    const sourceTag = await ctx.table('tags').getX(args.sourceTagId);
+    const targetTag = await ctx.table('tags').getX(args.targetTagId);
     
-    if (!sourceTag || sourceTag.createdBy !== ctx.user._id) {
+    if (sourceTag.createdBy !== ctx.user._id) {
       throw new ConvexError({
         code: 'NOT_FOUND',
         message: 'Source tag not found',
       });
     }
     
-    if (!targetTag || targetTag.createdBy !== ctx.user._id) {
+    if (targetTag.createdBy !== ctx.user._id) {
       throw new ConvexError({
         code: 'NOT_FOUND',
         message: 'Target tag not found',
@@ -218,112 +218,6 @@ export const popular = createAuthQuery()({
   },
 });
 
-// Generate sample tags for testing
-export const generateSamples = createAuthMutation({
-  rateLimit: 'tag/create',
-})({
-  args: {
-    count: z.number().min(1).max(100).default(100),
-  },
-  returns: z.object({
-    created: z.number(),
-  }),
-  handler: async (ctx, args) => {
-    // Sample tag names with colors
-    const tagTemplates = [
-      { name: "Urgent", color: "#EF4444" }, // red
-      { name: "Important", color: "#F59E0B" }, // amber
-      { name: "Personal", color: "#10B981" }, // emerald
-      { name: "Work", color: "#3B82F6" }, // blue
-      { name: "Home", color: "#8B5CF6" }, // violet
-      { name: "Shopping", color: "#EC4899" }, // pink
-      { name: "Health", color: "#14B8A6" }, // teal
-      { name: "Finance", color: "#F97316" }, // orange
-      { name: "Learning", color: "#6366F1" }, // indigo
-      { name: "Travel", color: "#84CC16" }, // lime
-      { name: "Project", color: "#06B6D4" }, // cyan
-      { name: "Meeting", color: "#7C3AED" }, // purple
-      { name: "Deadline", color: "#DC2626" }, // red-600
-      { name: "Review", color: "#059669" }, // emerald-600
-      { name: "Research", color: "#2563EB" }, // blue-600
-      { name: "Development", color: "#7C2D12" }, // orange-900
-      { name: "Design", color: "#BE185D" }, // pink-700
-      { name: "Testing", color: "#0891B2" }, // cyan-600
-      { name: "Documentation", color: "#6D28D9" }, // purple-700
-      { name: "Maintenance", color: "#CA8A04" }, // yellow-600
-    ];
-
-    const prefixes = ["Priority", "Category", "Type", "Status", "Label"];
-    const suffixes = ["Task", "Item", "Note", "Reminder", "Todo"];
-    
-    // Keep track of used names to avoid duplicates
-    const usedNames = new Set<string>();
-    
-    // First, check existing tags to avoid duplicates
-    const existingTags = await ctx
-      .table('tags', 'createdBy', (q) => q.eq('createdBy', ctx.user._id));
-    
-    existingTags.forEach(tag => usedNames.add(tag.name.toLowerCase()));
-    
-    let created = 0;
-    
-    for (let i = 0; i < args.count && created < args.count; i++) {
-      let name: string;
-      let color: string;
-      
-      if (i < tagTemplates.length && !usedNames.has(tagTemplates[i].name.toLowerCase())) {
-        // Use template directly
-        name = tagTemplates[i].name;
-        color = tagTemplates[i].color;
-      } else {
-        // Generate a unique name
-        let attempts = 0;
-        do {
-          if (Math.random() > 0.5 && i < tagTemplates.length * 2) {
-            // Use template with variation
-            const template = tagTemplates[i % tagTemplates.length];
-            const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-            name = `${prefix} ${template.name}`;
-            color = template.color;
-          } else {
-            // Generate completely random name
-            const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-            const suffix = suffixes[Math.floor(Math.random() * suffixes.length)];
-            const number = Math.floor(Math.random() * 100);
-            name = `${prefix} ${suffix} ${number}`;
-            color = generateRandomColor();
-          }
-          attempts++;
-          if (attempts > 50) {
-            // Give up after too many attempts
-            break;
-          }
-        } while (usedNames.has(name.toLowerCase()));
-        
-        if (attempts > 50) {
-          continue;
-        }
-      }
-      
-      // Add to used names
-      usedNames.add(name.toLowerCase());
-      
-      try {
-        await ctx.table('tags').insert({
-          name,
-          color,
-          createdBy: ctx.user._id,
-        });
-        created++;
-      } catch (error) {
-        // Skip if insertion fails (e.g., due to race condition)
-        console.error(`Failed to create tag: ${name}`, error);
-      }
-    }
-    
-    return { created };
-  },
-});
 
 // Helper function to generate random hex color
 function generateRandomColor(): string {

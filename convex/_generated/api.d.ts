@@ -27,8 +27,8 @@ import type * as todoInternal from "../todoInternal.js";
 import type * as todos from "../todos.js";
 import type * as triggers from "../triggers.js";
 import type * as user_mapSessionToUser from "../user/mapSessionToUser.js";
-import type * as user from "../user.js";
 import type * as userShared from "../userShared.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -64,8 +64,8 @@ declare const fullApi: ApiFromModules<{
   todos: typeof todos;
   triggers: typeof triggers;
   "user/mapSessionToUser": typeof user_mapSessionToUser;
-  user: typeof user;
   userShared: typeof userShared;
+  users: typeof users;
 }>;
 declare const fullApiWithMounts: typeof fullApi;
 

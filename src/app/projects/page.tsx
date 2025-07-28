@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useAuthPaginatedQuery, useAuthMutation } from "@/lib/convex/hooks";
+import {
+  usePublicPaginatedQuery,
+  useAuthMutation,
+  useIsAuth,
+} from "@/lib/convex/hooks";
 import { api } from "@convex/_generated/api";
 import { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -25,14 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Plus,
-  Archive,
-  Users,
-  CheckSquare,
-  Square,
-  TestTube2,
-} from "lucide-react";
+import { Plus, Archive, Users, CheckSquare, Square } from "lucide-react";
 import { toast } from "sonner";
 import { WithSkeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
@@ -46,11 +43,13 @@ export default function ProjectsPage() {
     isPublic: false,
   });
 
+  const isAuth = useIsAuth();
+
   const { data, hasNextPage, isLoading, isFetchingNextPage, fetchNextPage } =
-    useAuthPaginatedQuery(
+    usePublicPaginatedQuery(
       api.projects.list,
       { includeArchived },
-      { initialNumItems: 10 }
+      { initialNumItems: 9 }
     );
 
   const createProject = useAuthMutation(api.projects.create, {
@@ -66,7 +65,6 @@ export default function ProjectsPage() {
 
   const archiveProject = useAuthMutation(api.projects.archive);
   const restoreProject = useAuthMutation(api.projects.restore);
-  const generateSamples = useAuthMutation(api.projects.generateSamples);
 
   const handleCreateProject = async () => {
     if (!newProject.name.trim()) {
@@ -100,22 +98,7 @@ export default function ProjectsPage() {
     <div className="container mx-auto py-6 px-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-3xl font-bold">Projects</h1>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              toast.promise(generateSamples.mutateAsync({ count: 100 }), {
-                loading: "Generating sample projects with todos...",
-                success: (result) =>
-                  `Created ${result.created} projects with ${result.todosCreated} todos!`,
-                error: (e) => e.data?.message ?? "Failed to generate samples",
-              });
-            }}
-            disabled={generateSamples.isPending}
-          >
-            <TestTube2 className="h-4 w-4" />
-            Add Samples
-          </Button>
+        {isAuth && (
           <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
             <DialogTrigger asChild>
               <Button>
@@ -189,19 +172,23 @@ export default function ProjectsPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-        </div>
+        )}
       </div>
 
-      <div className="mb-4 flex items-center space-x-2">
-        <Checkbox
-          id="includeArchived"
-          checked={includeArchived}
-          onCheckedChange={(checked) => setIncludeArchived(checked as boolean)}
-        />
-        <Label htmlFor="includeArchived" className="text-sm font-normal">
-          Show only archived projects
-        </Label>
-      </div>
+      {isAuth && (
+        <div className="mb-4 flex items-center space-x-2">
+          <Checkbox
+            id="includeArchived"
+            checked={includeArchived}
+            onCheckedChange={(checked) =>
+              setIncludeArchived(checked as boolean)
+            }
+          />
+          <Label htmlFor="includeArchived" className="text-sm font-normal">
+            Show only archived projects
+          </Label>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {projects.map((project, index) => (
@@ -267,12 +254,18 @@ export default function ProjectsPage() {
       {projects.length === 0 && !isLoading && (
         <div className="text-center py-12">
           <p className="text-muted-foreground mb-4">
-            {includeArchived ? "No projects found" : "No active projects found"}
+            {!isAuth
+              ? "No public projects available"
+              : includeArchived
+                ? "No archived projects found"
+                : "No active projects found"}
           </p>
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="h-4 w-4" />
-            Create your first project
-          </Button>
+          {isAuth && (
+            <Button onClick={() => setShowCreateDialog(true)}>
+              <Plus className="h-4 w-4" />
+              Create your first project
+            </Button>
+          )}
         </div>
       )}
 
