@@ -62,7 +62,7 @@ export const useAuthGuard = () => {
 
       return callback ? void callback() : false;
     },
-    [isAuth]
+    [isAuth, router]
   );
 };
 

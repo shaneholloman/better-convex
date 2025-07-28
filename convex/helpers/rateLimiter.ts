@@ -2,7 +2,6 @@ import { HOUR, MINUTE, RateLimiter, SECOND } from '@convex-dev/rate-limiter';
 import { ConvexError } from 'convex/values';
 
 import type { ActionCtx, MutationCtx } from '../_generated/server';
-import type { SessionUser } from '../user/mapSessionToUser';
 
 import { components } from '../_generated/api';
 
