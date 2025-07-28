@@ -25,7 +25,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Archive, Users, CheckSquare, Square, TestTube2 } from "lucide-react";
+import {
+  Plus,
+  Archive,
+  Users,
+  CheckSquare,
+  Square,
+  TestTube2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { WithSkeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
@@ -97,14 +104,12 @@ export default function ProjectsPage() {
           <Button
             variant="outline"
             onClick={() => {
-              toast.promise(
-                generateSamples.mutateAsync({ count: 100 }),
-                {
-                  loading: "Generating sample projects with todos...",
-                  success: (result) => `Created ${result.created} projects with ${result.todosCreated} todos!`,
-                  error: (e) => e.data?.message ?? "Failed to generate samples",
-                }
-              );
+              toast.promise(generateSamples.mutateAsync({ count: 100 }), {
+                loading: "Generating sample projects with todos...",
+                success: (result) =>
+                  `Created ${result.created} projects with ${result.todosCreated} todos!`,
+                error: (e) => e.data?.message ?? "Failed to generate samples",
+              });
             }}
             disabled={generateSamples.isPending}
           >
@@ -118,72 +123,72 @@ export default function ProjectsPage() {
                 New Project
               </Button>
             </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Project</DialogTitle>
-              <DialogDescription>
-                Create a new project to organize your todos
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  value={newProject.name}
-                  onChange={(e) =>
-                    setNewProject({ ...newProject, name: e.target.value })
-                  }
-                  placeholder="My Awesome Project"
-                />
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create Project</DialogTitle>
+                <DialogDescription>
+                  Create a new project to organize your todos
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    value={newProject.name}
+                    onChange={(e) =>
+                      setNewProject({ ...newProject, name: e.target.value })
+                    }
+                    placeholder="My Awesome Project"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={newProject.description}
+                    onChange={(e) =>
+                      setNewProject({
+                        ...newProject,
+                        description: e.target.value,
+                      })
+                    }
+                    placeholder="Brief description of your project"
+                    rows={3}
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="isPublic"
+                    checked={newProject.isPublic}
+                    onCheckedChange={(checked) =>
+                      setNewProject({
+                        ...newProject,
+                        isPublic: checked as boolean,
+                      })
+                    }
+                  />
+                  <Label htmlFor="isPublic" className="text-sm font-normal">
+                    Make this project public
+                  </Label>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={newProject.description}
-                  onChange={(e) =>
-                    setNewProject({
-                      ...newProject,
-                      description: e.target.value,
-                    })
-                  }
-                  placeholder="Brief description of your project"
-                  rows={3}
-                />
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="isPublic"
-                  checked={newProject.isPublic}
-                  onCheckedChange={(checked) =>
-                    setNewProject({
-                      ...newProject,
-                      isPublic: checked as boolean,
-                    })
-                  }
-                />
-                <Label htmlFor="isPublic" className="text-sm font-normal">
-                  Make this project public
-                </Label>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setShowCreateDialog(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCreateProject}
-                disabled={createProject.isPending}
-              >
-                Create
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowCreateDialog(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreateProject}
+                  disabled={createProject.isPending}
+                >
+                  Create
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -194,13 +199,17 @@ export default function ProjectsPage() {
           onCheckedChange={(checked) => setIncludeArchived(checked as boolean)}
         />
         <Label htmlFor="includeArchived" className="text-sm font-normal">
-          Show archived projects
+          Show only archived projects
         </Label>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {projects.map((project, index) => (
-          <WithSkeleton key={project._id || index} isLoading={isLoading}>
+          <WithSkeleton
+            key={project._id || index}
+            isLoading={isLoading}
+            className="w-full"
+          >
             <Card className={project.archived ? "opacity-60" : ""}>
               <CardHeader>
                 <Link href={`/projects/${project._id}`}>

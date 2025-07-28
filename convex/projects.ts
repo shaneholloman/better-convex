@@ -11,6 +11,7 @@ import {
 } from './functions';
 import { aggregateTodosByProject } from './aggregates';
 import schema from './schema';
+import { Id } from './_generated/dataModel';
 
 // List user's projects (owned + member)
 export const list = createAuthPaginatedQuery()({
@@ -38,11 +39,13 @@ export const list = createAuthPaginatedQuery()({
         }
         
         // Apply archive filter
-        if (!args.includeArchived && project.archived) {
-          return false;
+        if (args.includeArchived) {
+          // When includeArchived is true, show ONLY archived projects
+          return project.archived;
+        } else {
+          // When includeArchived is false/undefined, show ONLY non-archived projects
+          return !project.archived;
         }
-        
-        return true;
       })
       .paginate(args.paginationOpts);
     
@@ -468,7 +471,7 @@ export const generateSamples = createAuthMutation({
   handler: async (ctx, args) => {
     // First, ensure we have tags (create some if none exist)
     const existingTags = await ctx
-      .table('tags', 'createdBy', (q) => q.eq('createdBy', ctx.userId))
+      .table('tags', 'createdBy', (q) => q.eq('createdBy', ctx.user._id))
       .take(1);
     
     if (existingTags.length === 0) {
@@ -481,18 +484,18 @@ export const generateSamples = createAuthMutation({
         { name: "Feature", color: "#3B82F6" },
       ];
       
-      for (const tag of basicTags) {
-        await ctx.table('tags').insert({
-          name: tag.name,
-          color: tag.color,
-          createdBy: ctx.userId,
-        });
-      }
+      const tagsToInsert = basicTags.map(tag => ({
+        name: tag.name,
+        color: tag.color,
+        createdBy: ctx.user._id,
+      }));
+      await ctx.table('tags').insertMany(tagsToInsert);
     }
     
-    // Get all user's tags for todo assignment
+    // Get user's tags for todo assignment (limit to reasonable amount)
     const tags = await ctx
-      .table('tags', 'createdBy', (q) => q.eq('createdBy', ctx.userId));
+      .table('tags', 'createdBy', (q) => q.eq('createdBy', ctx.user._id))
+      .take(50); // Limit tags to prevent excessive data read
     // Sample project names and descriptions
     const projectTemplates = [
       {
@@ -581,6 +584,30 @@ export const generateSamples = createAuthMutation({
       "Prepare demo presentation",
       "Deploy to staging",
     ];
+    
+    // Pre-compute tag IDs for efficient selection
+    const tagIds = tags.map(t => t._id);
+    const getRandomTags = (maxCount: number) => {
+      if (tagIds.length === 0) return [];
+      const count = Math.min(Math.floor(Math.random() * (maxCount + 1)), tagIds.length);
+      const selectedIndices = new Set<number>();
+      while (selectedIndices.size < count) {
+        selectedIndices.add(Math.floor(Math.random() * tagIds.length));
+      }
+      return Array.from(selectedIndices).map(i => tagIds[i]);
+    };
+    
+    // Collect todos to batch insert
+    const todosToInsert: Array<{
+      title: string;
+      description?: string;
+      completed: boolean;
+      priority: 'low' | 'medium' | 'high';
+      projectId: Id<'projects'>;
+      userId: Id<'users'>;
+      tags: Id<'tags'>[];
+      dueDate?: number;
+    }> = [];
 
     for (let i = 0; i < args.count; i++) {
       // Use template or generate name
@@ -620,7 +647,7 @@ export const generateSamples = createAuthMutation({
       const projectId = await ctx.table('projects').insert({
         name,
         description,
-        ownerId: ctx.userId,
+        ownerId: ctx.user._id,
         isPublic,
         archived: isArchived,
       });
@@ -637,22 +664,16 @@ export const generateSamples = createAuthMutation({
           const isCompleted = Math.random() > 0.7; // 30% completed
           const priority = priorities[Math.floor(Math.random() * priorities.length)];
           
-          // Assign 0-2 random tags
-          const tagCount = Math.floor(Math.random() * 3);
-          const selectedTags = tagCount > 0 && tags.length > 0
-            ? [...tags]
-                .sort(() => Math.random() - 0.5)
-                .slice(0, Math.min(tagCount, tags.length))
-                .map((t) => t._id)
-            : [];
+          // Use optimized tag selection
+          const selectedTags = getRandomTags(2);
           
-          await ctx.table('todos').insert({
+          todosToInsert.push({
             title: `${todoTitle} - ${name}`,
             description: Math.random() > 0.5 ? `Task for ${name} project` : undefined,
             completed: isCompleted,
             priority,
             projectId,
-            userId: ctx.userId,
+            userId: ctx.user._id,
             tags: selectedTags,
             dueDate: Math.random() > 0.6 
               ? Date.now() + Math.floor(Math.random() * 60 * 24 * 60 * 60 * 1000) // 0-60 days in future
@@ -662,6 +683,13 @@ export const generateSamples = createAuthMutation({
           todosCreated++;
         }
       }
+    }
+    
+    // Batch insert todos in chunks to avoid transaction limits
+    const batchSize = 500;
+    for (let i = 0; i < todosToInsert.length; i += batchSize) {
+      const batch = todosToInsert.slice(i, i + batchSize);
+      await ctx.table('todos').insertMany(batch);
     }
 
     return { created, todosCreated };
