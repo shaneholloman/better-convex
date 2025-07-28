@@ -20,6 +20,7 @@ import type * as init from "../init.js";
 import type * as reset from "../reset.js";
 import type * as seed from "../seed.js";
 import type * as shared_types from "../shared/types.js";
+import type * as todos from "../todos.js";
 import type * as triggers from "../triggers.js";
 import type * as user_mapSessionToUser from "../user/mapSessionToUser.js";
 import type * as user from "../user.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   reset: typeof reset;
   seed: typeof seed;
   "shared/types": typeof shared_types;
+  todos: typeof todos;
   triggers: typeof triggers;
   "user/mapSessionToUser": typeof user_mapSessionToUser;
   user: typeof user;

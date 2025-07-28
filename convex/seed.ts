@@ -64,10 +64,10 @@ export const seed = createInternalAction()({
 
     try {
       // Step 1: Clean up existing seed data
-      await ctx.runMutation(internal.seed.cleanupSeedData);
+      await ctx.runMutation(internal.seed.cleanupSeedData, {});
 
       // Step 2: Seed users
-      const userIds = await ctx.runMutation(internal.seed.seedUsers);
+      await ctx.runMutation(internal.seed.seedUsers, {});
 
       console.info('✅ Seeding finished');
     } catch (error) {
@@ -84,10 +84,11 @@ export const seed = createInternalAction()({
 export const cleanupSeedData = createInternalMutation()({
   args: {},
   returns: z.null(),
-  handler: async () => {
+  handler: async (ctx) => {
     console.info(
       '🧹 Starting cleanup of seed data (preserving users and sessions)...'
     );
+
 
     console.info('🧹 Cleanup finished');
 

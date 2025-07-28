@@ -1,5 +1,14 @@
 # CLAUDE.md
 
+## 🚨 CRITICAL: MUST READ BEFORE ANY TASK
+
+**IMPORTANT**: The following sections define mandatory prerequisites for specific types of work. Failure to read these files once per session will result in incorrect implementations. This is NOT optional.
+
+### Convex Backend Work
+
+**Files**: `convex/**`
+**MANDATORY**: Read `.cursor/rules/convex.mdc` FIRST
+
 ## Project Overview
 
 - Project Status: @.claude/docs/project-status.md
@@ -8,8 +17,6 @@
 - Project Structure: @.claude/docs/project-structure.md
 
 ## Rules
-
-- .cursor/rules/convex.mdc - Convex backend development - **CRITICAL** you should absolutely read this file when working in convex folder (backend side)
 
 - @.cursor/rules/react.mdc - React patterns
 - @.cursor/rules/nextjs.mdc - Next.js patterns

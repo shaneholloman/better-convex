@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { ReactElement, ReactNode } from "react"
 
 function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -10,4 +11,16 @@ function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
-export { Skeleton }
+interface WithSkeletonProps {
+  children: ReactNode
+  isLoading: boolean
+}
+
+function WithSkeleton({ children, isLoading }: WithSkeletonProps): ReactElement {
+  if (isLoading) {
+    return <>{children}</>
+  }
+  return <>{children}</>
+}
+
+export { Skeleton, WithSkeleton }

@@ -19,6 +19,21 @@ const schema = defineEntSchema(
     })
       .field('emailVerified', v.boolean(), { default: false })
       .field('email', v.string(), { unique: true }),
+
+    // --------------------
+    // Todo Model
+    // --------------------
+    todos: defineEnt({
+      title: v.string(),
+      description: v.optional(v.string()),
+      completed: v.boolean(),
+      userId: v.id('users'),
+      priority: v.optional(v.union(v.literal('low'), v.literal('medium'), v.literal('high'))),
+      dueDate: v.optional(v.number()),
+    })
+      .index('by_user', ['userId'])
+      .index('by_user_completed', ['userId', 'completed'])
+      .index('by_completed', ['completed']),
   },
   {
     schemaValidation: true,
