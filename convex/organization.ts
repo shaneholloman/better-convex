@@ -222,12 +222,10 @@ const setActiveOrganizationHandler = async (
   const auth = getAuth(ctx);
   const headers = await getHeaders(ctx);
 
-  console.log(1);
   await auth.api.setActiveOrganization({
     body: { organizationId: args.organizationId },
     headers,
   });
-  console.log(2);
 
   // Skip updating lastActiveOrganizationId to avoid aggregate issues
   // The active organization is already tracked in the session
@@ -669,7 +667,6 @@ export const listMembers = createAuthQuery()({
         members: [],
       };
     }
-    console.log(ctx.user, org._id);
     if (ctx.user.activeOrganization.id !== org._id) {
       throw new ConvexError({
         code: 'FORBIDDEN',
