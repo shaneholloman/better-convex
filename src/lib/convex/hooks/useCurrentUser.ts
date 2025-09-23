@@ -13,7 +13,7 @@ export const useCurrentUser = () => {
       placeholderData: {
         id: '0' as any,
         activeOrganization: {
-          id: '',
+          id: '0' as any,
           logo: '',
           name: '',
           role: '',
@@ -22,9 +22,7 @@ export const useCurrentUser = () => {
         image: undefined,
         isAdmin: false,
         name: '',
-        session: {
-          token: token ?? undefined,
-        },
+        personalOrganizationId: undefined,
       },
     }
   );

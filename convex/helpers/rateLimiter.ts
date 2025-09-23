@@ -2,7 +2,7 @@ import { HOUR, MINUTE, RateLimiter, SECOND } from '@convex-dev/rate-limiter';
 import { ConvexError } from 'convex/values';
 
 import type { ActionCtx, MutationCtx } from '../_generated/server';
-import type { SessionUser } from '../authShared';
+import type { SessionUser } from '../authHelpers';
 
 import { components } from '../_generated/api';
 
@@ -37,6 +37,94 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 
   'todo/delete:free': { kind: 'fixed window', period: MINUTE, rate: 20 },
   'todo/delete:premium': { kind: 'fixed window', period: MINUTE, rate: 60 },
+
+  // Organization limits
+  'organization/create:free': { kind: 'fixed window', period: HOUR, rate: 3 },
+  'organization/create:premium': {
+    kind: 'fixed window',
+    period: HOUR,
+    rate: 10,
+  },
+
+  'organization/update:free': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 10,
+  },
+  'organization/update:premium': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 30,
+  },
+
+  'organization/invite:free': { kind: 'fixed window', period: MINUTE, rate: 5 },
+  'organization/invite:premium': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 20,
+  },
+
+  'organization/cancelInvite:free': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 10,
+  },
+  'organization/cancelInvite:premium': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 30,
+  },
+
+  'organization/removeMember:free': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 5,
+  },
+  'organization/removeMember:premium': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 15,
+  },
+
+  'organization/leave:free': { kind: 'fixed window', period: MINUTE, rate: 3 },
+  'organization/leave:premium': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 10,
+  },
+
+  'organization/updateRole:free': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 5,
+  },
+  'organization/updateRole:premium': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 15,
+  },
+
+  'organization/setActive:free': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 10,
+  },
+  'organization/setActive:premium': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 30,
+  },
+
+  'organization/rejectInvite:free': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 10,
+  },
+  'organization/rejectInvite:premium': {
+    kind: 'fixed window',
+    period: MINUTE,
+    rate: 30,
+  },
 
   // Scraper limits (admin only)
   scraper: { kind: 'fixed window', period: MINUTE, rate: 10 },

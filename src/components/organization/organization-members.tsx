@@ -38,7 +38,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   UserPlus,
   MoreHorizontal,
@@ -54,39 +60,30 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { WithSkeleton } from '@/components/ui/skeleton';
+import { Id } from '@convex/_generated/dataModel';
 
 interface Member {
-  id: string;
+  id: Id<'member'>;
   createdAt: number;
-  organizationId: string;
+  organizationId: Id<'organization'>;
   role?: string;
   user: {
-    id: string;
+    id: Id<'user'>;
     email: string;
     image?: string | null;
     name?: string | null;
   };
-  userId: string;
-}
-
-interface PendingInvitation {
-  id: string;
-  createdAt: number;
-  email: string;
-  expiresAt: number;
-  organizationId: string;
-  role: string;
-  status: string;
+  userId: Id<'user'>;
 }
 
 interface OrganizationMembersProps {
-  organization: {
-    id: string;
+  organization?: {
+    id: Id<'organization'>;
     isPersonal: boolean;
     role?: string;
     slug: string;
   } | null;
-  members: {
+  members?: {
     currentUserRole?: string;
     isPersonal: boolean;
     members: Member[];
@@ -105,23 +102,26 @@ export function OrganizationMembers({
     role: 'member',
   });
 
-  const { data: pendingInvitations, isLoading: invitationsLoading } = useAuthQuery(
-    api.organization.listPendingInvitations,
-    organization ? { slug: organization.slug } : 'skip',
-    {
-      placeholderData: [
-        {
-          id: '1',
-          createdAt: Date.now(),
-          email: 'pending@example.com',
-          expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
-          organizationId: '1',
-          role: 'member',
-          status: 'pending',
-        },
-      ],
-    }
-  );
+  const a = api;
+
+  const { data: pendingInvitations, isLoading: invitationsLoading } =
+    useAuthQuery(
+      api.organization.listPendingInvitations,
+      organization ? { slug: organization.slug } : 'skip',
+      {
+        placeholderData: [
+          {
+            id: '1' as any,
+            createdAt: Date.now(),
+            email: 'pending@example.com',
+            expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+            organizationId: '1' as any,
+            role: 'member',
+            status: 'pending',
+          },
+        ],
+      }
+    );
 
   const inviteMember = useAuthMutation(api.organization.inviteMember, {
     onSuccess: () => {
@@ -177,15 +177,15 @@ export function OrganizationMembers({
     });
   };
 
-  const handleRemoveMember = (memberId: string) => {
+  const handleRemoveMember = (memberId: Id<'user'>) => {
     removeMember.mutate({ memberId });
   };
 
-  const handleUpdateRole = (memberId: string, role: 'owner' | 'member') => {
+  const handleUpdateRole = (memberId: Id<'user'>, role: 'owner' | 'member') => {
     updateMemberRole.mutate({ memberId, role });
   };
 
-  const handleCancelInvitation = (invitationId: string) => {
+  const handleCancelInvitation = (invitationId: Id<'invitation'>) => {
     cancelInvitation.mutate({ invitationId });
   };
 
@@ -247,7 +247,9 @@ export function OrganizationMembers({
                   <TableHead>Member</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Joined</TableHead>
-                  {isOwner && <TableHead className="w-[70px]">Actions</TableHead>}
+                  {isOwner && (
+                    <TableHead className="w-[70px]">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -309,7 +311,9 @@ export function OrganizationMembers({
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
-                                onClick={() => handleRemoveMember(member.userId)}
+                                onClick={() =>
+                                  handleRemoveMember(member.userId)
+                                }
                                 className="text-destructive"
                               >
                                 <UserMinus className="h-4 w-4" />
@@ -423,7 +427,10 @@ export function OrganizationMembers({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowInviteDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowInviteDialog(false)}
+            >
               Cancel
             </Button>
             <Button
