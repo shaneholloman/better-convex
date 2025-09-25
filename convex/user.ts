@@ -1,8 +1,14 @@
 import { zid } from 'convex-helpers/server/zod';
 import { z } from 'zod';
 
-import { createAuthMutation, createPublicQuery } from './functions';
+import {
+  createAuthMutation,
+  createInternalMutation,
+  createInternalQuery,
+  createPublicQuery,
+} from './functions';
 import { updateSettingsSchema } from './userShared';
+import { getAuth } from '@convex/auth';
 
 // Check if user is authenticated
 export const getIsAuthenticated = createPublicQuery({

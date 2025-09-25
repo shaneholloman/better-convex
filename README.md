@@ -374,8 +374,38 @@ rm convex/todoComments.ts
 rm convex/projects.ts
 rm convex/tags.ts
 rm convex/seed.ts
-rm convex/reset.ts
 ```
+
+## Authentication Implementation
+
+### Admin Setup
+
+Admin users are configured via environment variables and automatically assigned admin role on first login:
+
+```env
+# convex/.env
+ADMIN="admin@example.com,another@example.com"
+```
+
+### Initialization (`convex/init.ts`)
+
+Auto-runs on dev server startup (`--run init`):
+
+- Creates admin users from `ADMIN` env variable
+- Assigns `role: 'admin'` to pre-configured emails
+- Runs seed data in development environment
+
+### Seeding (`convex/seed.ts`)
+
+Development data population:
+
+- `seedUsers`: Creates Alice, Bob, Carol, Dave test users
+- `generateSamples`: Creates sample projects with todos (auth-protected action)
+- Preserves admin user and existing sessions during cleanup
+
+### Reset (`convex/reset.ts`)
+
+Database cleanup utilities (dev only)
 
 ### Frontend Files to Delete (src/)
 

@@ -1,10 +1,11 @@
 import type { MutationCtx, QueryCtx } from '@convex/_generated/server';
-import type { CtxWithTable, Ent } from '@convex/shared/types';
+import type { CtxWithTable, Ent, EntWriter } from '@convex/shared/types';
 import { getAuthUserId, getSession } from 'better-auth-convex';
 import { getProduct, productToPlan } from '@convex/polar/product';
 import { Doc, Id } from '@convex/_generated/dataModel';
 
 import type { InternalMutationCtx } from '@convex/functions';
+import { getAuth } from '@convex/auth';
 
 export type SessionUser = Omit<Doc<'user'>, '_id' | '_creationTime'> & {
   id: Id<'user'>;
@@ -120,7 +121,7 @@ export const getSessionUser = async (
 
 export const getSessionUserWriter = async (
   ctx: CtxWithTable<MutationCtx>
-): Promise<any> => {
+): Promise<(EntWriter<'user'> & SessionUser) | null> => {
   const { user, activeOrganization, plan, isAdmin } =
     (await getSessionData(ctx)) ?? ({} as never);
 
@@ -155,16 +156,19 @@ export const createUser = async (
     role?: 'admin' | 'user';
   }
 ) => {
-  const newUserId = await ctx.table('user').insert({
-    bio: args.bio,
-    createdAt: Date.now(),
-    email: args.email,
-    emailVerified: true,
-    image: args.image,
-    name: args.name,
-    role: args.role || 'user',
-    updatedAt: Date.now(),
+  const { user } = await getAuth(ctx).api.createUser({
+    body: {
+      email: args.email,
+      name: args.name,
+      password: Math.random().toString(36).slice(-12),
+      role: args.role,
+      data: {
+        bio: args.bio,
+        image: args.image,
+        location: args.location,
+      },
+    },
   });
 
-  return newUserId;
+  return user.id as Id<'user'>;
 };

@@ -74,16 +74,14 @@ export const authClient = createClient<DataModel, typeof schema>({
   },
 });
 
-export const createAuth = (
-  ctx: GenericCtx,
-  { optionsOnly } = { optionsOnly: false }
-) => {
+export const createAuth = (ctx: GenericCtx, { optionsOnly = false } = {}) => {
   const baseURL = process.env.NEXT_PUBLIC_SITE_URL!;
 
   return betterAuth({
     account: {
       accountLinking: {
         enabled: true,
+        updateUserInfoOnLink: true,
         trustedProviders: ['google', 'github'],
       },
     },

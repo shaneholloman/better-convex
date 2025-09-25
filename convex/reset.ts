@@ -34,8 +34,6 @@ export const reset = createInternalAction({
         tableName,
       });
     }
-
-    await ctx.runMutation(internal.reset.resetAuth, {});
   },
 });
 
@@ -73,57 +71,6 @@ export const deletePage = createInternalMutation({
   },
 });
 
-/** Reset only better-auth tables Usage: npx convex run reset:betterAuth */
-export const resetAuth = createInternalMutation({
-  devOnly: true,
-})({
-  handler: async (ctx) => {
-    const betterAuthTables = [
-      'account',
-      'invitationss',
-      'jwks',
-      'member',
-      'organization',
-      'session',
-      'user',
-      'verification',
-    ] as const;
-
-    for (const tableName of betterAuthTables) {
-      await ctx.scheduler.runAfter(0, internal.reset.deleteAuthPage, {
-        cursor: null,
-        tableName,
-      });
-    }
-  },
-});
-
-export const deleteAuthPage = createInternalMutation({
-  devOnly: true,
-})({
-  args: {
-    cursor: z.union([z.string(), z.null()]),
-    tableName: z.string(),
-  },
-  handler: async (ctx, args) => {
-    const result: any = await ctx.runMutation(internal.auth.deleteMany, {
-      input: {
-        model: args.tableName as any,
-      },
-      paginationOpts: {
-        cursor: args.cursor,
-        numItems: DELETE_BATCH_SIZE,
-      },
-    });
-
-    if (!result.isDone && result.continueCursor) {
-      await ctx.scheduler.runAfter(0, internal.reset.deleteAuthPage, {
-        cursor: result.continueCursor,
-        tableName: args.tableName,
-      });
-    }
-  },
-});
 
 export const getAdminUsers = createInternalQuery()({
   args: {},
