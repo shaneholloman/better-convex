@@ -1,6 +1,7 @@
 import { convex } from '@convex-dev/better-auth/plugins';
 import { betterAuth } from 'better-auth';
 import { admin, organization } from 'better-auth/plugins';
+import { ac, roles } from '@convex/authPermissions';
 import {
   type AuthFunctions,
   createClient,
@@ -95,6 +96,8 @@ export const createAuth = (ctx: GenericCtx, { optionsOnly = false } = {}) => {
     plugins: [
       admin(),
       organization({
+        ac,
+        roles,
         allowUserToCreateOrganization: true, // Will gate with
         creatorRole: 'owner',
         invitationExpiresIn: 24 * 60 * 60 * 7, // 7 days

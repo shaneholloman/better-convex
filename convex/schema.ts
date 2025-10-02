@@ -69,7 +69,8 @@ const schema = defineEntSchema(
       .field('role', v.string(), { index: true })
       .edge('organization', { to: 'organization', field: 'organizationId' })
       .edge('user', { to: 'user', field: 'userId' })
-      .index('organizationId_userId', ['organizationId', 'userId']),
+      .index('organizationId_userId', ['organizationId', 'userId'])
+      .index('organizationId_role', ['organizationId', 'role']),
 
     invitation: defineEnt({
       role: v.optional(v.union(v.null(), v.string())),
@@ -158,7 +159,8 @@ const schema = defineEntSchema(
       .edges('todoComments', { ref: true })
       // Indexes from both tables
       .index('email_name', ['email', 'name'])
-      .index('name', ['name']),
+      .index('name', ['name'])
+      .index('username', ['username']),
 
     // --------------------
     // Polar Payment Tables

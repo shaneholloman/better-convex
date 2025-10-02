@@ -1,7 +1,35 @@
-import { Id } from './_generated/dataModel';
-import { MutationCtx } from './_generated/server';
-import { entDefinitions } from './schema';
+import { asyncMap } from 'convex-helpers';
 import { entsTableFactory } from 'convex-ents';
+
+import type { Id } from './_generated/dataModel';
+import type { MutationCtx } from './_generated/server';
+import type { AuthCtx } from '@convex/functions';
+
+import { entDefinitions } from './schema';
+
+export const listUserOrganizations = async (
+  ctx: AuthCtx,
+  userId: Id<'user'>
+) => {
+  const memberships = await ctx.table('member', 'userId', (q) =>
+    q.eq('userId', userId)
+  );
+
+  if (!memberships.length) {
+    return [];
+  }
+
+  return asyncMap(memberships, async (membership) => {
+    const org = await membership.edgeX('organization');
+
+    return {
+      ...org.doc(),
+      _creationTime: org._creationTime,
+      _id: org._id,
+      role: membership.role || 'member',
+    };
+  });
+};
 
 export const createPersonalOrganization = async (
   ctx: MutationCtx,

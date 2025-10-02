@@ -1,18 +1,22 @@
+ 
+import { getAuth } from '@convex/auth';
+import { getHeaders } from 'better-auth-convex';
 import { entsTableFactory } from 'convex-ents';
 import {
   customCtx,
   customMutation,
 } from 'convex-helpers/server/customFunctions';
 import {
-  type CustomBuilder,
   zCustomAction,
   zCustomMutation,
   zCustomQuery,
 } from 'convex-helpers/server/zod';
-import { paginationOptsValidator } from 'convex/server';
+import { type Auth, paginationOptsValidator } from 'convex/server';
 import { ConvexError } from 'convex/values';
 
-import type { MutationCtx, QueryCtx } from './_generated/server';
+import type { Id } from './_generated/dataModel';
+import type { ActionCtx, MutationCtx, QueryCtx } from './_generated/server';
+import type { Ent, EntWriter } from './shared/types';
 
 import { api } from './_generated/api';
 import {
@@ -23,11 +27,10 @@ import {
   internalQuery,
   query,
 } from './_generated/server';
-import { Id } from './_generated/dataModel';
 import {
+  type SessionUser,
   getSessionUser,
   getSessionUserWriter,
-  SessionUser,
 } from './authHelpers';
 import { getEnv } from './helpers/getEnv';
 import { rateLimitGuard } from './helpers/rateLimiter';
@@ -35,33 +38,28 @@ import { roleGuard } from './helpers/roleGuard';
 import { entDefinitions } from './schema';
 import { triggers } from './triggers';
 
-type Overwrite<T, U> = Omit<T, keyof U> & U;
-type CustomCtx<Builder> =
-  Builder extends CustomBuilder<
-    any,
-    any,
-    infer ModCtx,
-    any,
-    infer InputCtx,
-    any,
-    any
-  >
-    ? Overwrite<InputCtx, ModCtx>
-    : never;
+export type CtxWithTable<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
+  ReturnType<typeof getCtxWithTable<Ctx>>;
 
-export type PublicMutationCtx = CustomCtx<
-  ReturnType<typeof createPublicMutation>
->;
+type CtxUser<Ctx extends MutationCtx | QueryCtx = QueryCtx> = SessionUser &
+  (Ctx extends MutationCtx ? EntWriter<'user'> : Ent<'user'>);
 
-export type AuthMutationCtx = CustomCtx<ReturnType<typeof createAuthMutation>>;
+export type PublicCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
+  CtxWithTable<Ctx> & {
+    auth: Auth & Partial<ReturnType<typeof getAuth> & { headers: Headers }>;
+    user: CtxUser<Ctx> | null;
+    userId: Id<'user'> | null;
+  };
 
-export type InternalMutationCtx = CustomCtx<
-  ReturnType<typeof createInternalMutation>
->;
+export type AuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
+  CtxWithTable<Ctx> & {
+    auth: Auth & ReturnType<typeof getAuth> & { headers: Headers };
+    user: CtxUser<Ctx>;
+    userId: Id<'user'>;
+  };
 
-export type PublicQueryCtx = CustomCtx<ReturnType<typeof createPublicQuery>>;
-
-export type AuthQueryCtx = CustomCtx<ReturnType<typeof createAuthQuery>>;
+export type AuthMutationCtx<Ctx extends MutationCtx = MutationCtx> =
+  AuthCtx<Ctx>;
 
 // Wrap mutation with triggers
 const mutation = customMutation(
@@ -87,7 +85,7 @@ function checkDevOnly(devOnly?: boolean) {
   }
 }
 
-export const getCtxWithTable = <Ctx extends QueryCtx | MutationCtx>(
+export const getCtxWithTable = <Ctx extends MutationCtx | QueryCtx>(
   ctx: Ctx
 ) => {
   return {
@@ -95,6 +93,80 @@ export const getCtxWithTable = <Ctx extends QueryCtx | MutationCtx>(
     table: entsTableFactory(ctx, entDefinitions),
   };
 };
+
+type AuthError = {
+  code: string;
+  message: string;
+};
+
+const AUTH_REQUIRED_ERROR: AuthError = {
+  code: 'UNAUTHENTICATED',
+  message: 'Not authenticated',
+} as const;
+
+const MUTATION_AUTH_REQUIRED_ERROR: AuthError = {
+  code: 'USER_NOT_FOUND',
+  message: 'Not authenticated',
+} as const;
+
+function requireUser<T>(
+  user: T | null,
+  error: AuthError = AUTH_REQUIRED_ERROR
+): T {
+  if (!user) {
+    throw new ConvexError(error);
+  }
+
+  return user;
+}
+
+async function withRequiredUserContext<Ctx extends MutationCtx | QueryCtx>(
+  ctx: CtxWithTable<Ctx>,
+  user: CtxUser<Ctx>
+) {
+  return {
+    ...ctx,
+    auth: {
+      ...ctx.auth,
+      ...getAuth(ctx),
+      headers: await getHeaders(ctx, user.session),
+    },
+    user,
+    userId: user.id,
+  };
+}
+
+async function withOptionalUserContext<Ctx extends MutationCtx | QueryCtx>(
+  ctx: CtxWithTable<Ctx>,
+  user: CtxUser<Ctx> | null
+) {
+  return {
+    ...ctx,
+    auth: user
+      ? {
+          ...ctx.auth,
+          ...getAuth(ctx),
+          headers: await getHeaders(ctx, user.session),
+        }
+      : ctx.auth,
+    user,
+    userId: user?.id ?? null,
+  };
+}
+
+async function applyRateLimit(
+  ctx: ActionCtx | MutationCtx,
+  rateLimit: string | null | undefined,
+  user: Pick<SessionUser, 'id' | 'plan'> | null
+) {
+  if (!rateLimit) return;
+
+  await rateLimitGuard({
+    ...ctx,
+    rateLimitKey: rateLimit,
+    user,
+  });
+}
 
 // Protected query that adds user and userId to context
 export const createAuthQuery = ({
@@ -107,24 +179,13 @@ export const createAuthQuery = ({
       checkDevOnly(devOnly);
 
       const ctx = getCtxWithTable(_ctx);
+      const user = requireUser(await getSessionUser(ctx));
 
-      const user = await getSessionUser(ctx);
-
-      if (!user) {
-        throw new ConvexError({
-          code: 'UNAUTHENTICATED',
-          message: 'Not authenticated',
-        });
-      }
       if (role) {
         roleGuard(role, user);
       }
 
-      return {
-        ...ctx,
-        user,
-        userId: user?.id ?? null,
-      };
+      return withRequiredUserContext(ctx, user);
     })
   );
 
@@ -138,26 +199,15 @@ export const createAuthPaginatedQuery = ({
       checkDevOnly(devOnly);
 
       const ctx = getCtxWithTable(_ctx);
+      const user = requireUser(await getSessionUser(ctx));
 
-      const user = await getSessionUser(ctx);
-
-      if (!user) {
-        throw new ConvexError({
-          code: 'UNAUTHENTICATED',
-          message: 'Not authenticated',
-        });
-      }
       if (role) {
         roleGuard(role, user);
       }
 
       return {
         args,
-        ctx: {
-          ...ctx,
-          user,
-          userId: user?.id ?? null,
-        },
+        ctx: await withRequiredUserContext(ctx, user),
       };
     },
   });
@@ -177,14 +227,9 @@ export const createPublicQuery = ({
       checkDevOnly(devOnly);
 
       const ctx = getCtxWithTable(_ctx);
-
       const user = publicOnly ? null : await getSessionUser(ctx);
 
-      return {
-        ...ctx,
-        user,
-        userId: user?.id ?? null,
-      };
+      return withOptionalUserContext(ctx, user);
     })
   );
 
@@ -202,16 +247,11 @@ export const createPublicPaginatedQuery = ({
       checkDevOnly(devOnly);
 
       const ctx = getCtxWithTable(_ctx);
-
       const user = publicOnly ? null : await getSessionUser(ctx);
 
       return {
         args,
-        ctx: {
-          ...ctx,
-          user,
-          userId: user?.id ?? null,
-        },
+        ctx: await withOptionalUserContext(ctx, user),
       };
     },
   });
@@ -239,24 +279,13 @@ export const createAuthInternalQuery = ({
       checkDevOnly(devOnly);
 
       const ctx = getCtxWithTable(_ctx);
+      const user = requireUser(await getSessionUser(ctx));
 
-      const user = await getSessionUser(ctx);
-
-      if (!user) {
-        throw new ConvexError({
-          code: 'UNAUTHENTICATED',
-          message: 'Not authenticated',
-        });
-      }
       if (role) {
         roleGuard(role, user);
       }
 
-      return {
-        ...ctx,
-        user,
-        userId: user?.id ?? null,
-      };
+      return withRequiredUserContext(ctx, user);
     })
   );
 
@@ -274,29 +303,19 @@ export const createAuthAction = ({
     customCtx(async (ctx) => {
       checkDevOnly(devOnly);
 
-      const user: any = await ctx.runQuery(api.user.getSessionUser, {});
+      const rawUser = await ctx.runQuery(api.user.getSessionUser, {});
+      const user = requireUser(rawUser as SessionUser | null);
 
-      if (!user) {
-        throw new ConvexError({
-          code: 'UNAUTHENTICATED',
-          message: 'Not authenticated',
-        });
-      }
       if (role) {
         roleGuard(role, user);
       }
-      if (rateLimit) {
-        await rateLimitGuard({
-          ...ctx,
-          rateLimitKey: rateLimit,
-          user,
-        });
-      }
+
+      await applyRateLimit(ctx, rateLimit, user);
 
       return {
         ...ctx,
-        user: user as SessionUser,
-        userId: user.id as Id<'user'>,
+        user,
+        userId: user.id,
       };
     })
   );
@@ -351,31 +370,18 @@ export const createAuthMutation = ({
       checkDevOnly(devOnly);
 
       const ctx = getCtxWithTable(_ctx);
+      const user = requireUser(
+        await getSessionUserWriter(ctx),
+        MUTATION_AUTH_REQUIRED_ERROR
+      );
 
-      const user = await getSessionUserWriter(ctx);
-
-      if (!user) {
-        throw new ConvexError({
-          code: 'USER_NOT_FOUND',
-          message: 'Not authenticated',
-        });
-      }
       if (role) {
         roleGuard(role, user);
       }
-      if (rateLimit) {
-        await rateLimitGuard({
-          ...ctx,
-          rateLimitKey: rateLimit,
-          user,
-        });
-      }
 
-      return {
-        ...ctx,
-        user,
-        userId: user.id,
-      };
+      await applyRateLimit(ctx, rateLimit, user);
+
+      return withRequiredUserContext(ctx, user);
     })
   );
 
@@ -390,21 +396,10 @@ export const createPublicMutation = ({
       checkDevOnly(devOnly);
 
       const ctx = getCtxWithTable(_ctx);
-
       const user = await getSessionUserWriter(ctx);
 
-      if (rateLimit) {
-        await rateLimitGuard({
-          ...ctx,
-          rateLimitKey: rateLimit,
-          user,
-        });
-      }
+      await applyRateLimit(ctx, rateLimit, user);
 
-      return {
-        ...ctx,
-        user,
-        userId: user?.id ?? null,
-      };
+      return withOptionalUserContext(ctx, user);
     })
   );
