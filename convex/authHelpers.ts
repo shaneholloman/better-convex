@@ -4,10 +4,11 @@ import { getAuthUserId, getSession } from 'better-auth-convex';
 import { getProduct, productToPlan } from '@convex/polar/product';
 import { Doc, Id } from '@convex/_generated/dataModel';
 
-import type { InternalMutationCtx } from '@convex/functions';
+import type { AuthCtx } from '@convex/functions';
 import { getAuth } from '@convex/auth';
+import { ConvexError } from 'convex/values';
 
-export type SessionUser = Omit<Doc<'user'>, '_id' | '_creationTime'> & {
+export type SessionUser = Omit<Doc<'user'>, '_creationTime' | '_id'> & {
   id: Id<'user'>;
   activeOrganization:
     | (Omit<Doc<'organization'>, '_id'> & {
@@ -16,6 +17,8 @@ export type SessionUser = Omit<Doc<'user'>, '_id' | '_creationTime'> & {
       })
     | null;
   isAdmin: boolean;
+  session: Doc<'session'>;
+  impersonatedBy?: string;
   plan?: 'premium';
 };
 
@@ -26,14 +29,14 @@ const getSessionData = async (ctx: CtxWithTable<MutationCtx>) => {
     return null;
   }
 
-  const sessionResult = await getSession(ctx);
+  const session = await getSession(ctx, userId);
 
-  if (!sessionResult) {
+  if (!session) {
     return null;
   }
 
   const activeOrganizationId =
-    sessionResult.activeOrganizationId as Id<'organization'> | null;
+    session.activeOrganizationId as Id<'organization'> | null;
 
   const [user, subscription] = await Promise.all([
     ctx.table('user').get(userId),
@@ -84,18 +87,20 @@ const getSessionData = async (ctx: CtxWithTable<MutationCtx>) => {
   })();
 
   return {
-    user,
     activeOrganization,
-    plan: productToPlan(subscription?.productId) as 'premium' | undefined,
+    impersonatedBy: session.impersonatedBy ?? undefined,
     isAdmin: user.role === 'admin',
-  };
+    plan: productToPlan(subscription?.productId),
+    session,
+    user,
+  } as const;
 };
 
 // Query to fetch user data for session/auth checks
 export const getSessionUser = async (
   ctx: CtxWithTable<QueryCtx>
 ): Promise<(Ent<'user'> & SessionUser) | null> => {
-  const { user, activeOrganization, plan, isAdmin } =
+  const { activeOrganization, impersonatedBy, isAdmin, plan, session, user } =
     (await getSessionData(ctx as any)) ?? ({} as never);
 
   if (!user) {
@@ -109,15 +114,17 @@ export const getSessionUser = async (
     doc: user.doc,
     edge: user.edge,
     edgeX: user.edgeX,
+    impersonatedBy,
     isAdmin,
     plan,
+    session,
   };
 };
 
 export const getSessionUserWriter = async (
   ctx: CtxWithTable<MutationCtx>
 ): Promise<(EntWriter<'user'> & SessionUser) | null> => {
-  const { user, activeOrganization, plan, isAdmin } =
+  const { activeOrganization, impersonatedBy, isAdmin, plan, session, user } =
     (await getSessionData(ctx)) ?? ({} as never);
 
   if (!user) {
@@ -128,19 +135,21 @@ export const getSessionUserWriter = async (
     ...user,
     id: user._id,
     activeOrganization,
+    delete: user.delete,
     doc: user.doc,
     edge: user.edge,
     edgeX: user.edgeX,
+    impersonatedBy,
     isAdmin,
-    plan,
-    delete: user.delete,
     patch: user.patch,
+    plan,
     replace: user.replace,
+    session,
   };
 };
 
 export const createUser = async (
-  ctx: InternalMutationCtx,
+  ctx: MutationCtx,
   args: {
     email: string;
     name: string;
@@ -166,4 +175,24 @@ export const createUser = async (
   });
 
   return user.id as Id<'user'>;
+};
+
+export const hasPermission = async (
+  ctx: AuthCtx,
+  body: Parameters<typeof ctx.auth.api.hasPermission>[0]['body'],
+  shouldThrow = true
+) => {
+  const canUpdate = await ctx.auth.api.hasPermission({
+    body,
+    headers: ctx.auth.headers,
+  });
+
+  if (shouldThrow && !canUpdate.success) {
+    throw new ConvexError({
+      code: 'FORBIDDEN',
+      message: 'Insufficient permissions for this action',
+    });
+  }
+
+  return canUpdate.success;
 };

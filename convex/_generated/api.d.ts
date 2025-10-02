@@ -1,4 +1,4 @@
-/* eslint-disable */
+ 
 /**
  * Generated `api` utility.
  *
@@ -12,11 +12,13 @@ import type * as admin from "../admin.js";
 import type * as aggregates from "../aggregates.js";
 import type * as auth from "../auth.js";
 import type * as authHelpers from "../authHelpers.js";
+import type * as authPermissions from "../authPermissions.js";
 import type * as authSchema from "../authSchema.js";
 import type * as emails_organizationInvite from "../emails/organizationInvite.js";
 import type * as emails from "../emails.js";
 import type * as functions from "../functions.js";
 import type * as helpers_getEnv from "../helpers/getEnv.js";
+import type * as helpers_premiumGuard from "../helpers/premiumGuard.js";
 import type * as helpers_rateLimiter from "../helpers/rateLimiter.js";
 import type * as helpers_roleGuard from "../helpers/roleGuard.js";
 import type * as http from "../http.js";
@@ -55,11 +57,13 @@ declare const fullApi: ApiFromModules<{
   aggregates: typeof aggregates;
   auth: typeof auth;
   authHelpers: typeof authHelpers;
+  authPermissions: typeof authPermissions;
   authSchema: typeof authSchema;
   "emails/organizationInvite": typeof emails_organizationInvite;
   emails: typeof emails;
   functions: typeof functions;
   "helpers/getEnv": typeof helpers_getEnv;
+  "helpers/premiumGuard": typeof helpers_premiumGuard;
   "helpers/rateLimiter": typeof helpers_rateLimiter;
   "helpers/roleGuard": typeof helpers_roleGuard;
   http: typeof http;

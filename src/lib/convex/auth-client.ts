@@ -1,6 +1,8 @@
 import type { auth } from '@convex/auth';
 
 import { convexClient } from '@convex-dev/better-auth/client/plugins';
+import { ac, roles } from '@convex/authPermissions';
+
 // import { polarClient } from '@polar-sh/better-auth';
 import {
   adminClient,
@@ -13,7 +15,10 @@ export const authClient = createAuthClient({
   plugins: [
     inferAdditionalFields<typeof auth>(),
     adminClient(),
-    organizationClient(),
+    organizationClient({
+      ac,
+      roles,
+    }),
     // polarClient(),
     convexClient(),
   ],
@@ -28,3 +33,17 @@ export const {
   useListOrganizations,
   useSession,
 } = authClient;
+
+export function checkRolePermission(args: {
+  permissions: NonNullable<
+    Parameters<
+      typeof authClient.organization.checkRolePermission
+    >[0]['permissions']
+  >;
+  role?: string | null;
+}) {
+  return authClient.organization.checkRolePermission({
+    permissions: args.permissions,
+    role: (args.role as any) ?? 'member',
+  });
+}

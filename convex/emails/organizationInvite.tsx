@@ -54,7 +54,8 @@ export default function OrganizationInviteEmail({
             <Container style={card}>
               <Text style={cardText}>
                 <strong>{inviterName}</strong> ({inviterEmail}) has invited you
-                to join the <strong>{organizationName}</strong> organization{role && role !== 'member' ? ` as ${role}` : ''}.
+                to join the <strong>{organizationName}</strong> organization
+                {role && role !== 'member' ? ` as ${role}` : ''}.
               </Text>
 
               <Text style={{ ...cardText, fontSize: '12px' }}>
@@ -66,7 +67,6 @@ export default function OrganizationInviteEmail({
                   Join {organizationName}
                 </Button>
               </Section>
-
 
               <Text style={noteText}>
                 <strong>Note:</strong> This invitation was intended for{' '}
@@ -112,8 +112,8 @@ export default function OrganizationInviteEmail({
           </Section>
 
           <Text style={disclaimer}>
-            You're receiving this email because {inviterEmail} invited you to join
-            an organization on {appName}.
+            You're receiving this email because {inviterEmail} invited you to
+            join an organization on {appName}.
           </Text>
         </Container>
       </Body>
@@ -136,7 +136,6 @@ const container = {
   maxWidth: '600px',
   padding: '0 20px',
 };
-
 
 const headerTitle = {
   color: '#24292f',
