@@ -64,7 +64,7 @@ subscriptions: defineEnt({
 
 ```typescript
 // Add polyfills for Convex environment
-import './polar/polyfills';
+import "./polar/polyfills";
 
 import {
   polar,
@@ -72,8 +72,8 @@ import {
   portal,
   usage,
   webhooks,
-} from '@polar-sh/better-auth';
-import { Polar } from '@polar-sh/sdk';
+} from "@polar-sh/better-auth";
+import { Polar } from "@polar-sh/sdk";
 
 // User creation trigger - Create Polar customer via scheduler
 authClient = createClient({
@@ -104,20 +104,20 @@ plugins: [
     client: new Polar({
       accessToken: process.env.POLAR_ACCESS_TOKEN!,
       server:
-        process.env.POLAR_SERVER === 'production' ? 'production' : 'sandbox',
+        process.env.POLAR_SERVER === "production" ? "production" : "sandbox",
     }),
     // NO createCustomerOnSignUp - handled via scheduler
     use: [
       checkout({
         authenticatedUsersOnly: true,
         products: [
-          { productId: process.env.POLAR_PRODUCT_PREMIUM!, slug: 'premium' },
-          { productId: process.env.POLAR_PRODUCT_CREDITS!, slug: 'credits' },
+          { productId: process.env.POLAR_PRODUCT_PREMIUM!, slug: "premium" },
+          { productId: process.env.POLAR_PRODUCT_CREDITS!, slug: "credits" },
           // Team product commented out for now
           // { productId: process.env.POLAR_PRODUCT_TEAM!, slug: 'team' },
         ],
-        successUrl: '/success?checkout_id={CHECKOUT_ID}',
-        theme: 'light',
+        successUrl: "/success?checkout_id={CHECKOUT_ID}",
+        theme: "light",
       }),
       portal(), // Customer portal management
       usage(), // Usage-based billing
@@ -125,7 +125,7 @@ plugins: [
         secret: process.env.POLAR_WEBHOOK_SECRET!,
         onCustomerCreated: async (payload) => {
           const userId = payload?.data.metadata.userId as
-            | Id<'user'>
+            | Id<"user">
             | undefined;
           if (!userId) return;
 
@@ -144,7 +144,7 @@ plugins: [
               payload.data.netAmount || payload.data.totalAmount || 0;
             const credits = amountInCents; // 1 cent = 1 credit
             const organizationId = payload.data.metadata?.referenceId as
-              | Id<'organization'>
+              | Id<"organization">
               | undefined;
 
             if (credits > 0 && organizationId) {
@@ -174,12 +174,12 @@ plugins: [
           // Reset monthly credits on subscription renewal
           if (updated) {
             const organizationId = payload.data.metadata?.referenceId as
-              | Id<'organization'>
+              | Id<"organization">
               | undefined;
             if (organizationId) {
               const product = getProduct(payload.data.productId);
               const monthlyPrice = product?.prices.find(
-                (p) => p.recurringInterval === 'month'
+                (p) => p.recurringInterval === "month"
               );
               const monthlyCreditsInCents = monthlyPrice?.priceAmount ?? 0;
 
@@ -235,7 +235,7 @@ The `onCustomerStateChanged` webhook provides comprehensive customer state updat
 
 ```typescript
 interface CustomerStateChangedPayload {
-  type: 'customer.state_changed';
+  type: "customer.state_changed";
   data: {
     // Core customer fields
     id: string; // Polar customer ID
@@ -276,10 +276,10 @@ interface CustomerStateChangedPayload {
       modifiedAt: string | null;
       customFieldData?: Record<string, any>;
       metadata?: Record<string, any>;
-      status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid';
+      status: "active" | "trialing" | "past_due" | "canceled" | "unpaid";
       amount: number; // In smallest currency unit (cents)
       currency: string; // ISO 4217 code (e.g., "usd")
-      recurringInterval: 'month' | 'year';
+      recurringInterval: "month" | "year";
       currentPeriodStart: string;
       currentPeriodEnd: string;
       cancelAtPeriodEnd: boolean;
@@ -309,12 +309,12 @@ interface CustomerStateChangedPayload {
       grantedAt: string;
       benefitId: string;
       benefitType:
-        | 'custom'
-        | 'articles'
-        | 'ads'
-        | 'discord'
-        | 'github_repository'
-        | 'downloadables';
+        | "custom"
+        | "articles"
+        | "ads"
+        | "discord"
+        | "github_repository"
+        | "downloadables";
       benefitMetadata?: Record<string, any>;
       properties?: {
         // Discord-specific
@@ -324,7 +324,7 @@ interface CustomerStateChangedPayload {
         repositoryId?: string;
         repositoryOwner?: string;
         repositoryName?: string;
-        permission?: 'pull' | 'triage' | 'push' | 'maintain' | 'admin';
+        permission?: "pull" | "triage" | "push" | "maintain" | "admin";
         // Downloadables
         files?: Array<{ id: string; name: string }>;
         // Custom
@@ -352,8 +352,8 @@ interface CustomerStateChangedPayload {
 **Edit:** `src/lib/auth-client.ts`
 
 ```typescript
-import { createAuthClient } from 'better-auth/react';
-import { polarClient } from '@polar-sh/better-auth';
+import { createAuthClient } from "better-auth/react";
+import { polarClient } from "@polar-sh/better-auth";
 
 export const authClient = createAuthClient({
   plugins: [polarClient()],
@@ -389,7 +389,7 @@ All subscription and credit management happens via webhooks:
 ```typescript
 // Premium subscription checkout
 await authClient.checkout({
-  slug: 'premium', // Product slug from product config
+  slug: "premium", // Product slug from product config
   referenceId: activeOrganizationId, // Links subscription to organization
 });
 
@@ -401,7 +401,7 @@ const handleSubscribe = async () => {
   const activeOrganizationId = user.activeOrganization?.id;
 
   if (!activeOrganizationId) {
-    toast.error('Please select an organization');
+    toast.error("Please select an organization");
     return;
   }
 
@@ -412,13 +412,13 @@ const handleSubscribe = async () => {
     } else {
       // No plan - initiate checkout
       await authClient.checkout({
-        slug: 'premium',
+        slug: "premium",
         referenceId: activeOrganizationId,
       });
     }
   } catch (error) {
-    console.error('Polar checkout error:', error);
-    toast.error('Failed to open checkout');
+    console.error("Polar checkout error:", error);
+    toast.error("Failed to open checkout");
   }
 };
 ```
@@ -507,12 +507,12 @@ export const polarProductSchema = z.object({
       priceAmount: z.number().optional(),
       priceCurrency: z.string().optional(),
       productId: z.string(),
-      recurringInterval: z.enum(['month', 'year']).nullish(),
+      recurringInterval: z.enum(["month", "year"]).nullish(),
       type: z.string().optional(),
     })
   ),
   productId: z.string(),
-  recurringInterval: z.enum(['month', 'year']).nullish(),
+  recurringInterval: z.enum(["month", "year"]).nullish(),
 });
 
 export type PolarProduct = z.infer<typeof polarProductSchema>;
@@ -584,7 +584,7 @@ export const createCustomer = createInternalAction()({
     betterAuthUserId: z.string(),
     email: z.string().email(),
     name: z.string().optional(),
-    userId: zid('user'),
+    userId: zid("user"),
   },
   handler: async (_, args) => {
     const polar = getPolarClient();
@@ -599,9 +599,9 @@ export const createCustomer = createInternalAction()({
 
 // Link Polar customer ID to user
 export const updateUserPolarCustomerId = createInternalMutation()({
-  args: { customerId: z.string(), userId: zid('user') },
+  args: { customerId: z.string(), userId: zid("user") },
   handler: async (ctx, args) => {
-    const user = await ctx.table('user').getX(args.userId);
+    const user = await ctx.table("user").getX(args.userId);
     await user.patch({ customerId: args.customerId });
   },
 });
@@ -619,28 +619,28 @@ export const createSubscription = createInternalMutation()({
     // Validate organizationId is provided
     if (!args.subscription.organizationId) {
       throw new ConvexError({
-        code: 'MISSING_ORGANIZATION',
-        message: 'All subscriptions must be tied to an organization',
+        code: "MISSING_ORGANIZATION",
+        message: "All subscriptions must be tied to an organization",
       });
     }
 
     // Check for existing active subscription
     const existing = await ctx
-      .table('subscriptions', 'organizationId_status', (q) =>
+      .table("subscriptions", "organizationId_status", (q) =>
         q
-          .eq('organizationId', args.subscription.organizationId)
-          .eq('status', 'active')
+          .eq("organizationId", args.subscription.organizationId)
+          .eq("status", "active")
       )
       .first();
 
     if (existing) {
       throw new ConvexError({
-        code: 'ORGANIZATION_SUBSCRIPTION_EXISTS',
-        message: 'Organization already has an active subscription',
+        code: "ORGANIZATION_SUBSCRIPTION_EXISTS",
+        message: "Organization already has an active subscription",
       });
     }
 
-    await ctx.table('subscriptions').insert(args.subscription);
+    await ctx.table("subscriptions").insert(args.subscription);
   },
 });
 
@@ -649,8 +649,8 @@ export const updateSubscription = createInternalMutation()({
   args: { subscription: subscriptionSchema },
   handler: async (ctx, args) => {
     const existing = await ctx
-      .table('subscriptions')
-      .get('subscriptionId', args.subscription.subscriptionId);
+      .table("subscriptions")
+      .get("subscriptionId", args.subscription.subscriptionId);
 
     if (!existing) return { updated: false };
 
@@ -685,7 +685,7 @@ export const getPolarClient = () =>
   new Polar({
     accessToken: process.env.POLAR_ACCESS_TOKEN!,
     server:
-      process.env.POLAR_SERVER === 'production' ? 'production' : 'sandbox',
+      process.env.POLAR_SERVER === "production" ? "production" : "sandbox",
   });
 ```
 
@@ -697,14 +697,14 @@ export const getPolarClient = () =>
 // Convert Polar SDK subscription to database format
 export const convertToDatabaseSubscription = (
   subscription: Subscription
-): WithoutSystemFields<Doc<'subscriptions'>> => {
+): WithoutSystemFields<Doc<"subscriptions">> => {
   // Extract organizationId from subscription metadata (referenceId)
   const organizationId = subscription.metadata
-    ?.referenceId as Id<'organization'>;
+    ?.referenceId as Id<"organization">;
 
   if (!organizationId) {
     throw new Error(
-      'Subscription missing organizationId in metadata.referenceId'
+      "Subscription missing organizationId in metadata.referenceId"
     );
   }
 
@@ -724,14 +724,14 @@ export const convertToDatabaseSubscription = (
     organizationId,
     productId: subscription.productId,
     recurringInterval: subscription.recurringInterval as
-      | 'month'
-      | 'year'
+      | "month"
+      | "year"
       | null
       | undefined,
     startedAt: subscription.startedAt?.toISOString() ?? null,
     status: subscription.status,
     subscriptionId: subscription.id,
-    userId: subscription.customer.metadata.userId as Id<'user'>,
+    userId: subscription.customer.metadata.userId as Id<"user">,
   };
 };
 ```
@@ -740,8 +740,10 @@ export const convertToDatabaseSubscription = (
 
 **File:** `convex/polar/polyfills.ts`
 
+**⚠️ REQUIRED:** Install the `buffer` npm package (`pnpm add buffer`) for Polar SDK to work in Convex.
+
 ```typescript
-import { Buffer as BufferPolyfill } from 'buffer';
+import { Buffer as BufferPolyfill } from "buffer";
 
 // Required for Polar SDK in Convex environment
 globalThis.Buffer = BufferPolyfill;
@@ -754,12 +756,12 @@ globalThis.Buffer = BufferPolyfill;
 ```typescript
 // Via internal query (organization-based)
 const subscription = await ctx
-  .table('subscriptions', 'organizationId_status', (q) =>
-    q.eq('organizationId', organizationId).eq('status', 'active')
+  .table("subscriptions", "organizationId_status", (q) =>
+    q.eq("organizationId", organizationId).eq("status", "active")
   )
   .first();
 
-const isActive = subscription?.status === 'active';
+const isActive = subscription?.status === "active";
 ```
 
 ### Cancel/Resume Subscription
@@ -774,7 +776,7 @@ export const cancelSubscription = createAuthAction()({
     });
 
     if (!subscription) {
-      throw new ConvexError({ code: 'NO_SUBSCRIPTION' });
+      throw new ConvexError({ code: "NO_SUBSCRIPTION" });
     }
 
     await polar.subscriptions.update({
@@ -863,8 +865,8 @@ if (!user.customerId) {
 ```typescript
 // Organization-based subscriptions - check correct organizationId
 const sub = await ctx
-  .table('subscriptions', 'organizationId_status', (q) =>
-    q.eq('organizationId', organizationId).eq('status', 'active')
+  .table("subscriptions", "organizationId_status", (q) =>
+    q.eq("organizationId", organizationId).eq("status", "active")
   )
   .first();
 
@@ -877,5 +879,5 @@ if (!sub) {
 
 ```typescript
 // Required at top of convex/auth.ts and polar files
-import './polar/polyfills';
+import "./polar/polyfills";
 ```
