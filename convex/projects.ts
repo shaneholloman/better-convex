@@ -1,7 +1,7 @@
 import { ConvexError } from 'convex/values';
 import { asyncMap } from 'convex-helpers';
 import { stream } from 'convex-helpers/server/stream';
-import { zid } from 'convex-helpers/server/zod';
+import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
 import { aggregateTodosByProject } from './aggregates';
 import {

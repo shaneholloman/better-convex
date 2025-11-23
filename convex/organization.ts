@@ -4,7 +4,7 @@ import { hasPermission } from '@convex/authHelpers';
 import { listUserOrganizations } from '@convex/organizationHelpers';
 import { ConvexError } from 'convex/values';
 import { asyncMap } from 'convex-helpers';
-import { zid } from 'convex-helpers/server/zod';
+import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
 
 import {

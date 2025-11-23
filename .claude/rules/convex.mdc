@@ -46,7 +46,7 @@ import {
   createAuthMutation,
 } from "./functions";
 import { z } from "zod";
-import { zid } from "convex-helpers/server/zod";
+import { zid } from "convex-helpers/server/zod4";
 
 // All function types - use appropriate wrapper
 export const example = createAuthQuery()({
