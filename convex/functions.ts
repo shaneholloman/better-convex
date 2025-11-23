@@ -12,7 +12,7 @@ import {
   zCustomAction,
   zCustomMutation,
   zCustomQuery,
-} from 'convex-helpers/server/zod';
+} from 'convex-helpers/server/zod4';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import type { ActionCtx, MutationCtx, QueryCtx } from './_generated/server';

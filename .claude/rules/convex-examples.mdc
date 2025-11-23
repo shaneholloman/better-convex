@@ -29,7 +29,7 @@ This example demonstrates building a real-time chat application backend with AI 
     "@convex-dev/rate-limiter": "^0.2.0",
     "convex-helpers": "^0.1.0",
     "better-auth": "^1.0.0",
-    "zod": "^3.0.0"
+    "zod": "^4.0.0"
   }
 }
 ```
@@ -81,7 +81,7 @@ export const entDefinitions = getEntDefinitions(schema);
 ```typescript
 // convex/chat.ts
 import { z } from "zod";
-import { zid } from "convex-helpers/server/zod";
+import { zid } from "convex-helpers/server/zod4";
 import { asyncMap } from "convex-helpers";
 import { ConvexError } from "convex/values";
 import OpenAI from "openai";
