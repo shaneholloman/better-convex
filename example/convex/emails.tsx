@@ -6,7 +6,7 @@ import { v } from 'convex/values';
 
 import { components } from './_generated/api';
 import { action } from './_generated/server';
-import OrganizationInviteEmail from './emails/organizationInvite';
+import OrganizationInviteEmail from './functions/emails/organizationInvite';
 
 // Initialize Resend component
 export const resend: Resend = new Resend(components.resend, {
