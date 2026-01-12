@@ -95,15 +95,15 @@ const response = await fetch('https://api.example.com', {
 
 ## Client Hooks
 
-### useAuthStatus
+### useAuth
 
 Get comprehensive auth state:
 
 ```tsx title="src/components/auth-status.tsx"
-import { useAuthStatus } from 'better-convex/auth-client';
+import { useAuth } from 'better-convex/auth-client';
 
 function AuthStatus() {
-  const { hasSession, isAuthenticated, isLoading } = useAuthStatus();
+  const { hasSession, isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) return <Spinner />;
 
@@ -121,21 +121,29 @@ function AuthStatus() {
 | `isAuthenticated` | Token exists AND Convex auth verified |
 | `isLoading` | Convex auth is still loading |
 
+### useMaybeAuth
+
+Check if user maybe has auth (optimistic, has token):
+
+```tsx title="src/components/example.tsx"
+import { useMaybeAuth } from 'better-convex/auth-client';
+
+function Component() {
+  const isAuth = useMaybeAuth();
+  return isAuth ? <LoggedInUI /> : <LoginButton />;
+}
+```
+
 ### useIsAuth
 
-Simple boolean check:
+Check if user is authenticated (server-verified):
 
 ```tsx title="src/components/example.tsx"
 import { useIsAuth } from 'better-convex/auth-client';
 
-function Component() {
-  // Check if session exists
-  const hasSession = useIsAuth();
-
-  // Check if fully authenticated (verified)
-  const isVerified = useIsAuth(true);
-
-  return hasSession ? <LoggedInUI /> : <LoginButton />;
+function SecureComponent() {
+  const isAuth = useIsAuth();
+  return isAuth ? <SensitiveData /> : <Loading />;
 }
 ```
 
@@ -192,9 +200,25 @@ function AuthSync() {
 
 ## Conditional Rendering
 
+### MaybeAuthenticated
+
+Render children only when has session (optimistic):
+
+```tsx title="src/app.tsx"
+import { MaybeAuthenticated } from 'better-convex/auth-client';
+
+function App() {
+  return (
+    <MaybeAuthenticated>
+      <Dashboard />
+    </MaybeAuthenticated>
+  );
+}
+```
+
 ### Authenticated
 
-Render children only when authenticated:
+Render children only when server-verified:
 
 ```tsx title="src/app.tsx"
 import { Authenticated } from 'better-convex/auth-client';
@@ -202,40 +226,47 @@ import { Authenticated } from 'better-convex/auth-client';
 function App() {
   return (
     <Authenticated>
-      <Dashboard />
+      <SensitiveData />
     </Authenticated>
+  );
+}
+```
+
+### MaybeUnauthenticated
+
+Render children only when no session (optimistic):
+
+```tsx title="src/app.tsx"
+import { MaybeAuthenticated, MaybeUnauthenticated } from 'better-convex/auth-client';
+
+function App() {
+  return (
+    <>
+      <MaybeAuthenticated>
+        <Dashboard />
+      </MaybeAuthenticated>
+      <MaybeUnauthenticated>
+        <LoginPage />
+      </MaybeUnauthenticated>
+    </>
   );
 }
 ```
 
 ### Unauthenticated
 
-Render children only when not authenticated:
+Render children only when not server-verified (waits for loading):
 
 ```tsx title="src/app.tsx"
 import { Unauthenticated } from 'better-convex/auth-client';
 
 function App() {
   return (
-    <>
-      <Authenticated>
-        <Dashboard />
-      </Authenticated>
-      <Unauthenticated>
-        <LoginPage />
-      </Unauthenticated>
-    </>
+    <Unauthenticated>
+      <LoginPage />
+    </Unauthenticated>
   );
 }
-```
-
-With verification:
-
-```tsx title="src/app.tsx"
-// Wait for auth verification before showing login
-<Unauthenticated verified>
-  <LoginPage />
-</Unauthenticated>
 ```
 
 ## Provider Configuration

@@ -9,7 +9,7 @@ better-convex provides a seamless integration between [Better Auth](https://bett
 
 - **Convex as database adapter** - Store auth data in Convex tables
 - **Type-safe triggers** - Hooks for user/session lifecycle events
-- **React hooks** - `useAuthStatus`, `useAuthGuard`, and conditional rendering
+- **React hooks** - `useAuth`, `useAuthGuard`, and conditional rendering
 - **Next.js integration** - Server-side caller with JWT caching
 
 ## Key Concepts
@@ -70,7 +70,7 @@ const auth = createAuth(ctx);
 ### Client
 
 - **`ConvexAuthProvider`** - Combined provider for auth state
-- **`useAuthStatus`** - Get auth loading/authenticated state
+- **`useAuth`** - Get auth loading/authenticated state
 - **`useAuthGuard`** - Guard mutations requiring auth
 - **`Authenticated`** / **`Unauthenticated`** - Conditional rendering
 
@@ -138,10 +138,10 @@ const auth = createAuth(ctx);
 ```tsx title="src/components/app.tsx"
 'use client';
 
-import { useAuthStatus, Authenticated, Unauthenticated } from 'better-convex/auth-client';
+import { useAuth, Authenticated, Unauthenticated } from 'better-convex/auth-client';
 
 function App() {
-  const { isAuthenticated, isLoading } = useAuthStatus();
+  const { isAuthenticated, isLoading } = useAuth();
 
   if (isLoading) return <div>Loading...</div>;
 

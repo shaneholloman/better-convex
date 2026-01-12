@@ -174,7 +174,7 @@ import {
   ConvexReactClient,
   getConvexQueryClientSingleton,
   getQueryClientSingleton,
-  useAuthStatus,
+  useAuth,
   useAuthStore,
   useSyncSession,
 } from 'better-convex/react';
@@ -232,7 +232,7 @@ function QueryProvider({ children }: { children: ReactNode }) {
 
 /** Sync Better Auth session to Convex and keep user data cached */
 function AuthSync() {
-  const { isAuthenticated } = useAuthStatus();
+  const isAuth = useIsAuth();
   const crpc = useCRPC();
   const session = useSession();
 
@@ -241,7 +241,7 @@ function AuthSync() {
 
   // Keep user data in cache when authenticated
   useQuery(
-    crpc.user.getSessionUser.queryOptions({}, { enabled: isAuthenticated })
+    crpc.user.getSessionUser.queryOptions({}, { enabled: isAuth })
   );
 
   return null;

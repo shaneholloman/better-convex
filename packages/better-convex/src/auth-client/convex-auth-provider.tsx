@@ -52,12 +52,12 @@ export function ConvexAuthProvider({
     persistToken(effectiveToken);
   }
 
-  console.log('[auth ConvexAuthProvider] render:', {
-    initialToken: initialToken ? 'exists' : 'undefined',
-    persistedToken: getPersistedToken() ? 'exists' : 'null',
-    effectiveToken: effectiveToken ? 'exists' : 'null',
-    timestamp: new Date().toISOString(),
-  });
+  // console.log('[auth ConvexAuthProvider] render:', {
+  //   initialToken: initialToken ? 'exists' : 'undefined',
+  //   persistedToken: getPersistedToken() ? 'exists' : 'null',
+  //   effectiveToken: effectiveToken ? 'exists' : 'null',
+  //   timestamp: new Date().toISOString(),
+  // });
 
   return (
     <ConvexBetterAuthProvider

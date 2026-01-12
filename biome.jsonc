@@ -26,7 +26,7 @@
       },
       "suspicious": {
         "noConsole": {
-          "level": "off", // until prod
+          "level": "on", // until prod
           "options": {
             "allow": ["assert", "error", "info", "warn"]
           }

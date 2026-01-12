@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMaybeAuth } from 'better-convex/react';
 import {
   Building2,
   CheckSquare,
@@ -35,6 +36,7 @@ const SEGMENT_ID_PATTERN = /^[a-zA-Z0-9]+$/;
 export function BreadcrumbNav() {
   const pathname = usePathname();
   const user = useCurrentUser();
+  const isAuth = useMaybeAuth();
 
   const crpc = useCRPC();
   const generateSamplesAction = useMutation(
@@ -136,53 +138,55 @@ export function BreadcrumbNav() {
     <div className="border-b">
       <div className="container mx-auto px-4 py-3">
         <div className="flex items-center justify-between">
-          {/* Left side - Breadcrumbs */}
-          <Breadcrumb>
-            <BreadcrumbList>{breadcrumbItems}</BreadcrumbList>
-          </Breadcrumb>
-
-          {/* Center - Quick Links */}
           <div className="flex items-center gap-4">
-            <Link
-              className="flex items-center gap-1 font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
-              href="/"
-            >
-              <CheckSquare className="h-4 w-4" />
-              Todos
-            </Link>
-            <div className="h-4 w-px bg-border" />
-            <Link
-              className="flex items-center gap-1 font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
-              href="/projects"
-            >
-              <FolderOpen className="h-4 w-4" />
-              Projects
-            </Link>
-            <div className="h-4 w-px bg-border" />
-            <Link
-              className="flex items-center gap-1 font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
-              href="/tags"
-            >
-              <Tags className="h-4 w-4" />
-              Tags
-            </Link>
-            {user?.activeOrganization?.slug && (
-              <>
-                <div className="h-4 w-px bg-border" />
-                <Link
-                  className="flex items-center gap-1 font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
-                  href={`/org/${user.activeOrganization.slug}`}
-                >
-                  <Building2 className="h-4 w-4" />
-                  Organization
-                </Link>
-              </>
-            )}
+            {/* Left side - Breadcrumbs */}
+            <Breadcrumb>
+              <BreadcrumbList>{breadcrumbItems}</BreadcrumbList>
+            </Breadcrumb>
+
+            {/* Center - Quick Links */}
+            <div className="flex items-center gap-4">
+              <Link
+                className="flex items-center gap-1 font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
+                href="/"
+              >
+                <CheckSquare className="h-4 w-4" />
+                Todos
+              </Link>
+              <div className="h-4 w-px bg-border" />
+              <Link
+                className="flex items-center gap-1 font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
+                href="/projects"
+              >
+                <FolderOpen className="h-4 w-4" />
+                Projects
+              </Link>
+              <div className="h-4 w-px bg-border" />
+              <Link
+                className="flex items-center gap-1 font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
+                href="/tags"
+              >
+                <Tags className="h-4 w-4" />
+                Tags
+              </Link>
+              {user?.activeOrganization?.slug && (
+                <>
+                  <div className="h-4 w-px bg-border" />
+                  <Link
+                    className="flex items-center gap-1 font-medium text-muted-foreground text-sm transition-colors hover:text-foreground"
+                    href={`/org/${user.activeOrganization.slug}`}
+                  >
+                    <Building2 className="h-4 w-4" />
+                    Organization
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Right side - Organization Switcher & Auth */}
           <div className="flex items-center gap-2">
-            {user?.id ? (
+            {isAuth ? (
               <>
                 <OrganizationSwitcher />
                 {hasData ? null : (

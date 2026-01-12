@@ -27,7 +27,7 @@ export function createQueryClient() {
     queryCache: new QueryCache({
       onError: (error) => {
         if (isCRPCClientError(error)) {
-          console.log(`[CRPC] ${error.code}:`, error.functionName);
+          console.warn(`[CRPC] ${error.code}:`, error.functionName);
         }
       },
     }),

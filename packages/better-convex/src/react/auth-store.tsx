@@ -89,22 +89,22 @@ export function useSyncSession(session: {
   isPending: boolean;
 }) {
   const authStore = useAuthStore();
-  const currentToken = authStore.get('token');
 
-  console.log('[auth useSyncSession] render:', {
-    sessionData: session.data ? 'exists' : 'null',
-    isPending: session.isPending,
-    currentStoreToken: currentToken ? 'exists' : 'null',
-    timestamp: new Date().toISOString(),
-  });
+  // const currentToken = authStore.get('token');
+  // console.log('[auth useSyncSession] render:', {
+  //   sessionData: session.data ? 'exists' : 'null',
+  //   isPending: session.isPending,
+  //   currentStoreToken: currentToken ? 'exists' : 'null',
+  //   timestamp: new Date().toISOString(),
+  // });
 
   React.useEffect(() => {
     if (!session.isPending && !authStore.get('token')) {
       const token = session.data?.session.token ?? null;
-      console.log('[auth useSyncSession] syncing token:', {
-        newToken: token ? 'exists' : 'null',
-        timestamp: new Date().toISOString(),
-      });
+      // console.log('[auth useSyncSession] syncing token:', {
+      //   newToken: token ? 'exists' : 'null',
+      //   timestamp: new Date().toISOString(),
+      // });
       authStore.set('token', token);
       // Only persist valid tokens, never null (defensive against overwriting persisted token)
       if (token) {
@@ -140,7 +140,7 @@ export const {
 
 export type AuthStore = ReturnType<typeof useAuthStore>;
 
-export const useAuthStatus = () => {
+export const useAuth = () => {
   const authStore = useAuthStore();
 
   if (!authStore.store) {
@@ -151,10 +151,12 @@ export const useAuthStatus = () => {
     };
   }
 
-  // During SSR/prerendering, return loading state
+  // During SSR/prerendering, read token from store for SSR auth-awareness
   if (typeof window === 'undefined') {
+    const token = authStore.get('token');
+
     return {
-      hasSession: false,
+      hasSession: !!token,
       isAuthenticated: false,
       isLoading: true,
     };
@@ -173,14 +175,16 @@ export const useAuthStatus = () => {
   };
 };
 
-export const useIsAuth = (verified?: boolean) => {
-  const { hasSession, isAuthenticated } = useAuthStatus();
-
-  if (verified) {
-    return isAuthenticated;
-  }
-
+/** Check if user maybe has auth (optimistic, has token) */
+export const useMaybeAuth = () => {
+  const { hasSession } = useAuth();
   return hasSession;
+};
+
+/** Check if user is authenticated (server-verified) */
+export const useIsAuth = () => {
+  const { isAuthenticated } = useAuth();
+  return isAuthenticated;
 };
 
 export const useAuthGuard = () => {
@@ -198,34 +202,35 @@ export const useAuthGuard = () => {
   };
 };
 
-/** Render children only when authenticated */
-export function Authenticated({ children }: { children: React.ReactNode }) {
-  const isAuth = useIsAuth();
-
-  if (isAuth) {
-    return <>{children}</>;
-  }
-
-  return null;
-}
-
-/** Render children only when not authenticated */
-export function Unauthenticated({
+/** Render children only when maybe has auth (optimistic) */
+export function MaybeAuthenticated({
   children,
-  verified,
 }: {
   children: React.ReactNode;
-  /** If true, wait for auth to verify (not just session existence) */
-  verified?: boolean;
 }) {
-  const { hasSession, isAuthenticated, isLoading } = useAuthStatus();
+  const isAuth = useMaybeAuth();
+  return isAuth ? children : null;
+}
 
-  if (!verified && hasSession) {
-    return null;
-  }
-  if (verified && (isLoading || isAuthenticated)) {
-    return null;
-  }
+/** Render children only when authenticated (server-verified) */
+export function Authenticated({ children }: { children: React.ReactNode }) {
+  const isAuth = useIsAuth();
+  return isAuth ? children : null;
+}
 
-  return <>{children}</>;
+/** Render children only when maybe not auth (optimistic) */
+export function MaybeUnauthenticated({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const isAuth = useMaybeAuth();
+  return isAuth ? null : children;
+}
+
+/** Render children only when not authenticated (server-verified) */
+export function Unauthenticated({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  // Wait for loading, then show if not authenticated
+  return isLoading || isAuthenticated ? null : children;
 }

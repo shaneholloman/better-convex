@@ -2,7 +2,7 @@
 
 import type { Id } from '@convex/dataModel';
 import { useMutation } from '@tanstack/react-query';
-import { useInfiniteQuery, useIsAuth } from 'better-convex/react';
+import { useInfiniteQuery, useMaybeAuth } from 'better-convex/react';
 import { Archive, CheckSquare, Plus, Square, Users } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -48,7 +48,7 @@ export default function ProjectsPage() {
     isPublic: false,
   });
 
-  const isAuth = useIsAuth();
+  const isAuth = useMaybeAuth();
   const crpc = useCRPC();
 
   const { data, hasNextPage, isLoading, isFetchingNextPage, fetchNextPage } =

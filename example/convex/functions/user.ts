@@ -1,6 +1,11 @@
 import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
-import { authMutation, optionalAuthQuery, publicQuery } from '../lib/crpc';
+import {
+  authMutation,
+  authQuery,
+  optionalAuthQuery,
+  publicQuery,
+} from '../lib/crpc';
 
 /** Get session user - used by AuthSync and authAction */
 export const getSessionUser = optionalAuthQuery
@@ -49,7 +54,7 @@ export const getIsAuthenticated = publicQuery
   .query(async ({ ctx }) => !!(await ctx.auth.getUserIdentity()));
 
 /** Get full user data for the authenticated user */
-export const getCurrentUser = optionalAuthQuery
+export const getCurrentUser = authQuery
   .output(
     z.union([
       z.object({
@@ -74,9 +79,6 @@ export const getCurrentUser = optionalAuthQuery
   )
   .query(async ({ ctx }) => {
     const { user } = ctx;
-    if (!user) {
-      return null;
-    }
 
     return {
       id: user.id,

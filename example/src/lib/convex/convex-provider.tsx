@@ -10,8 +10,8 @@ import {
   ConvexReactClient,
   getConvexQueryClientSingleton,
   getQueryClientSingleton,
-  useAuthStatus,
   useAuthStore,
+  useIsAuth,
   useSyncSession,
 } from 'better-convex/react';
 import { useRouter } from 'next/navigation';
@@ -76,15 +76,13 @@ function QueryClientProvider({ children }: { children: ReactNode }) {
 
 /** Subscribe to user query when authenticated */
 function AuthSync() {
-  const { isAuthenticated } = useAuthStatus();
+  const isAuth = useIsAuth();
   const crpc = useCRPC();
   const session = useSession();
 
   useSyncSession(session);
 
-  useQuery(
-    crpc.user.getSessionUser.queryOptions(isAuthenticated ? {} : skipToken)
-  );
+  useQuery(crpc.user.getSessionUser.queryOptions(isAuth ? {} : skipToken));
 
   return null;
 }
