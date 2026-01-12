@@ -34,9 +34,21 @@ export function createQueryClient() {
     defaultOptions: {
       ...hydrationConfig,
       mutations: {
-        onError: (err) => {
+        onError: (err, _variables, _context, mutation) => {
           const error = err as Error & { data?: { message?: string } };
-          toast.error(error.data?.message || error.message || 'Something went wrong');
+          const meta = mutation.meta as
+            | { errorMessage?: string; skipErrorToast?: boolean }
+            | undefined;
+
+          // Skip if mutation handles its own errors
+          if (meta?.skipErrorToast) return;
+
+          toast.error(
+            error.data?.message ||
+              meta?.errorMessage ||
+              error.message ||
+              'Something went wrong'
+          );
         },
       },
       queries: {

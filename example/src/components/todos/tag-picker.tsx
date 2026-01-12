@@ -37,7 +37,14 @@ export function TagPicker({
   const crpc = useCRPC();
   const { data: tags = [] } = useQuery(
     crpc.tags.list.queryOptions({}, { skipUnauth: true })
-  ) as { data: Array<{ _id: Id<'tags'>; name: string; color: string; usageCount: number }> };
+  ) as {
+    data: Array<{
+      _id: Id<'tags'>;
+      name: string;
+      color: string;
+      usageCount: number;
+    }>;
+  };
 
   const selectedTags = tags.filter((tag) => selectedTagIds.includes(tag._id));
 

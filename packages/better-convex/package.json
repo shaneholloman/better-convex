@@ -31,7 +31,8 @@
   "scripts": {
     "build": "tsdown",
     "build:watch": "tsdown --watch",
-    "prepublishOnly": "bun run build"
+    "prepublishOnly": "bun run build",
+    "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "chokidar": "^5.0.0",

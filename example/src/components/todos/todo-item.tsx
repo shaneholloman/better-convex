@@ -1,9 +1,7 @@
 'use client';
 
-import { api } from '@convex/api';
 import type { Id } from '@convex/dataModel';
 import { useMutation } from '@tanstack/react-query';
-import { useMutation as useConvexMutation } from 'convex/react';
 import { format } from 'date-fns';
 import { Calendar, Edit, MoreHorizontal, RotateCcw, Trash } from 'lucide-react';
 import { useState } from 'react';
@@ -18,6 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useCRPC } from '@/lib/convex/crpc';
 import { cn } from '@/lib/utils';
 
 type TodoItemProps = {
@@ -45,14 +44,13 @@ type TodoItemProps = {
 
 export function TodoItem({ todo, onEdit }: TodoItemProps) {
   const [isUpdating, setIsUpdating] = useState(false);
+  const crpc = useCRPC();
 
-  const toggleCompleteFn = useConvexMutation(api.todos.toggleComplete);
-  const deleteTodoFn = useConvexMutation(api.todos.deleteTodo);
-  const restoreTodoFn = useConvexMutation(api.todos.restore);
-
-  const toggleComplete = useMutation({ mutationFn: (args: any) => toggleCompleteFn(args) });
-  const deleteTodo = useMutation({ mutationFn: (args: any) => deleteTodoFn(args) });
-  const restoreTodo = useMutation({ mutationFn: (args: any) => restoreTodoFn(args) });
+  const toggleComplete = useMutation(
+    crpc.todos.toggleComplete.mutationOptions()
+  );
+  const deleteTodo = useMutation(crpc.todos.deleteTodo.mutationOptions());
+  const restoreTodo = useMutation(crpc.todos.restore.mutationOptions());
 
   const handleToggleComplete = async () => {
     setIsUpdating(true);

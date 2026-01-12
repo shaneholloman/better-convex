@@ -1,9 +1,7 @@
 'use client';
 
-import { api } from '@convex/api';
 import type { Id } from '@convex/dataModel';
-import { useMutation, useQuery } from '@tanstack/react-query';
-import { useMutation as useConvexMutation } from 'convex/react';
+import { skipToken, useMutation, useQuery } from '@tanstack/react-query';
 import {
   Crown,
   Mail,
@@ -95,74 +93,77 @@ export function OrganizationMembers({
 
   const crpc = useCRPC();
 
-  const inviteMemberFn = useConvexMutation(api.organization.inviteMember);
-  const removeMemberFn = useConvexMutation(api.organization.removeMember);
-  const updateMemberRoleFn = useConvexMutation(api.organization.updateMemberRole);
-  const cancelInvitationFn = useConvexMutation(api.organization.cancelInvitation);
-
   const { data: pendingInvitations, isLoading: invitationsLoading } = useQuery(
     crpc.organization.listPendingInvitations.queryOptions(
-      organization ? { slug: organization.slug } : ({} as any),
+      organization ? { slug: organization.slug } : skipToken,
       {
         skipUnauth: true,
-        enabled: !!organization,
         placeholderData: [
           {
-            id: '1' as any,
+            id: '1' as Id<'invitation'>,
             createdAt: new Date('2025-11-04').getTime(),
             email: 'pending@example.com',
             expiresAt:
               new Date('2025-11-04').getTime() + 7 * 24 * 60 * 60 * 1000,
-            organizationId: '1' as any,
+            organizationId: '1' as Id<'organization'>,
             role: 'member',
             status: 'pending',
           },
         ],
       }
     )
-  ) as { data: Array<{ id: Id<'invitation'>; createdAt: number; email: string; expiresAt: number; organizationId: Id<'organization'>; role: string; status: string }> | undefined; isLoading: boolean };
+  ) as {
+    data:
+      | Array<{
+          id: Id<'invitation'>;
+          createdAt: number;
+          email: string;
+          expiresAt: number;
+          organizationId: Id<'organization'>;
+          role: string;
+          status: string;
+        }>
+      | undefined;
+    isLoading: boolean;
+  };
 
-  const inviteMember = useMutation({
-    mutationFn: (args: any) => inviteMemberFn(args),
-    onSuccess: () => {
-      setShowInviteDialog(false);
-      setInviteData({ email: '', role: 'member' });
-      toast.success('Invitation sent successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to send invitation');
-    },
-  });
+  const inviteMember = useMutation(
+    crpc.organization.inviteMember.mutationOptions({
+      meta: { errorMessage: 'Failed to send invitation' },
+      onSuccess: () => {
+        setShowInviteDialog(false);
+        setInviteData({ email: '', role: 'member' });
+        toast.success('Invitation sent successfully');
+      },
+    })
+  );
 
-  const removeMember = useMutation({
-    mutationFn: (args: any) => removeMemberFn(args),
-    onSuccess: () => {
-      toast.success('Member removed successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to remove member');
-    },
-  });
+  const removeMember = useMutation(
+    crpc.organization.removeMember.mutationOptions({
+      meta: { errorMessage: 'Failed to remove member' },
+      onSuccess: () => {
+        toast.success('Member removed successfully');
+      },
+    })
+  );
 
-  const updateMemberRole = useMutation({
-    mutationFn: (args: any) => updateMemberRoleFn(args),
-    onSuccess: () => {
-      toast.success('Member role updated successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to update member role');
-    },
-  });
+  const updateMemberRole = useMutation(
+    crpc.organization.updateMemberRole.mutationOptions({
+      meta: { errorMessage: 'Failed to update member role' },
+      onSuccess: () => {
+        toast.success('Member role updated successfully');
+      },
+    })
+  );
 
-  const cancelInvitation = useMutation({
-    mutationFn: (args: any) => cancelInvitationFn(args),
-    onSuccess: () => {
-      toast.success('Invitation cancelled successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to cancel invitation');
-    },
-  });
+  const cancelInvitation = useMutation(
+    crpc.organization.cancelInvitation.mutationOptions({
+      meta: { errorMessage: 'Failed to cancel invitation' },
+      onSuccess: () => {
+        toast.success('Invitation cancelled successfully');
+      },
+    })
+  );
 
   if (!(organization && members)) {
     return null;

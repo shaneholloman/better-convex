@@ -1,8 +1,6 @@
 'use client';
 
-import { api } from '@convex/api';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useMutation as useConvexMutation } from 'convex/react';
 import {
   Building2,
   CheckSquare,
@@ -39,10 +37,9 @@ export function BreadcrumbNav() {
   const user = useCurrentUser();
 
   const crpc = useCRPC();
-  const generateSamplesFn = useConvexMutation(api.seed.generateSamples);
-  const generateSamplesAction = useMutation({
-    mutationFn: (args: any) => generateSamplesFn(args),
-  });
+  const generateSamplesAction = useMutation(
+    crpc.seed.generateSamples.mutationOptions()
+  );
 
   // Check if there's any data (projects)
   const { data: projectsData } = useQuery(

@@ -1,6 +1,7 @@
 'use client';
 
 import type { Id } from '@convex/dataModel';
+import { skipToken } from '@tanstack/react-query';
 import { useInfiniteQuery } from 'better-convex/react';
 import { Archive, Loader2 } from 'lucide-react';
 import { useState } from 'react';
@@ -26,25 +27,25 @@ type TodoListProps = {
 
 const placeholderTodos = [
   {
-    _id: '1' as any,
+    _id: '1' as Id<'todos'>,
     _creationTime: new Date('2025-11-04').getTime(),
     title: 'Example Todo 1',
     description: 'This is a placeholder todo item',
     completed: false,
     priority: 'medium' as const,
     dueDate: new Date('2025-11-05').getTime(),
-    userId: 'user1' as any,
+    userId: 'user1' as Id<'user'>,
     tags: [],
     project: null,
   },
   {
-    _id: '2' as any,
+    _id: '2' as Id<'todos'>,
     _creationTime: new Date('2025-11-04').getTime(),
     title: 'Example Todo 2',
     description: 'Another placeholder todo item',
     completed: true,
     priority: 'low' as const,
-    userId: 'user1' as any,
+    userId: 'user1' as Id<'user'>,
     tags: [],
     project: null,
   },
@@ -59,26 +60,30 @@ export function TodoList({ projectId, showFilters = true }: TodoListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const crpc = useCRPC();
 
-  // Use search API when there's a query, otherwise use the regular list
-  const searchOptions = crpc.todos.search.infiniteQueryOptions(
-    { query: searchQuery, completed: completedFilter, projectId },
-    { placeholderData: placeholderTodos, enabled: !!searchQuery }
+  const searchResult = useInfiniteQuery(
+    crpc.todos.search.infiniteQueryOptions(
+      searchQuery
+        ? { query: searchQuery, completed: completedFilter, projectId }
+        : skipToken,
+      { placeholderData: placeholderTodos }
+    )
   );
-  const listOptions = crpc.todos.list.infiniteQueryOptions(
-    { completed: completedFilter, projectId, priority: priorityFilter },
-    { placeholderData: placeholderTodos, enabled: !searchQuery }
+  const listResult = useInfiniteQuery(
+    crpc.todos.list.infiniteQueryOptions(
+      searchQuery
+        ? skipToken
+        : { completed: completedFilter, projectId, priority: priorityFilter },
+      { placeholderData: placeholderTodos }
+    )
   );
-
-  const searchResult = useInfiniteQuery(searchOptions);
-  const listResult = useInfiniteQuery(listOptions);
 
   const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
     searchQuery ? searchResult : listResult;
 
   const allTodos = data || [];
   const todos = showDeleted
-    ? allTodos.filter((todo: any) => todo.deletionTime)
-    : allTodos.filter((todo: any) => !todo.deletionTime);
+    ? allTodos.filter((todo) => todo.deletionTime)
+    : allTodos.filter((todo) => !todo.deletionTime);
   const isEmpty = !isLoading && todos.length === 0;
 
   return (
@@ -127,7 +132,11 @@ export function TodoList({ projectId, showFilters = true }: TodoListProps) {
 
             <Select
               onValueChange={(value) =>
-                setPriorityFilter(value === 'all' ? undefined : (value as any))
+                setPriorityFilter(
+                  value === 'all'
+                    ? undefined
+                    : (value as 'low' | 'medium' | 'high')
+                )
               }
               value={priorityFilter || 'all'}
             >
@@ -160,7 +169,7 @@ export function TodoList({ projectId, showFilters = true }: TodoListProps) {
           </div>
         ) : (
           <>
-            {todos.map((todo: any, index: number) => (
+            {todos.map((todo, index: number) => (
               <WithSkeleton
                 className="w-full"
                 isLoading={isLoading}

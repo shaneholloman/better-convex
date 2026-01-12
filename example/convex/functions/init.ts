@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { getEnv } from '../lib/get-env';
-import { internal } from './_generated/api';
 import { createUser } from '../lib/auth/auth-helpers';
 import { privateMutation } from '../lib/crpc';
+import { getEnv } from '../lib/get-env';
+import { internal } from './_generated/api';
 
 /**
  * Initialize the database on startup. This function runs automatically when

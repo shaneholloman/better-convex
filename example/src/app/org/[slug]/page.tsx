@@ -41,6 +41,7 @@ export default function OrganizationPage() {
           logo: null,
           membersCount: 3,
           name: 'Loading Organization',
+          plan: 'free',
           role: 'member',
           slug,
         },

@@ -1,9 +1,7 @@
 'use client';
 
-import { api } from '@convex/api';
 import type { Id } from '@convex/dataModel';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useMutation as useConvexMutation } from 'convex/react';
 import { Archive, Crown, Settings, UserMinus } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -43,10 +41,6 @@ export default function ProjectDetailPage() {
 
   const crpc = useCRPC();
 
-  const updateProjectFn = useConvexMutation(api.projects.update);
-  const archiveProjectFn = useConvexMutation(api.projects.archive);
-  const leaveProjectFn = useConvexMutation(api.projects.leave);
-
   const { data: project, isLoading } = useQuery(
     crpc.projects.get.queryOptions(
       { projectId },
@@ -72,38 +66,35 @@ export default function ProjectDetailPage() {
     )
   );
 
-  const updateProject = useMutation({
-    mutationFn: (args: any) => updateProjectFn(args),
-    onSuccess: () => {
-      setShowEditDialog(false);
-      toast.success('Project updated successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to update project');
-    },
-  });
+  const updateProject = useMutation(
+    crpc.projects.update.mutationOptions({
+      meta: { errorMessage: 'Failed to update project' },
+      onSuccess: () => {
+        setShowEditDialog(false);
+        toast.success('Project updated successfully');
+      },
+    })
+  );
 
-  const archiveProject = useMutation({
-    mutationFn: (args: any) => archiveProjectFn(args),
-    onSuccess: () => {
-      toast.success('Project archived');
-      router.push('/projects');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to archive project');
-    },
-  });
+  const archiveProject = useMutation(
+    crpc.projects.archive.mutationOptions({
+      meta: { errorMessage: 'Failed to archive project' },
+      onSuccess: () => {
+        toast.success('Project archived');
+        router.push('/projects');
+      },
+    })
+  );
 
-  const leaveProject = useMutation({
-    mutationFn: (args: any) => leaveProjectFn(args),
-    onSuccess: () => {
-      toast.success('Left project successfully');
-      router.push('/projects');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to leave project');
-    },
-  });
+  const leaveProject = useMutation(
+    crpc.projects.leave.mutationOptions({
+      meta: { errorMessage: 'Failed to leave project' },
+      onSuccess: () => {
+        toast.success('Left project successfully');
+        router.push('/projects');
+      },
+    })
+  );
 
   if (!(project || isLoading)) {
     return (

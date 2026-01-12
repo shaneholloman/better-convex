@@ -1,9 +1,7 @@
 'use client';
 
-import { api } from '@convex/api';
 import type { Id } from '@convex/dataModel';
 import { useMutation } from '@tanstack/react-query';
-import { useMutation as useConvexMutation } from 'convex/react';
 import {
   Crown,
   MoreVertical,
@@ -39,6 +37,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useCRPC } from '@/lib/convex/crpc';
 
 type ProjectMembersProps = {
   projectId: Id<'projects'>;
@@ -65,41 +64,36 @@ export function ProjectMembers({
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [email, setEmail] = useState('');
 
-  const addMemberFn = useConvexMutation(api.projects.addMember);
-  const removeMemberFn = useConvexMutation(api.projects.removeMember);
-  const transferFn = useConvexMutation(api.projects.transfer);
+  const crpc = useCRPC();
 
-  const addMember = useMutation({
-    mutationFn: (args: any) => addMemberFn(args),
-    onSuccess: () => {
-      setShowAddDialog(false);
-      setEmail('');
-      toast.success('Member added successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to add member');
-    },
-  });
+  const addMember = useMutation(
+    crpc.projects.addMember.mutationOptions({
+      meta: { errorMessage: 'Failed to add member' },
+      onSuccess: () => {
+        setShowAddDialog(false);
+        setEmail('');
+        toast.success('Member added successfully');
+      },
+    })
+  );
 
-  const removeMember = useMutation({
-    mutationFn: (args: any) => removeMemberFn(args),
-    onSuccess: () => {
-      toast.success('Member removed');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to remove member');
-    },
-  });
+  const removeMember = useMutation(
+    crpc.projects.removeMember.mutationOptions({
+      meta: { errorMessage: 'Failed to remove member' },
+      onSuccess: () => {
+        toast.success('Member removed');
+      },
+    })
+  );
 
-  const transferOwnership = useMutation({
-    mutationFn: (args: any) => transferFn(args),
-    onSuccess: () => {
-      toast.success('Ownership transferred');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to transfer ownership');
-    },
-  });
+  const transferOwnership = useMutation(
+    crpc.projects.transfer.mutationOptions({
+      meta: { errorMessage: 'Failed to transfer ownership' },
+      onSuccess: () => {
+        toast.success('Ownership transferred');
+      },
+    })
+  );
 
   const handleAddMember = () => {
     if (!email.trim()) {

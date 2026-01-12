@@ -34,9 +34,7 @@ export type CtxWithTable<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
 
 export const getCtxWithTable = <Ctx extends MutationCtx | QueryCtx>(
   ctx: Ctx
-) => {
-  return {
-    ...ctx,
-    table: entsTableFactory(ctx, entDefinitions),
-  };
-};
+) => ({
+  ...ctx,
+  table: entsTableFactory(ctx, entDefinitions),
+});

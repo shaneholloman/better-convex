@@ -1,16 +1,14 @@
 'use client';
 
-import { api } from '@convex/api';
 import type { Id } from '@convex/dataModel';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useMutation as useConvexMutation } from 'convex/react';
 import {
   Edit2,
   GitMerge,
   Hash,
   MoreVertical,
   Plus,
-  Tag,
+  Tag as TagIcon,
   Trash2,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -40,10 +38,11 @@ import { cn } from '@/lib/utils';
 
 type Tag = {
   _id: Id<'tags'>;
-  _creationTime: number;
+  _creationTime?: number;
   name: string;
   color: string;
   usageCount: number;
+  isOwn?: boolean;
 };
 
 export default function TagsPage() {
@@ -60,11 +59,6 @@ export default function TagsPage() {
   const [mergeTarget, setMergeTarget] = useState<Id<'tags'> | null>(null);
 
   const crpc = useCRPC();
-
-  const createTagFn = useConvexMutation(api.tags.create);
-  const updateTagFn = useConvexMutation(api.tags.update);
-  const deleteTagFn = useConvexMutation(api.tags.deleteTag);
-  const mergeTagFn = useConvexMutation(api.tags.merge);
 
   const { data: tags, isLoading } = useQuery(
     crpc.tags.list.queryOptions(
@@ -102,52 +96,48 @@ export default function TagsPage() {
     crpc.tags.popular.queryOptions({ limit: 5 }, { skipUnauth: true })
   );
 
-  const createTag = useMutation({
-    mutationFn: (args: any) => createTagFn(args),
-    onSuccess: () => {
-      setShowCreateDialog(false);
-      setNewTag({ name: '', color: '' });
-      toast.success('Tag created successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to create tag');
-    },
-  });
+  const createTag = useMutation(
+    crpc.tags.create.mutationOptions({
+      meta: { errorMessage: 'Failed to create tag' },
+      onSuccess: () => {
+        setShowCreateDialog(false);
+        setNewTag({ name: '', color: '' });
+        toast.success('Tag created successfully');
+      },
+    })
+  );
 
-  const updateTag = useMutation({
-    mutationFn: (args: any) => updateTagFn(args),
-    onSuccess: () => {
-      setShowEditDialog(false);
-      setSelectedTag(null);
-      toast.success('Tag updated successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to update tag');
-    },
-  });
+  const updateTag = useMutation(
+    crpc.tags.update.mutationOptions({
+      meta: { errorMessage: 'Failed to update tag' },
+      onSuccess: () => {
+        setShowEditDialog(false);
+        setSelectedTag(null);
+        toast.success('Tag updated successfully');
+      },
+    })
+  );
 
-  const deleteTag = useMutation({
-    mutationFn: (args: any) => deleteTagFn(args),
-    onSuccess: () => {
-      toast.success('Tag deleted successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to delete tag');
-    },
-  });
+  const deleteTag = useMutation(
+    crpc.tags.deleteTag.mutationOptions({
+      meta: { errorMessage: 'Failed to delete tag' },
+      onSuccess: () => {
+        toast.success('Tag deleted successfully');
+      },
+    })
+  );
 
-  const mergeTag = useMutation({
-    mutationFn: (args: any) => mergeTagFn(args),
-    onSuccess: () => {
-      setShowMergeDialog(false);
-      setSelectedTag(null);
-      setMergeTarget(null);
-      toast.success('Tags merged successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error.data?.message ?? 'Failed to merge tags');
-    },
-  });
+  const mergeTag = useMutation(
+    crpc.tags.merge.mutationOptions({
+      meta: { errorMessage: 'Failed to merge tags' },
+      onSuccess: () => {
+        setShowMergeDialog(false);
+        setSelectedTag(null);
+        setMergeTarget(null);
+        toast.success('Tags merged successfully');
+      },
+    })
+  );
 
   const handleCreateTag = () => {
     if (!newTag.name.trim()) {
@@ -350,7 +340,10 @@ export default function TagsPage() {
                       className="flex h-8 w-8 items-center justify-center rounded-full"
                       style={{ backgroundColor: `${tag.color}20` }}
                     >
-                      <Tag className="h-4 w-4" style={{ color: tag.color }} />
+                      <TagIcon
+                        className="h-4 w-4"
+                        style={{ color: tag.color }}
+                      />
                     </div>
                     <div>
                       <div className="font-medium text-sm">{tag.name}</div>
@@ -394,7 +387,7 @@ export default function TagsPage() {
         {tags?.length === 0 && !isLoading && (
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <div className="mb-4 rounded-full bg-secondary p-3">
-              <Tag className="h-6 w-6 text-muted-foreground" />
+              <TagIcon className="h-6 w-6 text-muted-foreground" />
             </div>
             <p className="font-medium">No tags yet</p>
             <p className="mt-1 text-muted-foreground text-sm">

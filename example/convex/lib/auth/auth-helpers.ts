@@ -9,8 +9,6 @@ import { getProduct, productToPlan } from '../../shared/polar-shared';
 import type { AuthCtx } from '../crpc';
 import type { CtxWithTable, Ent, EntWriter } from '../ents';
 
-export type { SessionUser };
-
 const getSessionData = async (ctx: CtxWithTable<MutationCtx>) => {
   const session = await getSession(ctx);
 
@@ -84,6 +82,7 @@ export const getSessionUser = async (
   ctx: CtxWithTable<QueryCtx>
 ): Promise<(Ent<'user'> & SessionUser) | null> => {
   const { activeOrganization, impersonatedBy, isAdmin, plan, session, user } =
+    // biome-ignore lint/suspicious/noExplicitAny: lib
     (await getSessionData(ctx as any)) ?? ({} as never);
 
   if (!user) {

@@ -1,9 +1,7 @@
 'use client';
 
-import { api } from '@convex/api';
 import type { Id } from '@convex/dataModel';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useMutation as useConvexMutation } from 'convex/react';
 import { format } from 'date-fns';
 import { CalendarIcon, Plus } from 'lucide-react';
 import { useState } from 'react';
@@ -49,11 +47,14 @@ export function TodoForm({
   const [isOpen, setIsOpen] = useState(false);
 
   const crpc = useCRPC();
-  const createTodoFn = useConvexMutation(api.todos.create);
-  const createTodo = useMutation({ mutationFn: (args: any) => createTodoFn(args) });
+  const createTodo = useMutation(crpc.todos.create.mutationOptions());
   const { data: projects } = useQuery(
     crpc.projects.listForDropdown.queryOptions({}, { skipUnauth: true })
-  ) as { data: Array<{ _id: Id<'projects'>; name: string; isOwner: boolean }> | undefined };
+  ) as {
+    data:
+      | Array<{ _id: Id<'projects'>; name: string; isOwner: boolean }>
+      | undefined;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -159,7 +160,9 @@ export function TodoForm({
             <div className="space-y-2">
               <Label htmlFor="priority">Priority</Label>
               <Select
-                onValueChange={(v) => setPriority(v as any)}
+                onValueChange={(v) =>
+                  setPriority(v as 'low' | 'medium' | 'high')
+                }
                 value={priority}
               >
                 <SelectTrigger id="priority">
