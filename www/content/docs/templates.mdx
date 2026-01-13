@@ -1218,6 +1218,7 @@ Better Auth client for React with plugins.
 import { convexClient } from '@convex-dev/better-auth/client/plugins';
 import { adminClient, inferAdditionalFields } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
+import { createAuthMutations } from 'better-convex/react';
 
 // Import your Auth type from convex
 import type { Auth } from '@convex/auth-shared';
@@ -1232,7 +1233,15 @@ export const authClient = createAuthClient({
 });
 
 // Export hooks from the auth client
-export const { signIn, signOut, signUp, useSession } = authClient;
+export const { useActiveOrganization, useListOrganizations, useSession } = authClient;
+
+// Export mutation option hooks
+export const {
+  useSignOutMutationOptions,
+  useSignInSocialMutationOptions,
+  useSignInMutationOptions,
+  useSignUpMutationOptions,
+} = createAuthMutations(authClient);
 ```
 
 ---
@@ -1248,26 +1257,21 @@ Convex provider with TanStack Query integration.
 ```tsx title="src/lib/convex/convex-provider.tsx"
 'use client';
 
-import {
-  QueryClientProvider as TanstackQueryClientProvider,
-  useQuery,
-} from '@tanstack/react-query';
+import { QueryClientProvider as TanstackQueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { ConvexAuthProvider } from 'better-convex/auth-client';
 import {
   ConvexReactClient,
   getConvexQueryClientSingleton,
   getQueryClientSingleton,
-  useAuth,
   useAuthStore,
-  useSyncSession,
 } from 'better-convex/react';
 import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 
-import { authClient, useSession } from '@/lib/convex/auth-client';
-import { CRPCProvider, useCRPC } from '@/lib/convex/crpc';
+import { authClient } from '@/lib/convex/auth-client';
+import { CRPCProvider } from '@/lib/convex/crpc';
 import { createQueryClient } from '@/lib/convex/query-client';
 
 const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
@@ -1315,27 +1319,11 @@ function QueryClientProvider({ children }: { children: ReactNode }) {
   return (
     <TanstackQueryClientProvider client={queryClient}>
       <CRPCProvider convexClient={convex} convexQueryClient={convexQueryClient}>
-        <AuthSync />
         {children}
         <ReactQueryDevtools buttonPosition="bottom-left" initialIsOpen={false} />
       </CRPCProvider>
     </TanstackQueryClientProvider>
   );
-}
-
-/** Subscribe to user query when authenticated */
-function AuthSync() {
-  const isAuth = useIsAuth();
-  const crpc = useCRPC();
-  const session = useSession();
-
-  useSyncSession(session);
-
-  useQuery(
-    crpc.user.getSessionUser.queryOptions({}, { enabled: isAuth })
-  );
-
-  return null;
 }
 ```
 
@@ -1444,7 +1432,6 @@ import { convexBetterAuth } from 'better-convex/auth-nextjs';
 export const { createContext, createCaller, handler } = convexBetterAuth({
   api,
   convexSiteUrl: process.env.NEXT_PUBLIC_CONVEX_SITE_URL!,
-  jwtCache: { enabled: true },
   meta,
 });
 ```

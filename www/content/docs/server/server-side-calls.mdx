@@ -155,27 +155,17 @@ Key differences:
 Creates a caller factory with token management and retry logic.
 
 ```ts
-type TokenResult = {
-  token?: string;
-  isFresh?: boolean;
-};
-
-type GetTokenFn = (
-  siteUrl: string,
-  headers: Headers,
-  opts?: unknown
-) => Promise<TokenResult>;
-
-type JwtCacheOptions = {
-  enabled?: boolean;
-  isAuthError?: (error: unknown) => boolean;
-};
-
 type CreateCallerFactoryOptions<TApi> = {
   api: TApi;
   convexSiteUrl: string;
-  getToken: GetTokenFn;
-  jwtCache?: JwtCacheOptions;
+  auth?: {
+    getToken: (
+      siteUrl: string,
+      headers: Headers,
+      opts?: unknown
+    ) => Promise<{ token?: string; isFresh?: boolean }>;
+    isUnauthorized?: (error: unknown) => boolean;
+  };
   meta: CallerMeta;
 };
 ```

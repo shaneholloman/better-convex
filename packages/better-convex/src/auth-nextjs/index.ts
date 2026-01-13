@@ -7,21 +7,9 @@
 
 import { type GetTokenOptions, getToken } from '@convex-dev/better-auth/utils';
 
+import { defaultIsUnauthorized } from '../crpc/error';
 import type { CallerMeta } from '../server/caller';
 import { createCallerFactory } from '../server/caller-factory';
-import { CRPCError } from '../server/error';
-
-// Default auth error detection for JWT caching
-const AUTH_ERROR_REGEX = /auth/i;
-
-const defaultIsAuthError = (error: unknown) => {
-  const message =
-    (error instanceof CRPCError && error.message) ||
-    (error instanceof Error && error.message) ||
-    '';
-
-  return AUTH_ERROR_REGEX.test(String(message));
-};
 
 const handler = (request: Request, siteUrl: string) => {
   const requestUrl = new URL(request.url);
@@ -37,21 +25,21 @@ const nextJsHandler = (siteUrl: string) => ({
   POST: (request: Request) => handler(request, siteUrl),
 });
 
-/** JWT cache options with optional isAuthError (has built-in default). */
-type JwtCacheOptions = {
-  /** Enable JWT caching with automatic refresh on auth errors. */
-  enabled: boolean;
+/** Auth options for server-side calls. */
+type AuthOptions = {
+  /** Enable/disable JWT caching. Default: true */
+  jwtCache?: boolean;
+  /** Custom function to detect UNAUTHORIZED errors. Default checks code property. */
+  isUnauthorized?: (error: unknown) => boolean;
   /** Expiration tolerance in seconds. */
   expirationToleranceSeconds?: number;
-  /** Custom function to detect auth errors. Default checks for "auth" in error message. */
-  isAuthError?: (error: unknown) => boolean;
 };
 
 type ConvexBetterAuthOptions<TApi> = Omit<GetTokenOptions, 'jwtCache'> & {
   api: TApi;
   convexSiteUrl: string;
-  /** JWT caching options for automatic token refresh. */
-  jwtCache?: JwtCacheOptions;
+  /** Auth options. JWT caching is enabled by default (set `auth.jwtCache: false` to disable). */
+  auth?: AuthOptions;
   meta: CallerMeta;
 };
 
@@ -64,8 +52,8 @@ type ConvexBetterAuthOptions<TApi> = Omit<GetTokenOptions, 'jwtCache'> & {
  * export const { createContext, createCaller, handler } = convexBetterAuth({
  *   api,
  *   convexSiteUrl: env.NEXT_PUBLIC_CONVEX_SITE_URL,
- *   jwtCache: { enabled: true, isAuthError },
- * });
+ *   meta,
+ * }); // JWT caching enabled by default
  *
  * // rsc.tsx
  * const createRSCContext = cache(async () => {
@@ -81,14 +69,27 @@ type ConvexBetterAuthOptions<TApi> = Omit<GetTokenOptions, 'jwtCache'> & {
 export function convexBetterAuth<TApi extends Record<string, unknown>>(
   opts: ConvexBetterAuthOptions<TApi>
 ) {
+  // Default auth to {} - JWT caching enabled by default
+  const auth = opts.auth ?? {};
+  const jwtCacheEnabled = auth.jwtCache !== false;
+
   const { createContext, createCaller } = createCallerFactory({
     api: opts.api,
     convexSiteUrl: opts.convexSiteUrl,
-    getToken,
-    jwtCache: opts.jwtCache && {
-      ...opts.jwtCache,
-      isAuthError: opts.jwtCache.isAuthError ?? defaultIsAuthError,
-    },
+    auth: jwtCacheEnabled
+      ? {
+          getToken: (siteUrl, headers, getTokenOpts) =>
+            getToken(siteUrl, headers, {
+              ...(getTokenOpts as GetTokenOptions),
+              jwtCache: {
+                enabled: true,
+                expirationToleranceSeconds: auth.expirationToleranceSeconds,
+                isAuthError: auth.isUnauthorized ?? defaultIsUnauthorized,
+              },
+            }),
+          isUnauthorized: auth.isUnauthorized ?? defaultIsUnauthorized,
+        }
+      : undefined,
     meta: opts.meta,
   });
 

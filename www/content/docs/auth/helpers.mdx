@@ -183,21 +183,6 @@ const handleClick = () => {
 };
 ```
 
-### useSyncSession
-
-Sync session token from your auth library to the store:
-
-```tsx title="src/components/auth-sync.tsx"
-import { useSyncSession } from 'better-convex/auth-client';
-import { useSession } from 'better-auth/react';
-
-function AuthSync() {
-  const session = useSession();
-  useSyncSession(session);
-  return null;
-}
-```
-
 ## Conditional Rendering
 
 ### MaybeAuthenticated
@@ -306,6 +291,72 @@ function App() {
 | `initialToken` | `string?` | Initial session token (from SSR) |
 | `onMutationUnauthorized` | `() => void` | Called when mutation is blocked |
 | `onQueryUnauthorized` | `({ queryName }) => void` | Called when query is blocked |
+
+## Logout
+
+Use `createAuthMutations` to generate TanStack Query mutation hooks that handle auth queries cleanup automatically.
+
+### Setup
+
+```ts title="src/lib/auth-client.ts"
+import { createAuthClient } from 'better-auth/react';
+import { createAuthMutations } from 'better-convex/react';
+
+export const authClient = createAuthClient({...});
+
+// Export hooks from the auth client
+export const {
+  signIn,
+  signUp,
+  useActiveOrganization,
+  useListOrganizations,
+  useSession,
+} = authClient;
+
+// Export mutation hooks
+export const {
+  useSignOutMutationOptions,
+  useSignInSocialMutationOptions,
+  useSignInMutationOptions,
+  useSignUpMutationOptions,
+} = createAuthMutations(authClient);
+```
+
+### Logout Button
+
+```tsx title="src/components/header.tsx"
+import { useMutation } from '@tanstack/react-query';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { useSignOutMutationOptions } from '@/lib/auth-client';
+
+function LogoutButton() {
+  const router = useRouter();
+  const signOutMutation = useMutation(
+    useSignOutMutationOptions({
+      onSuccess: () => router.push('/login'),
+      onError: () => toast.error('Failed to sign out'),
+    })
+  );
+
+  return (
+    <button
+      disabled={signOutMutation.isPending}
+      onClick={() => signOutMutation.mutate()}
+    >
+      {signOutMutation.isPending ? 'Logging out...' : 'Sign out'}
+    </button>
+  );
+}
+```
+
+### Why createAuthMutations?
+
+The hook provides two key features:
+
+1. **Auth query cleanup**: `useSignOutMutationOptions` automatically calls `unsubscribeAuthQueries()` before `signOut()` to prevent `UNAUTHORIZED` errors from subscribed queries during logout.
+
+2. **Proper loading state**: The mutation's `isPending` stays `true` until the auth token is actually cleared (not just when the API call completes). This prevents UI flicker where the button shows "Sign out" briefly before redirecting.
 
 ## Next Steps
 

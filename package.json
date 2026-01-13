@@ -12,7 +12,7 @@
     "build:watch": "bun --cwd packages/better-convex build:watch",
     "check": "bun lint && bun typecheck",
     "dev": "bun --cwd www dev",
-    "postinstall": "bunx skiller apply",
+    "postinstall": "bunx skiller@latest apply",
     "lint": "biome check && eslint",
     "lint:fix": "biome check --write",
     "release": "bun build:pkg && changeset publish",

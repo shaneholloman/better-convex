@@ -37,3 +37,23 @@ export const isCRPCErrorCode = (
   error: unknown,
   code: ClientErrorCode
 ): error is CRPCClientError => isCRPCClientError(error) && error.code === code;
+
+/** Default unauthorized detection - checks UNAUTHORIZED code */
+export const defaultIsUnauthorized = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+
+  // Check for CRPCError/ConvexError with data.code
+  if ('data' in error) {
+    const data = (error as { data: unknown }).data;
+    if (data && typeof data === 'object' && 'code' in data) {
+      return (data as { code: string }).code === 'UNAUTHORIZED';
+    }
+  }
+
+  // Check for direct code property (CRPCClientError, etc.)
+  if ('code' in error) {
+    return (error as { code: string }).code === 'UNAUTHORIZED';
+  }
+
+  return false;
+};

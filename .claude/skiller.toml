@@ -24,6 +24,10 @@ enabled = true
 enabled = true
 merge_strategy = "merge"
 
+[mcp_servers.playwriter]
+command = "npx"
+args = ["playwriter@latest"]
+
 # --- Agent-Specific Configuration ---
 
 # Claude Code (primary agent)

@@ -77,8 +77,13 @@ export function TodoList({ projectId, showFilters = true }: TodoListProps) {
     )
   );
 
-  const { data, isLoading, hasNextPage, isFetchingNextPage, fetchNextPage } =
-    searchQuery ? searchResult : listResult;
+  const {
+    data,
+    isPlaceholderData: isLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = searchQuery ? searchResult : listResult;
 
   const allTodos = data || [];
   const todos = showDeleted
@@ -160,7 +165,11 @@ export function TodoList({ projectId, showFilters = true }: TodoListProps) {
             {searchQuery
               ? `No todos found for "${searchQuery}"`
               : showDeleted
-                ? 'No deleted todos.'
+                ? completedFilter === false
+                  ? 'No deleted active todos.'
+                  : completedFilter === true
+                    ? 'No deleted completed todos.'
+                    : 'No deleted todos.'
                 : completedFilter === false
                   ? 'No active todos. Great job!'
                   : completedFilter === true

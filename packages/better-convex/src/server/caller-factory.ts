@@ -33,12 +33,12 @@ type GetTokenFn = (
   opts?: unknown
 ) => Promise<TokenResult>;
 
-/** JWT caching options for automatic token refresh on auth errors. */
-type JwtCacheOptions = {
-  /** Enable JWT caching with automatic refresh on auth errors. */
-  enabled?: boolean;
-  /** Custom function to detect auth errors. Default checks for "auth" in error message. */
-  isAuthError?: (error: unknown) => boolean;
+/** Auth options for server-side calls. */
+type AuthOptions = {
+  /** Function to extract auth token from request headers. */
+  getToken: GetTokenFn;
+  /** Custom function to detect UNAUTHORIZED errors. Default checks code property. */
+  isUnauthorized?: (error: unknown) => boolean;
 };
 
 type CreateCallerFactoryOptions<TApi> = {
@@ -46,10 +46,8 @@ type CreateCallerFactoryOptions<TApi> = {
   api: TApi;
   /** Convex site URL (must end in `.convex.site`). */
   convexSiteUrl: string;
-  /** Function to extract auth token from request headers. Defaults to no auth. */
-  getToken?: GetTokenFn;
-  /** JWT caching options for automatic token refresh. */
-  jwtCache?: JwtCacheOptions;
+  /** Auth options. Pass to enable authenticated calls with JWT caching. */
+  auth?: AuthOptions;
   /** Procedure metadata. */
   meta: CallerMeta;
 };
@@ -95,8 +93,8 @@ export type ConvexContext<TApi> = {
  * const { createContext, createCaller } = createCallerFactory({
  *   api,
  *   convexSiteUrl: env.NEXT_PUBLIC_CONVEX_SITE_URL,
- *   getToken,
- *   jwtCache: { enabled: true, isAuthError },
+ *   auth: { getToken },
+ *   meta,
  * });
  * ```
  */
@@ -107,8 +105,8 @@ export function createCallerFactory<TApi extends Record<string, unknown>>(
   opts: CreateCallerFactoryOptions<TApi>
 ) {
   const siteUrl = parseConvexSiteUrl(opts.convexSiteUrl);
-  const getToken = opts.getToken ?? noAuthGetToken;
-  const isAuthError = opts.jwtCache?.isAuthError;
+  const getToken = opts.auth?.getToken ?? noAuthGetToken;
+  const isUnauthorized = opts.auth?.isUnauthorized;
 
   // Internal: call with token and retry logic
   const callWithTokenAndRetry = async <
@@ -123,11 +121,11 @@ export function createCallerFactory<TApi extends Record<string, unknown>>(
       return await fn(tokenResult.token);
     } catch (error) {
       // Return null for auth errors instead of throwing
-      if (isAuthError?.(error)) {
+      if (isUnauthorized?.(error)) {
         return null;
       }
-      // JWT cache refresh logic
-      if (!opts.jwtCache?.enabled || tokenResult.isFresh) {
+      // JWT cache refresh logic - skip if no auth or token is already fresh
+      if (!opts.auth || tokenResult.isFresh) {
         throw error;
       }
       // Force refresh token and retry
@@ -138,7 +136,7 @@ export function createCallerFactory<TApi extends Record<string, unknown>>(
       try {
         return await fn(newToken.token);
       } catch (retryError) {
-        if (isAuthError?.(retryError)) {
+        if (isUnauthorized?.(retryError)) {
           return null;
         }
         throw retryError;

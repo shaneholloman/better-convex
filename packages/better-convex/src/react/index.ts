@@ -1,6 +1,7 @@
 /** biome-ignore-all lint/performance/noBarrelFile: package entry */
 export { ConvexProvider, ConvexReactClient } from 'convex/react';
 
+export * from './auth-mutations';
 export * from './auth-store';
 export * from './client';
 export * from './context';

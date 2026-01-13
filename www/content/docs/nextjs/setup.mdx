@@ -62,7 +62,6 @@ import { convexBetterAuth } from 'better-convex/auth-nextjs';
 export const { createContext, createCaller, handler } = convexBetterAuth({
   api,
   convexSiteUrl: process.env.NEXT_PUBLIC_CONVEX_SITE_URL!,
-  jwtCache: { enabled: true },
   meta,
 });
 ```
@@ -71,7 +70,8 @@ export const { createContext, createCaller, handler } = convexBetterAuth({
 |--------|-------------|
 | `api` | Your Convex API object |
 | `convexSiteUrl` | Convex site URL (must end in `.convex.site`) |
-| `jwtCache.enabled` | Enable JWT caching with automatic refresh |
+| `auth.jwtCache` | Enable/disable JWT caching (default: `true`) |
+| `auth.isUnauthorized` | Custom UNAUTHORIZED error detection |
 | `meta` | Procedure metadata from `@convex/meta` |
 
 Not using Better Auth? See [Server Side Calls](/docs/server/server-side-calls).

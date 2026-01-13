@@ -234,6 +234,7 @@ export class ConvexQueryClient {
       isAuthenticated: !!this.authStore.get('token'),
       isLoading: this.authStore.get('isLoading'),
       onUnauthorized: this.authStore.get('onQueryUnauthorized'),
+      isUnauthorized: this.authStore.get('isUnauthorized'),
     };
   }
 
@@ -407,6 +408,13 @@ export class ConvexQueryClient {
         },
         { meta: 'set by ConvexQueryClient' }
       );
+
+      // Call onQueryUnauthorized if server returned auth error
+      const authState = this.getAuthState();
+      if (authState?.isUnauthorized(error)) {
+        const [, funcName] = queryKey;
+        authState.onUnauthorized({ queryName: funcName as string });
+      }
     }
   }
 

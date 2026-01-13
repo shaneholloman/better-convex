@@ -674,7 +674,7 @@ export function useInfiniteQuery<
   const authLoadingApplies = authType === 'optional' || authType === 'required';
 
   // Check if we got an auth error
-  const isAuthError = isCRPCClientError(result.error);
+  const isClientError = isCRPCClientError(result.error);
 
   // When skipUnauth + unauthorized: return empty data, not placeholder
   const isSkippedUnauth = isUnauthorized && skipUnauthFinal;
@@ -689,6 +689,6 @@ export function useInfiniteQuery<
     ...(isSkippedUnauth && { isPlaceholderData: false }),
     isLoading:
       (authLoadingApplies && isAuthLoading) ||
-      (!isAuthError && !authError && !isSkippedUnauth && result.isLoading),
+      (!isClientError && !authError && !isSkippedUnauth && result.isLoading),
   };
 }

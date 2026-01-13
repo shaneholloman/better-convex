@@ -92,6 +92,7 @@ CLAUDE.local.md
 
 # START Skiller Generated Files
 /.claude/skills
+/.mcp.json
 /.skillz
 /CLAUDE.md
 # END Skiller Generated Files

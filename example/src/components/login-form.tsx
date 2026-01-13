@@ -1,14 +1,14 @@
 'use client';
 
+import { useMutation } from '@tanstack/react-query';
 import type { LucideProps } from 'lucide-react';
-
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { useQueryState } from 'nuqs';
 import type * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { env } from '@/env';
-import { signIn } from '@/lib/convex/auth-client';
+import { useSignInSocialMutationOptions } from '@/lib/convex/auth-client';
 import { cn } from '@/lib/utils';
 
 const authRoutes = ['/login', '/signup'];
@@ -22,10 +22,12 @@ export function SignForm() {
     callbackUrl = encodeURL(pathname, searchParams.toString());
   }
 
+  const signInSocial = useMutation(useSignInSocialMutationOptions());
+
   const handleGoogleSignIn = () => {
     const callback = callbackUrl ? decodeURIComponent(callbackUrl) : '/';
 
-    signIn.social({
+    signInSocial.mutate({
       callbackURL: `${env.NEXT_PUBLIC_SITE_URL}${callback}`,
       provider: 'google',
     });
@@ -34,7 +36,7 @@ export function SignForm() {
   const handleGithubSignIn = () => {
     const callback = callbackUrl ? decodeURIComponent(callbackUrl) : '/';
 
-    signIn.social({
+    signInSocial.mutate({
       callbackURL: `${env.NEXT_PUBLIC_SITE_URL}${callback}`,
       provider: 'github',
     });
@@ -44,6 +46,7 @@ export function SignForm() {
     <div className={cn('mx-auto grid max-w-[268px] gap-3')}>
       <Button
         className="w-full"
+        disabled={signInSocial.isPending}
         onClick={handleGoogleSignIn}
         size="lg"
         variant="outline"
@@ -54,6 +57,7 @@ export function SignForm() {
 
       <Button
         className="w-full"
+        disabled={signInSocial.isPending}
         onClick={handleGithubSignIn}
         size="lg"
         variant="default"

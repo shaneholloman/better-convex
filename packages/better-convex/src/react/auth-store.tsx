@@ -11,13 +11,15 @@ import { useConvexAuth } from 'convex/react';
 import { createAtomStore } from 'jotai-x';
 import React from 'react';
 
-import { CRPCClientError } from '../crpc/error';
+import { CRPCClientError, defaultIsUnauthorized } from '../crpc/error';
 
 export type AuthStoreState = {
   /** Callback when mutation/action called while unauthorized. Throws by default. */
   onMutationUnauthorized: () => void;
   /** Callback when query called while unauthorized. Noop by default. */
   onQueryUnauthorized: (info: { queryName: string }) => void;
+  /** Custom function to detect UNAUTHORIZED errors. Default checks code or "auth" in message. */
+  isUnauthorized: (error: unknown) => boolean;
   /** Current session token */
   token: string | null;
   /** Whether Convex auth is still loading (synced from useConvexAuth) */
@@ -68,52 +70,6 @@ function AuthEffect() {
   return null;
 }
 
-/** Session data type for useSyncSession */
-type SessionData = { session: { token: string } } | null | undefined;
-
-/**
- * Hook to sync session token to auth store.
- * Call this from your app's provider with your auth library's session data.
- *
- * @example
- * ```tsx
- * function AuthSync() {
- *   const session = useSession(); // from your auth client
- *   useSyncSession(session);
- *   return null;
- * }
- * ```
- */
-export function useSyncSession(session: {
-  data: SessionData;
-  isPending: boolean;
-}) {
-  const authStore = useAuthStore();
-
-  // const currentToken = authStore.get('token');
-  // console.log('[auth useSyncSession] render:', {
-  //   sessionData: session.data ? 'exists' : 'null',
-  //   isPending: session.isPending,
-  //   currentStoreToken: currentToken ? 'exists' : 'null',
-  //   timestamp: new Date().toISOString(),
-  // });
-
-  React.useEffect(() => {
-    if (!session.isPending && !authStore.get('token')) {
-      const token = session.data?.session.token ?? null;
-      // console.log('[auth useSyncSession] syncing token:', {
-      //   newToken: token ? 'exists' : 'null',
-      //   timestamp: new Date().toISOString(),
-      // });
-      authStore.set('token', token);
-      // Only persist valid tokens, never null (defensive against overwriting persisted token)
-      if (token) {
-        persistToken(token);
-      }
-    }
-  }, [session.data, authStore, session.isPending]);
-}
-
 export const {
   authStore,
   AuthProvider,
@@ -129,6 +85,7 @@ export const {
       });
     },
     onQueryUnauthorized: () => {},
+    isUnauthorized: defaultIsUnauthorized,
     token: getPersistedToken(),
     enabled: false,
     isLoading: false,

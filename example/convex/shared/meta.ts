@@ -74,7 +74,7 @@ export const meta = {
     update: { auth: 'required', rateLimit: 'todo/update', type: 'mutation' },
   },
   user: {
-    getCurrentUser: { auth: 'optional', type: 'query' },
+    getCurrentUser: { auth: 'required', type: 'query' },
     getIsAuthenticated: { type: 'query' },
     getSessionUser: { auth: 'optional', type: 'query' },
     updateSettings: { auth: 'required', type: 'mutation' },
