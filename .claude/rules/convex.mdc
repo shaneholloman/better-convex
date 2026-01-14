@@ -553,7 +553,7 @@ const limit = crpc.messages.list.meta.limit;
 ```typescript
 const { data, isLoading } = useQuery(
   crpc.items.list.queryOptions({}, {
-    placeholderData: [{ _id: '1' as Id<'items'>, name: 'Loading...' }]
+    placeholderData: [{ _id: '0' as Id<'items'>, name: 'Loading...' }]
   })
 );
 
@@ -1044,7 +1044,6 @@ export const updateCharacter = authMutation
 | `.delete()`           | `ctx.table('user').getX(id).delete()`                       |
 | `.get()` vs `.getX()` | Returns null vs throws if not found                         |
 
-
 ### Writing with Ents
 
 ```typescript
@@ -1305,13 +1304,13 @@ For more aggregate patterns, see [convex-aggregate.mdc](mdc:.claude/rules/convex
 
 ### Platform Limits
 
-| Resource | Limit | Resource | Limit |
-|----------|-------|----------|-------|
-| Indexes/table | 32 | Docs scanned/query | 16,384 |
-| Search indexes/table | 4 | Docs written/mutation | 8,192 |
-| Array elements | 8,192 | Document size | 1 MiB |
-| Field nesting | 16 | JS execution | 1 sec |
-| Action timeout | 10 min | Action memory | 64 MB (512 MB Node) |
+| Resource             | Limit  | Resource              | Limit               |
+| -------------------- | ------ | --------------------- | ------------------- |
+| Indexes/table        | 32     | Docs scanned/query    | 16,384              |
+| Search indexes/table | 4      | Docs written/mutation | 8,192               |
+| Array elements       | 8,192  | Document size         | 1 MiB               |
+| Field nesting        | 16     | JS execution          | 1 sec               |
+| Action timeout       | 10 min | Action memory         | 64 MB (512 MB Node) |
 
 **Implications:** Too many indexes → slow inserts (16 ≈ 17x cost) | Large arrays → use edges | Deep nesting → flatten
 

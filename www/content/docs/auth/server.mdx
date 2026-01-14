@@ -111,7 +111,7 @@ export const createAuth = (ctx: GenericCtx) => betterAuth(createAuthOptions(ctx)
 // IMPORTANT: Use getAuth for queries/mutations (direct DB access)
 export const getAuth = <Ctx extends QueryCtx | MutationCtx>(ctx: Ctx) => {
   return betterAuth({
-    ...createAuthOptions({} as GenericCtx),
+    ...createAuthOptions(ctx),
     database: authClient.adapter(ctx, createAuthOptions),
   });
 };

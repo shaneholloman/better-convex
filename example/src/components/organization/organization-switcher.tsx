@@ -2,7 +2,15 @@
 
 import type { Id } from '@convex/dataModel';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Building2, Check, ChevronsUpDown, Plus, User } from 'lucide-react';
+import {
+  Building2,
+  Check,
+  ChevronsUpDown,
+  Mail,
+  Plus,
+  User,
+  X,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -47,7 +55,7 @@ export function OrganizationSwitcher() {
 
   const crpc = useCRPC();
 
-  const { data: orgsData, isLoading } = useQuery(
+  const { data: orgsData, isPlaceholderData: isLoading } = useQuery(
     crpc.organization.listOrganizations.queryOptions(
       {},
       {
@@ -56,7 +64,7 @@ export function OrganizationSwitcher() {
           canCreateOrganization: true,
           organizations: [
             {
-              id: '1' as Id<'organization'>,
+              id: '0' as Id<'organization'>,
               createdAt: new Date('2025-11-04').getTime(),
               isPersonal: true,
               logo: null,
@@ -77,6 +85,34 @@ export function OrganizationSwitcher() {
         },
       }
     )
+  );
+
+  const { data: invitations } = useQuery(
+    crpc.organization.listUserInvitations.queryOptions({}, { skipUnauth: true })
+  );
+
+  const acceptInvitation = useMutation(
+    crpc.organization.acceptInvitation.mutationOptions({
+      meta: { errorMessage: 'Failed to accept invitation' },
+      onSuccess: (_data, variables) => {
+        toast.success('Invitation accepted');
+        // Find the invitation to get the org slug
+        const inv = invitations?.find((i) => i.id === variables.invitationId);
+        if (inv) {
+          router.push(`/org/${inv.organizationSlug}`);
+        }
+        setOpen(false);
+      },
+    })
+  );
+
+  const rejectInvitation = useMutation(
+    crpc.organization.rejectInvitation.mutationOptions({
+      meta: { errorMessage: 'Failed to reject invitation' },
+      onSuccess: () => {
+        toast.success('Invitation declined');
+      },
+    })
   );
 
   const setActiveOrganization = useMutation(
@@ -117,6 +153,8 @@ export function OrganizationSwitcher() {
   if (!currentOrg) {
     return null;
   }
+
+  const pendingInvitationsCount = invitations?.length ?? 0;
 
   const handleSelectOrganization = (
     organizationId: Id<'organization'>,
@@ -180,7 +218,14 @@ export function OrganizationSwitcher() {
                 </Badge>
               )}
             </div>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            <div className="ml-2 flex items-center gap-1">
+              {pendingInvitationsCount > 0 && (
+                <Badge className="h-5 w-5 justify-center rounded-full p-0 text-xs">
+                  {pendingInvitationsCount}
+                </Badge>
+              )}
+              <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+            </div>
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-[250px] p-0">
@@ -223,6 +268,61 @@ export function OrganizationSwitcher() {
                     </CommandItem>
                   ))}
                 </CommandGroup>
+                {pendingInvitationsCount > 0 && (
+                  <>
+                    <CommandSeparator />
+                    <CommandGroup heading="Invitations">
+                      {invitations?.map((invitation) => (
+                        <div
+                          className="flex items-center gap-2 px-2 py-1.5"
+                          key={invitation.id}
+                        >
+                          <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate text-sm">
+                              {invitation.organizationName}
+                            </span>
+                            <span className="truncate text-muted-foreground text-xs">
+                              {invitation.inviterName
+                                ? `From ${invitation.inviterName}`
+                                : 'Pending invitation'}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 gap-1">
+                            <Button
+                              className="h-6 w-6"
+                              disabled={acceptInvitation.isPending}
+                              onClick={() =>
+                                acceptInvitation.mutate({
+                                  invitationId: invitation.id,
+                                })
+                              }
+                              size="icon"
+                              title="Accept"
+                              variant="ghost"
+                            >
+                              <Check className="h-3 w-3 text-green-600" />
+                            </Button>
+                            <Button
+                              className="h-6 w-6"
+                              disabled={rejectInvitation.isPending}
+                              onClick={() =>
+                                rejectInvitation.mutate({
+                                  invitationId: invitation.id,
+                                })
+                              }
+                              size="icon"
+                              title="Decline"
+                              variant="ghost"
+                            >
+                              <X className="h-3 w-3 text-destructive" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </CommandGroup>
+                  </>
+                )}
                 {orgsData?.canCreateOrganization && (
                   <>
                     <CommandSeparator />

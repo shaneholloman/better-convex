@@ -57,6 +57,7 @@ const schema = defineEntSchema(
       .field('name', v.string(), { index: true })
       .edges('members', { to: 'member', ref: true })
       .edges('invitations', { to: 'invitation', ref: true })
+      .edge('subscription', { to: 'subscriptions', ref: true })
       .edges('usersLastActive', {
         to: 'user',
         ref: 'lastActiveOrganizationId',
@@ -75,6 +76,7 @@ const schema = defineEntSchema(
     invitation: defineEnt({
       role: v.optional(v.union(v.null(), v.string())),
       expiresAt: v.number(),
+      createdAt: v.number(),
     })
       .field('email', v.string(), { index: true })
       .field('status', v.string(), { index: true })
@@ -185,7 +187,7 @@ const schema = defineEntSchema(
       customerCancellationComment: v.optional(v.union(v.string(), v.null())),
     })
       .field('subscriptionId', v.string(), { unique: true })
-      .field('organizationId', v.string(), { index: true })
+      .edge('organization', { to: 'organization', field: 'organizationId' })
       .edge('user', { to: 'user', field: 'userId' })
       .index('organizationId_status', ['organizationId', 'status'])
       .index('userId_organizationId_status', [

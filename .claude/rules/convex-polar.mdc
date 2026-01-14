@@ -53,7 +53,14 @@ const schema = defineEntSchema({
   // User table - add Polar customer ID
   user: defineEnt({
     // ... your existing fields ...
-  }).field("customerId", v.optional(v.string()), { index: true }), // Polar customer ID
+  })
+    .field("customerId", v.optional(v.string()), { index: true }) // Polar customer ID
+    .edges("subscriptions", { to: "subscriptions", ref: "userId" }),
+
+  // Organization table - add subscription edge
+  organization: defineEnt({
+    // ... your existing fields ...
+  }).edge("subscription", { to: "subscriptions", ref: true }),
 
   // Subscriptions table - organization-based
   subscriptions: defineEnt({
@@ -214,7 +221,7 @@ const createAuthOptions = (ctx: GenericCtx) => ({
           products: [
             { productId: process.env.POLAR_PRODUCT_PREMIUM!, slug: "premium" },
           ],
-          successUrl: "/success?checkout_id={CHECKOUT_ID}",
+          successUrl: `${process.env.SITE_URL}/success?checkout_id={CHECKOUT_ID}`,
           theme: "light",
         }),
         portal(), // Customer portal management

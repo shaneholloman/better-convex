@@ -1,4 +1,9 @@
+// IMPORTANT: Import polyfills FIRST
+import '../lib/polar-polyfills';
+
 import { convex } from '@convex-dev/better-auth/plugins';
+import { checkout, polar, portal, webhooks } from '@polar-sh/better-auth';
+import { Polar } from '@polar-sh/sdk';
 import { type BetterAuthOptions, betterAuth } from 'better-auth';
 import { admin, organization } from 'better-auth/plugins';
 import {
@@ -10,9 +15,10 @@ import { entsTableFactory } from 'convex-ents';
 import { type GenericCtx, internalMutationWithTriggers } from '../lib/crpc';
 import { getEnv } from '../lib/get-env';
 import { createPersonalOrganization } from '../lib/organization-helpers';
+import { convertToDatabaseSubscription } from '../lib/polar-helpers';
 import { ac, roles } from '../shared/auth-shared';
 import { internal } from './_generated/api';
-import type { DataModel } from './_generated/dataModel';
+import type { DataModel, Id } from './_generated/dataModel';
 import type { ActionCtx, MutationCtx, QueryCtx } from './_generated/server';
 import authConfig from './auth.config';
 import schema, { entDefinitions } from './schema';
@@ -50,12 +56,11 @@ export const authClient = createClient<DataModel, typeof schema>({
         });
 
         // Create Polar customer for the new user
-        // await ctx.scheduler.runAfter(0, internal.polar.customer.createCustomer, {
-        //   userId: args.userId,
-        //   email: user.email,
-        //   name: user.name,
-        //   userId: user.userId,
-        // });
+        await ctx.scheduler.runAfter(0, internal.polarCustomer.createCustomer, {
+          email: user.email,
+          name: user.name,
+          userId: user._id,
+        });
       },
     },
     session: {
@@ -111,7 +116,6 @@ const createAuthOptions = (ctx: GenericCtx) =>
           },
         },
         sendInvitationEmail: async (data) => {
-          // Send invitation email via Resend
           await (ctx as ActionCtx).scheduler.runAfter(
             0,
             internal.email.sendOrganizationInviteEmail,
@@ -130,6 +134,69 @@ const createAuthOptions = (ctx: GenericCtx) =>
       convex({
         authConfig,
         jwks: process.env.JWKS,
+      }),
+      polar({
+        client: new Polar({
+          accessToken: process.env.POLAR_ACCESS_TOKEN!,
+          server:
+            process.env.POLAR_SERVER === 'production'
+              ? 'production'
+              : 'sandbox',
+        }),
+        // NO createCustomerOnSignUp - handled via scheduler in user.onCreate trigger
+        use: [
+          checkout({
+            authenticatedUsersOnly: true,
+            products: [
+              {
+                productId: process.env.POLAR_PRODUCT_PREMIUM!,
+                slug: 'premium',
+              },
+            ],
+            successUrl: `${process.env.SITE_URL}/success?checkout_id={CHECKOUT_ID}`,
+            theme: 'light',
+          }),
+          portal(), // Customer portal management
+          webhooks({
+            secret: process.env.POLAR_WEBHOOK_SECRET!,
+
+            // Link Polar customer to user via externalId
+            onCustomerCreated: async (payload) => {
+              // IMPORTANT: Use externalId, not metadata.userId
+              const userId = payload?.data.externalId as Id<'user'> | undefined;
+              if (!userId) return;
+
+              await (ctx as ActionCtx).runMutation(
+                internal.polarCustomer.updateUserPolarCustomerId,
+                {
+                  customerId: payload.data.id,
+                  userId,
+                }
+              );
+            },
+
+            // Create subscription record
+            onSubscriptionCreated: async (payload) => {
+              // IMPORTANT: Check customer.externalId, not customer.metadata.userId
+              if (!payload.data.customer.externalId) return;
+
+              await (ctx as ActionCtx).runMutation(
+                internal.polarSubscription.createSubscription,
+                { subscription: convertToDatabaseSubscription(payload.data) }
+              );
+            },
+
+            // Update subscription
+            onSubscriptionUpdated: async (payload) => {
+              if (!payload.data.customer.externalId) return;
+
+              await (ctx as ActionCtx).runMutation(
+                internal.polarSubscription.updateSubscription,
+                { subscription: convertToDatabaseSubscription(payload.data) }
+              );
+            },
+          }),
+        ],
       }),
     ],
     session: {
@@ -226,8 +293,7 @@ const createAuthOptions = (ctx: GenericCtx) =>
 
 export const getAuth = <Ctx extends QueryCtx | MutationCtx>(ctx: Ctx) =>
   betterAuth({
-    // biome-ignore lint/suspicious/noExplicitAny: Required for Better Auth type inference with plugins
-    ...createAuthOptions({} as any),
+    ...createAuthOptions(ctx),
     database: authClient.adapter(ctx, createAuthOptions),
   });
 

@@ -88,11 +88,23 @@ export declare const api: {
       { invitationId: Id<"invitation"> },
       null
     >;
+    addMember: FunctionReference<
+      "mutation",
+      "public",
+      { role: "owner" | "member"; userId: Id<"user"> },
+      null
+    >;
     cancelInvitation: FunctionReference<
       "mutation",
       "public",
       { invitationId: Id<"invitation"> },
       null
+    >;
+    checkSlug: FunctionReference<
+      "query",
+      "public",
+      { slug: string },
+      { available: boolean }
     >;
     createOrganization: FunctionReference<
       "mutation",
@@ -101,6 +113,12 @@ export declare const api: {
       { id: Id<"organization">; slug: string }
     >;
     deleteOrganization: FunctionReference<"mutation", "public", {}, null>;
+    getActiveMember: FunctionReference<
+      "query",
+      "public",
+      {},
+      { createdAt: number; id: Id<"member">; role: string } | null
+    >;
     getOrganization: FunctionReference<
       "query",
       "public",
@@ -142,6 +160,7 @@ export declare const api: {
         isActive: boolean;
         isPersonal: boolean;
         logo?: string | null;
+        membersCount: number;
         name: string;
         plan?: string;
         role?: string;
@@ -208,6 +227,19 @@ export declare const api: {
         status: string;
       }>
     >;
+    listUserInvitations: FunctionReference<
+      "query",
+      "public",
+      {},
+      Array<{
+        expiresAt: number;
+        id: Id<"invitation">;
+        inviterName: string | null;
+        organizationName: string;
+        organizationSlug: string;
+        role: string;
+      }>
+    >;
     rejectInvitation: FunctionReference<
       "mutation",
       "public",
@@ -237,6 +269,31 @@ export declare const api: {
       "public",
       { logo?: string; name?: string; slug?: string },
       null
+    >;
+  };
+  polarSubscription: {
+    cancelSubscription: FunctionReference<
+      "action",
+      "public",
+      {},
+      { message: string; success: boolean }
+    >;
+    getOrganizationSubscription: FunctionReference<
+      "query",
+      "public",
+      { organizationId: Id<"organization"> },
+      {
+        cancelAtPeriodEnd: boolean;
+        currentPeriodEnd?: string | null;
+        status: string;
+        subscriptionId: string;
+      } | null
+    >;
+    resumeSubscription: FunctionReference<
+      "action",
+      "public",
+      {},
+      { message: string; success: boolean }
     >;
   };
   projects: {
@@ -952,6 +1009,90 @@ export declare const internal: {
   };
   init: {
     default: FunctionReference<"mutation", "internal", {}, null>;
+  };
+  polarCustomer: {
+    createCustomer: FunctionReference<
+      "action",
+      "internal",
+      { email: string; name?: string; userId: Id<"user"> },
+      null
+    >;
+    updateUserPolarCustomerId: FunctionReference<
+      "mutation",
+      "internal",
+      { customerId: string; userId: Id<"user"> },
+      null
+    >;
+  };
+  polarSubscription: {
+    createSubscription: FunctionReference<
+      "mutation",
+      "internal",
+      {
+        subscription: {
+          amount?: number | null;
+          cancelAtPeriodEnd: boolean;
+          checkoutId?: string | null;
+          createdAt: string;
+          currency?: string | null;
+          currentPeriodEnd?: string | null;
+          currentPeriodStart: string;
+          customerCancellationComment?: string | null;
+          customerCancellationReason?: string | null;
+          endedAt?: string | null;
+          metadata: Record<string, any>;
+          modifiedAt?: string | null;
+          organizationId: Id<"organization">;
+          priceId?: string;
+          productId: string;
+          recurringInterval?: string | null;
+          startedAt?: string | null;
+          status: string;
+          subscriptionId: string;
+          userId: Id<"user">;
+        };
+      },
+      null
+    >;
+    getActiveSubscription: FunctionReference<
+      "query",
+      "internal",
+      { userId: Id<"user"> },
+      {
+        cancelAtPeriodEnd: boolean;
+        currentPeriodEnd?: string | null;
+        subscriptionId: string;
+      } | null
+    >;
+    updateSubscription: FunctionReference<
+      "mutation",
+      "internal",
+      {
+        subscription: {
+          amount?: number | null;
+          cancelAtPeriodEnd: boolean;
+          checkoutId?: string | null;
+          createdAt: string;
+          currency?: string | null;
+          currentPeriodEnd?: string | null;
+          currentPeriodStart: string;
+          customerCancellationComment?: string | null;
+          customerCancellationReason?: string | null;
+          endedAt?: string | null;
+          metadata: Record<string, any>;
+          modifiedAt?: string | null;
+          organizationId: Id<"organization">;
+          priceId?: string;
+          productId: string;
+          recurringInterval?: string | null;
+          startedAt?: string | null;
+          status: string;
+          subscriptionId: string;
+          userId: Id<"user">;
+        };
+      },
+      { periodChanged: boolean; subscriptionEnded: boolean; updated: boolean }
+    >;
   };
   reset: {
     deletePage: FunctionReference<

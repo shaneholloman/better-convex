@@ -506,6 +506,7 @@ export const getOrganizationOverview = authQuery
         isActive: z.boolean(),
         isPersonal: z.boolean(),
         logo: z.string().nullish(),
+        membersCount: z.number(),
         name: z.string(),
         plan: z.string().optional(),
         role: z.string().optional(),
@@ -523,12 +524,20 @@ export const getOrganizationOverview = authQuery
       return null;
     }
 
+    // Get members count
+    const members = await ctx
+      .table('member', 'organizationId_userId', (q) =>
+        q.eq('organizationId', org._id)
+      )
+      .take(DEFAULT_LIST_LIMIT);
+
     const organizationData = {
       id: org._id,
       createdAt: org.createdAt,
       isActive: user.activeOrganization?.id === org._id,
       isPersonal: org._id === user.personalOrganizationId,
       logo: org.logo,
+      membersCount: members.length || 1,
       name: org.name,
       plan: undefined,
       role: user.activeOrganization?.role,
@@ -900,6 +909,104 @@ export const cancelInvitation = authMutation
 
     // Note: Email cancellation through Resend is non-critical
     // The invitation being cancelled is the primary action
+
+    return null;
+  });
+
+// Check if slug is available
+export const checkSlug = authQuery
+  .input(z.object({ slug: z.string() }))
+  .output(z.object({ available: z.boolean() }))
+  .query(async ({ ctx, input }) => {
+    const existing = await ctx.table('organization').get('slug', input.slug);
+    return { available: !existing };
+  });
+
+// List invitations for the current user
+export const listUserInvitations = authQuery
+  .output(
+    z.array(
+      z.object({
+        id: zid('invitation'),
+        expiresAt: z.number(),
+        inviterName: z.string().nullable(),
+        organizationName: z.string(),
+        organizationSlug: z.string(),
+        role: z.string(),
+      })
+    )
+  )
+  .query(async ({ ctx }) => {
+    const invitations = await ctx
+      .table('invitation', 'email', (q) => q.eq('email', ctx.user.email))
+      .filter((q) => q.eq(q.field('status'), 'pending'));
+
+    return asyncMap(invitations, async (inv) => {
+      const org = await inv.edgeX('organization');
+      const inviter = await inv.edgeX('inviter');
+      return {
+        id: inv._id,
+        expiresAt: inv.expiresAt,
+        inviterName: inviter.name,
+        organizationName: org.name,
+        organizationSlug: org.slug,
+        role: inv.role || 'member',
+      };
+    });
+  });
+
+// Get current user's active membership
+export const getActiveMember = authQuery
+  .output(
+    z
+      .object({
+        id: zid('member'),
+        createdAt: z.number(),
+        role: z.string(),
+      })
+      .nullable()
+  )
+  .query(async ({ ctx }) => {
+    if (!ctx.user.activeOrganization) return null;
+
+    const member = await ctx
+      .table('member', 'organizationId_userId', (q) =>
+        q
+          .eq('organizationId', ctx.user.activeOrganization!.id)
+          .eq('userId', ctx.userId)
+      )
+      .first();
+
+    if (!member) return null;
+
+    return {
+      id: member._id,
+      createdAt: member.createdAt,
+      role: member.role,
+    };
+  });
+
+// Add member directly without invitation (admin use)
+export const addMember = authMutation
+  .meta({ rateLimit: 'organization/addMember' })
+  .input(
+    z.object({
+      role: z.enum(['owner', 'member']),
+      userId: zid('user'),
+    })
+  )
+  .output(z.null())
+  .mutation(async ({ ctx, input }) => {
+    await hasPermission(ctx, { permissions: { member: ['create'] } });
+
+    await ctx.auth.api.addMember({
+      body: {
+        organizationId: ctx.user.activeOrganization!.id,
+        role: input.role,
+        userId: input.userId,
+      },
+      headers: ctx.auth.headers,
+    });
 
     return null;
   });

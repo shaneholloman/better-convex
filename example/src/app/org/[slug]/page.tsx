@@ -1,7 +1,7 @@
 'use client';
 
 import type { Id } from '@convex/dataModel';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Building2,
   Calendar,
@@ -10,8 +10,10 @@ import {
   Settings,
   Users,
 } from 'lucide-react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
+import { toast } from 'sonner';
+import { InvitationBanner } from '@/components/organization/invitation-banner';
 import { OrganizationMembers } from '@/components/organization/organization-members';
 import { OrganizationOverview } from '@/components/organization/organization-overview';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -23,19 +25,34 @@ import { useCRPC } from '@/lib/convex/crpc';
 
 export default function OrganizationPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const slug = params.slug as string;
+  const inviteId = searchParams.get('invite') as Id<'invitation'> | null;
   const [activeTab, setActiveTab] = useState('overview');
+  const router = useRouter();
 
   const crpc = useCRPC();
 
-  const { data: organization, isLoading } = useQuery(
-    crpc.organization.getOrganization.queryOptions(
-      { slug },
+  const leaveOrganization = useMutation(
+    crpc.organization.leaveOrganization.mutationOptions({
+      meta: { errorMessage: 'Failed to leave organization' },
+      onSuccess: () => {
+        toast.success('Left organization successfully');
+        // Active org switches to personal automatically, navigate home
+        router.push('/');
+      },
+    })
+  );
+
+  const { data: organization, isPlaceholderData: isLoading } = useQuery(
+    crpc.organization.getOrganizationOverview.queryOptions(
+      { slug, inviteId: inviteId ?? undefined },
       {
         skipUnauth: true,
         placeholderData: {
-          id: '1' as Id<'organization'>,
+          id: '0' as Id<'organization'>,
           createdAt: new Date('2025-11-04').getTime(),
+          invitation: null,
           isActive: false,
           isPersonal: false,
           logo: null,
@@ -49,7 +66,7 @@ export default function OrganizationPage() {
     )
   );
 
-  const { data: members, isLoading: membersLoading } = useQuery(
+  const { data: members, isPlaceholderData: membersLoading } = useQuery(
     crpc.organization.listMembers.queryOptions(
       { slug },
       {
@@ -59,22 +76,22 @@ export default function OrganizationPage() {
           isPersonal: false,
           members: [
             {
-              id: '1' as Id<'member'>,
+              id: '0' as Id<'member'>,
               createdAt: new Date('2025-11-04').getTime(),
-              organizationId: '1' as Id<'organization'>,
+              organizationId: '0' as Id<'organization'>,
               role: 'owner',
               user: {
-                id: '1' as Id<'user'>,
+                id: '0' as Id<'user'>,
                 email: 'owner@example.com',
                 image: null,
                 name: 'Organization Owner',
               },
-              userId: '1' as Id<'user'>,
+              userId: '0' as Id<'user'>,
             },
             {
               id: '2' as Id<'member'>,
               createdAt: new Date('2025-11-04').getTime(),
-              organizationId: '1' as Id<'organization'>,
+              organizationId: '0' as Id<'organization'>,
               role: 'member',
               user: {
                 id: '2' as Id<'user'>,
@@ -106,6 +123,18 @@ export default function OrganizationPage() {
 
   return (
     <div className="mx-auto max-w-5xl @3xl:px-8 px-6 @3xl:py-12 py-8">
+      {organization?.invitation && (
+        <InvitationBanner
+          invitation={{
+            id: organization.invitation.id,
+            expiresAt: organization.invitation.expiresAt,
+            inviterName: organization.invitation.inviterName,
+            organizationName: organization.invitation.organizationName,
+            organizationSlug: organization.invitation.organizationSlug,
+            role: organization.invitation.role,
+          }}
+        />
+      )}
       <WithSkeleton className="w-full" isLoading={isLoading}>
         <header className="mb-10">
           <div className="flex items-start gap-4">
@@ -153,12 +182,23 @@ export default function OrganizationPage() {
             </div>
             <div className="flex shrink-0 gap-2">
               {isOwner && (
-                <Button size="sm" variant="ghost">
+                <Button
+                  onClick={() => setActiveTab('overview')}
+                  size="sm"
+                  title="Settings"
+                  variant="ghost"
+                >
                   <Settings className="h-4 w-4" />
                 </Button>
               )}
               {!(organization?.isPersonal || isOwner) && (
-                <Button size="sm" variant="ghost">
+                <Button
+                  disabled={leaveOrganization.isPending}
+                  onClick={() => leaveOrganization.mutate()}
+                  size="sm"
+                  title="Leave Organization"
+                  variant="ghost"
+                >
                   <LogOut className="h-4 w-4" />
                 </Button>
               )}
@@ -187,7 +227,10 @@ export default function OrganizationPage() {
           </TabsList>
 
           <TabsContent className="space-y-4" value="overview">
-            <OrganizationOverview organization={organization} />
+            <OrganizationOverview
+              onManageMembersAction={() => setActiveTab('members')}
+              slug={slug}
+            />
           </TabsContent>
 
           <TabsContent className="space-y-4" value="members">

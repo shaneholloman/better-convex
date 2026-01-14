@@ -987,7 +987,7 @@ Better Auth client setup with Convex adapter.
 
     export const getAuth = <Ctx extends QueryCtx | MutationCtx>(ctx: Ctx) => {
       return betterAuth({
-        ...createAuthOptions({} as GenericCtx),
+        ...createAuthOptions(ctx),
         database: authClient.adapter(ctx, createAuthOptions),
       });
     };
@@ -1088,7 +1088,7 @@ Better Auth client setup with Convex adapter.
 
     export const getAuth = <Ctx extends QueryCtx | MutationCtx>(ctx: Ctx) => {
       return betterAuth({
-        ...createAuthOptions({} as GenericCtx),
+        ...createAuthOptions(ctx),
         database: authClient.adapter(ctx, createAuthOptions),
       });
     };
@@ -1624,15 +1624,19 @@ export function getUserTier(
   return 'free';
 }
 
-/** Build rate limit key with tier suffix */
+/** Build rate limit key with tier suffix, falls back to default */
 export function getRateLimitKey(
   baseKey: string,
   tier: 'free' | 'premium' | 'public'
 ) {
-  if (['free', 'premium', 'public'].includes(baseKey)) {
-    return baseKey;
+  const specificKey = `${baseKey}:${tier}`;
+
+  // Use specific key if defined, otherwise fall back to default
+  if (specificKey in rateLimitConfig) {
+    return specificKey;
   }
-  return `${baseKey}:${tier}`;
+
+  return `default:${tier}`;
 }
 
 /** Check rate limit and throw if exceeded */

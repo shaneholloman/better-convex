@@ -27,7 +27,7 @@ type TodoListProps = {
 
 const placeholderTodos = [
   {
-    _id: '1' as Id<'todos'>,
+    _id: '0' as Id<'todos'>,
     _creationTime: new Date('2025-11-04').getTime(),
     title: 'Example Todo 1',
     description: 'This is a placeholder todo item',

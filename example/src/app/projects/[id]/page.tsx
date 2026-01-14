@@ -41,20 +41,20 @@ export default function ProjectDetailPage() {
 
   const crpc = useCRPC();
 
-  const { data: project, isLoading } = useQuery(
+  const { data: project, isPlaceholderData: isLoading } = useQuery(
     crpc.projects.get.queryOptions(
       { projectId },
       {
         placeholderData: {
-          _id: '1' as Id<'projects'>,
+          _id: '0' as Id<'projects'>,
           _creationTime: new Date('2025-11-04').getTime(),
           name: 'Loading Project',
           description: 'Loading description...',
-          ownerId: '1' as Id<'user'>,
+          ownerId: '0' as Id<'user'>,
           isPublic: false,
           archived: false,
           owner: {
-            _id: '1' as Id<'user'>,
+            _id: '0' as Id<'user'>,
             name: 'Loading',
             email: 'loading@example.com',
           },

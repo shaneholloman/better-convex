@@ -93,39 +93,40 @@ export function OrganizationMembers({
 
   const crpc = useCRPC();
 
-  const { data: pendingInvitations, isLoading: invitationsLoading } = useQuery(
-    crpc.organization.listPendingInvitations.queryOptions(
-      organization ? { slug: organization.slug } : skipToken,
-      {
-        skipUnauth: true,
-        placeholderData: [
-          {
-            id: '1' as Id<'invitation'>,
-            createdAt: new Date('2025-11-04').getTime(),
-            email: 'pending@example.com',
-            expiresAt:
-              new Date('2025-11-04').getTime() + 7 * 24 * 60 * 60 * 1000,
-            organizationId: '1' as Id<'organization'>,
-            role: 'member',
-            status: 'pending',
-          },
-        ],
-      }
-    )
-  ) as {
-    data:
-      | Array<{
-          id: Id<'invitation'>;
-          createdAt: number;
-          email: string;
-          expiresAt: number;
-          organizationId: Id<'organization'>;
-          role: string;
-          status: string;
-        }>
-      | undefined;
-    isLoading: boolean;
-  };
+  const { data: pendingInvitations, isPlaceholderData: invitationsLoading } =
+    useQuery(
+      crpc.organization.listPendingInvitations.queryOptions(
+        organization ? { slug: organization.slug } : skipToken,
+        {
+          skipUnauth: true,
+          placeholderData: [
+            {
+              id: '0' as Id<'invitation'>,
+              createdAt: new Date('2025-11-04').getTime(),
+              email: 'pending@example.com',
+              expiresAt:
+                new Date('2025-11-04').getTime() + 7 * 24 * 60 * 60 * 1000,
+              organizationId: '0' as Id<'organization'>,
+              role: 'member',
+              status: 'pending',
+            },
+          ],
+        }
+      )
+    ) as {
+      data:
+        | Array<{
+            id: Id<'invitation'>;
+            createdAt: number;
+            email: string;
+            expiresAt: number;
+            organizationId: Id<'organization'>;
+            role: string;
+            status: string;
+          }>
+        | undefined;
+      isPlaceholderData: boolean;
+    };
 
   const inviteMember = useMutation(
     crpc.organization.inviteMember.mutationOptions({
@@ -197,7 +198,7 @@ export function OrganizationMembers({
   };
 
   const isOwner = organization.role === 'owner';
-  const canInvite = isOwner && !organization.isPersonal;
+  const canInvite = isOwner;
 
   const getRoleIcon = (role?: string) => {
     switch (role) {

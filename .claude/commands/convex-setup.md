@@ -15,6 +15,7 @@ Monolithic structure with two apps in one repo (simpler HMR than monorepo):
 ```
 
 **Import rules** (enforced by Biome):
+
 - `src/` can import from `convex/shared/` via `@convex/*` alias
 - `src/` cannot import from `convex/functions/` or `convex/lib/`
 - `src/` should not import from `convex/*` packages (use `better-convex/*` wrappers)
@@ -147,8 +148,8 @@ npx better-convex env sync --auth --prod
 ### schema.ts (ctx.db)
 
 ```ts title="convex/functions/schema.ts"
-import { defineSchema, defineTable } from 'convex/server';
-import { v } from 'convex/values';
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
 
 export default defineSchema({
   user: defineTable({
@@ -163,8 +164,7 @@ export default defineSchema({
     banned: v.optional(v.boolean()),
     banReason: v.optional(v.string()),
     banExpires: v.optional(v.number()),
-  })
-    .index('email', ['email']),
+  }).index("email", ["email"]),
 
   session: defineTable({
     token: v.string(),
@@ -177,8 +177,8 @@ export default defineSchema({
     // Admin plugin
     impersonatedBy: v.optional(v.string()),
   })
-    .index('token', ['token'])
-    .index('userId', ['userId']),
+    .index("token", ["token"])
+    .index("userId", ["userId"]),
 
   account: defineTable({
     accountId: v.string(),
@@ -194,8 +194,8 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('accountId', ['accountId'])
-    .index('userId', ['userId']),
+    .index("accountId", ["accountId"])
+    .index("userId", ["userId"]),
 
   verification: defineTable({
     identifier: v.string(),
@@ -203,8 +203,7 @@ export default defineSchema({
     expiresAt: v.number(),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
-  })
-    .index('identifier', ['identifier']),
+  }).index("identifier", ["identifier"]),
 
   jwks: defineTable({
     publicKey: v.string(),
@@ -219,8 +218,8 @@ export default defineSchema({
 ### schema.ts (ctx.table - Ents)
 
 ```ts title="convex/functions/schema.ts"
-import { v } from 'convex/values';
-import { defineEnt, defineEntSchema, getEntDefinitions } from 'convex-ents';
+import { v } from "convex/values";
+import { defineEnt, defineEntSchema, getEntDefinitions } from "convex-ents";
 
 const schema = defineEntSchema({
   user: defineEnt({
@@ -236,9 +235,9 @@ const schema = defineEntSchema({
     banReason: v.optional(v.string()),
     banExpires: v.optional(v.number()),
   })
-    .index('email', ['email'])
-    .edges('sessions', { to: 'session', ref: 'userId' })
-    .edges('accounts', { to: 'account', ref: 'userId' }),
+    .index("email", ["email"])
+    .edges("sessions", { to: "session", ref: "userId" })
+    .edges("accounts", { to: "account", ref: "userId" }),
 
   session: defineEnt({
     token: v.string(),
@@ -250,8 +249,8 @@ const schema = defineEntSchema({
     // Admin plugin
     impersonatedBy: v.optional(v.string()),
   })
-    .index('token', ['token'])
-    .edge('user', { to: 'user', field: 'userId' }),
+    .index("token", ["token"])
+    .edge("user", { to: "user", field: "userId" }),
 
   account: defineEnt({
     accountId: v.string(),
@@ -266,8 +265,8 @@ const schema = defineEntSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index('accountId', ['accountId'])
-    .edge('user', { to: 'user', field: 'userId' }),
+    .index("accountId", ["accountId"])
+    .edge("user", { to: "user", field: "userId" }),
 
   verification: defineEnt({
     identifier: v.string(),
@@ -275,8 +274,7 @@ const schema = defineEntSchema({
     expiresAt: v.number(),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
-  })
-    .index('identifier', ['identifier']),
+  }).index("identifier", ["identifier"]),
 
   jwks: defineEnt({
     publicKey: v.string(),
@@ -294,16 +292,16 @@ export const entDefinitions = getEntDefinitions(schema);
 ### crpc.ts (ctx.db)
 
 ```ts title="convex/lib/crpc.ts"
-import { getHeaders, getSession } from 'better-convex/auth';
-import { CRPCError, initCRPC } from 'better-convex/server';
-import type { Auth } from 'convex/server';
+import { getHeaders, getSession } from "better-convex/auth";
+import { CRPCError, initCRPC } from "better-convex/server";
+import type { Auth } from "convex/server";
 import {
   customCtx,
   customMutation,
-} from 'convex-helpers/server/customFunctions';
-import { api } from '../_generated/api';
-import type { DataModel, Doc, Id } from '../_generated/dataModel';
-import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
+} from "convex-helpers/server/customFunctions";
+import { api } from "../_generated/api";
+import type { DataModel, Doc, Id } from "../_generated/dataModel";
+import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import {
   action,
   internalAction,
@@ -311,10 +309,10 @@ import {
   internalQuery,
   mutation,
   query,
-} from '../_generated/server';
-import { getAuth } from './auth';
-import { registerTriggers } from './triggers';
-import { rateLimitGuard } from './rate-limiter';
+} from "../_generated/server";
+import { getAuth } from "./auth";
+import { registerTriggers } from "./triggers";
+import { rateLimitGuard } from "./rate-limiter";
 
 // =============================================================================
 // Types
@@ -323,8 +321,8 @@ import { rateLimitGuard } from './rate-limiter';
 export type GenericCtx = QueryCtx | MutationCtx | ActionCtx;
 
 type SessionUser = {
-  id: Id<'user'>;
-  plan?: 'premium' | null;
+  id: Id<"user">;
+  plan?: "premium" | null;
   isAdmin?: boolean;
   // Add your user fields here
 };
@@ -332,24 +330,22 @@ type SessionUser = {
 /** Context with optional auth - user/userId may be null */
 export type MaybeAuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
   Ctx & {
-    auth: Auth &
-      Partial<ReturnType<typeof getAuth> & { headers: Headers }>;
+    auth: Auth & Partial<ReturnType<typeof getAuth> & { headers: Headers }>;
     user: SessionUser | null;
-    userId: Id<'user'> | null;
+    userId: Id<"user"> | null;
   };
 
 /** Context with required auth - user/userId guaranteed */
-export type AuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
-  Ctx & {
-    auth: Auth & ReturnType<typeof getAuth> & { headers: Headers };
-    user: SessionUser;
-    userId: Id<'user'>;
-  };
+export type AuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> = Ctx & {
+  auth: Auth & ReturnType<typeof getAuth> & { headers: Headers };
+  user: SessionUser;
+  userId: Id<"user">;
+};
 
 /** Context type for authenticated actions */
 export type AuthActionCtx = ActionCtx & {
   user: SessionUser;
-  userId: Id<'user'>;
+  userId: Id<"user">;
 };
 
 // =============================================================================
@@ -359,8 +355,8 @@ export type AuthActionCtx = ActionCtx & {
 const triggers = registerTriggers();
 
 type Meta = {
-  auth?: 'optional' | 'required';
-  role?: 'admin';
+  auth?: "optional" | "required";
+  role?: "admin";
   rateLimit?: string;
   dev?: boolean;
 };
@@ -399,10 +395,10 @@ const c = initCRPC
 
 /** Dev mode middleware - throws in production if meta.dev: true */
 const devMiddleware = c.middleware<object>(({ meta, next, ctx }) => {
-  if (meta.dev && process.env.DEPLOY_ENV === 'production') {
+  if (meta.dev && process.env.DEPLOY_ENV === "production") {
     throw new CRPCError({
-      code: 'FORBIDDEN',
-      message: 'This function is only available in development',
+      code: "FORBIDDEN",
+      message: "This function is only available in development",
     });
   }
   return next({ ctx });
@@ -410,11 +406,11 @@ const devMiddleware = c.middleware<object>(({ meta, next, ctx }) => {
 
 /** Rate limit middleware - applies rate limiting based on meta.rateLimit and user tier */
 const rateLimitMiddleware = c.middleware<
-  MutationCtx & { user?: Pick<SessionUser, 'id' | 'plan'> | null }
+  MutationCtx & { user?: Pick<SessionUser, "id" | "plan"> | null }
 >(async ({ ctx, meta, next }) => {
   await rateLimitGuard({
     ...ctx,
-    rateLimitKey: meta.rateLimit ?? 'default',
+    rateLimitKey: meta.rateLimit ?? "default",
     user: ctx.user ?? null,
   });
   return next({ ctx });
@@ -423,8 +419,11 @@ const rateLimitMiddleware = c.middleware<
 /** Role middleware - checks admin role from meta after auth middleware */
 const roleMiddleware = c.middleware<object>(({ ctx, meta, next }) => {
   const user = (ctx as { user?: { isAdmin?: boolean } }).user;
-  if (meta.role === 'admin' && !user?.isAdmin) {
-    throw new CRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+  if (meta.role === "admin" && !user?.isAdmin) {
+    throw new CRPCError({
+      code: "FORBIDDEN",
+      message: "Admin access required",
+    });
   }
   return next({ ctx });
 });
@@ -441,7 +440,7 @@ export const privateQuery = c.query.internal();
 
 /** Optional auth query - ctx.user may be null, supports dev: true in meta */
 export const optionalAuthQuery = c.query
-  .meta({ auth: 'optional' })
+  .meta({ auth: "optional" })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
     const session = await getSession(ctx);
@@ -467,12 +466,15 @@ export const optionalAuthQuery = c.query
 
 /** Auth query - ctx.user required, supports role: 'admin' and dev: true in meta */
 export const authQuery = c.query
-  .meta({ auth: 'required' })
+  .meta({ auth: "required" })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
     const session = await getSession(ctx);
     if (!session) {
-      throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+      throw new CRPCError({
+        code: "UNAUTHORIZED",
+        message: "Not authenticated",
+      });
     }
 
     const user = (await ctx.db.get(session.userId))!;
@@ -506,7 +508,7 @@ export const privateMutation = c.mutation.internal();
 
 /** Optional auth mutation - ctx.user may be null, rate limited, supports dev: true */
 export const optionalAuthMutation = c.mutation
-  .meta({ auth: 'optional' })
+  .meta({ auth: "optional" })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
     const session = await getSession(ctx);
@@ -533,12 +535,15 @@ export const optionalAuthMutation = c.mutation
 
 /** Auth mutation - ctx.user required, rate limited, supports role: 'admin' and dev: true */
 export const authMutation = c.mutation
-  .meta({ auth: 'required' })
+  .meta({ auth: "required" })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
     const session = await getSession(ctx);
     if (!session) {
-      throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+      throw new CRPCError({
+        code: "UNAUTHORIZED",
+        message: "Not authenticated",
+      });
     }
 
     const user = (await ctx.db.get(session.userId))!;
@@ -571,16 +576,21 @@ export const privateAction = c.action.internal();
 
 /** Auth action - ctx.user required, supports dev: true in meta */
 export const authAction = c.action
-  .meta({ auth: 'required' })
+  .meta({ auth: "required" })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
     // Actions don't have db access - use runQuery
     // biome-ignore lint/suspicious/noExplicitAny: circular reference
     const rawUser: any = await ctx.runQuery(api.user.getSessionUser, {});
     if (!rawUser) {
-      throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+      throw new CRPCError({
+        code: "UNAUTHORIZED",
+        message: "Not authenticated",
+      });
     }
-    return next({ ctx: { ...ctx, user: rawUser as SessionUser, userId: rawUser.id } });
+    return next({
+      ctx: { ...ctx, user: rawUser as SessionUser, userId: rawUser.id },
+    });
   });
 
 // =============================================================================
@@ -599,16 +609,16 @@ export const internalMutationWithTriggers = customMutation(
 ### crpc.ts (ctx.table - Ents)
 
 ```ts title="convex/lib/crpc.ts"
-import { getHeaders, getSession } from 'better-convex/auth';
-import { CRPCError, initCRPC } from 'better-convex/server';
-import type { Auth } from 'convex/server';
+import { getHeaders, getSession } from "better-convex/auth";
+import { CRPCError, initCRPC } from "better-convex/server";
+import type { Auth } from "convex/server";
 import {
   customCtx,
   customMutation,
-} from 'convex-helpers/server/customFunctions';
-import { api } from '../_generated/api';
-import type { DataModel, Doc, Id } from '../_generated/dataModel';
-import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
+} from "convex-helpers/server/customFunctions";
+import { api } from "../_generated/api";
+import type { DataModel, Doc, Id } from "../_generated/dataModel";
+import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import {
   action,
   internalAction,
@@ -616,11 +626,11 @@ import {
   internalQuery,
   mutation,
   query,
-} from '../_generated/server';
-import { getAuth } from './auth';
-import { type CtxWithTable, getCtxWithTable } from './ents';
-import { rateLimitGuard } from './rate-limiter';
-import { registerTriggers } from './triggers';
+} from "../_generated/server";
+import { getAuth } from "./auth";
+import { type CtxWithTable, getCtxWithTable } from "./ents";
+import { rateLimitGuard } from "./rate-limiter";
+import { registerTriggers } from "./triggers";
 
 // =============================================================================
 // Types
@@ -629,8 +639,8 @@ import { registerTriggers } from './triggers';
 export type GenericCtx = QueryCtx | MutationCtx | ActionCtx;
 
 type SessionUser = {
-  id: Id<'user'>;
-  plan?: 'premium' | null;
+  id: Id<"user">;
+  plan?: "premium" | null;
   isAdmin?: boolean;
   // Add your user fields here
 };
@@ -638,10 +648,9 @@ type SessionUser = {
 /** Context with optional auth - user/userId may be null */
 export type MaybeAuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
   CtxWithTable<Ctx> & {
-    auth: Auth &
-      Partial<ReturnType<typeof getAuth> & { headers: Headers }>;
+    auth: Auth & Partial<ReturnType<typeof getAuth> & { headers: Headers }>;
     user: SessionUser | null;
-    userId: Id<'user'> | null;
+    userId: Id<"user"> | null;
   };
 
 /** Context with required auth - user/userId guaranteed */
@@ -649,13 +658,13 @@ export type AuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
   CtxWithTable<Ctx> & {
     auth: Auth & ReturnType<typeof getAuth> & { headers: Headers };
     user: SessionUser;
-    userId: Id<'user'>;
+    userId: Id<"user">;
   };
 
 /** Context type for authenticated actions */
 export type AuthActionCtx = ActionCtx & {
   user: SessionUser;
-  userId: Id<'user'>;
+  userId: Id<"user">;
 };
 
 // =============================================================================
@@ -665,8 +674,8 @@ export type AuthActionCtx = ActionCtx & {
 const triggers = registerTriggers();
 
 type Meta = {
-  auth?: 'optional' | 'required';
-  role?: 'admin';
+  auth?: "optional" | "required";
+  role?: "admin";
   rateLimit?: string;
   dev?: boolean;
 };
@@ -709,10 +718,10 @@ const c = initCRPC
 
 /** Dev mode middleware - throws in production if meta.dev: true */
 const devMiddleware = c.middleware<object>(({ meta, next, ctx }) => {
-  if (meta.dev && process.env.DEPLOY_ENV === 'production') {
+  if (meta.dev && process.env.DEPLOY_ENV === "production") {
     throw new CRPCError({
-      code: 'FORBIDDEN',
-      message: 'This function is only available in development',
+      code: "FORBIDDEN",
+      message: "This function is only available in development",
     });
   }
   return next({ ctx });
@@ -720,11 +729,11 @@ const devMiddleware = c.middleware<object>(({ meta, next, ctx }) => {
 
 /** Rate limit middleware - applies rate limiting based on meta.rateLimit and user tier */
 const rateLimitMiddleware = c.middleware<
-  MutationCtx & { user?: Pick<SessionUser, 'id' | 'plan'> | null }
+  MutationCtx & { user?: Pick<SessionUser, "id" | "plan"> | null }
 >(async ({ ctx, meta, next }) => {
   await rateLimitGuard({
     ...ctx,
-    rateLimitKey: meta.rateLimit ?? 'default',
+    rateLimitKey: meta.rateLimit ?? "default",
     user: ctx.user ?? null,
   });
   return next({ ctx });
@@ -733,8 +742,11 @@ const rateLimitMiddleware = c.middleware<
 /** Role middleware - checks admin role from meta after auth middleware */
 const roleMiddleware = c.middleware<object>(({ ctx, meta, next }) => {
   const user = (ctx as { user?: { isAdmin?: boolean } }).user;
-  if (meta.role === 'admin' && !user?.isAdmin) {
-    throw new CRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+  if (meta.role === "admin" && !user?.isAdmin) {
+    throw new CRPCError({
+      code: "FORBIDDEN",
+      message: "Admin access required",
+    });
   }
   return next({ ctx });
 });
@@ -751,7 +763,7 @@ export const privateQuery = c.query.internal();
 
 /** Optional auth query - ctx.user may be null, supports dev: true in meta */
 export const optionalAuthQuery = c.query
-  .meta({ auth: 'optional' })
+  .meta({ auth: "optional" })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
     const session = await getSession(ctx);
@@ -759,7 +771,7 @@ export const optionalAuthQuery = c.query
       return next({ ctx: { ...ctx, user: null, userId: null } });
     }
 
-    const user = await ctx.table('user').getX(session.userId);
+    const user = await ctx.table("user").getX(session.userId);
 
     return next({
       ctx: {
@@ -777,15 +789,18 @@ export const optionalAuthQuery = c.query
 
 /** Auth query - ctx.user required, supports role: 'admin' and dev: true in meta */
 export const authQuery = c.query
-  .meta({ auth: 'required' })
+  .meta({ auth: "required" })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
     const session = await getSession(ctx);
     if (!session) {
-      throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+      throw new CRPCError({
+        code: "UNAUTHORIZED",
+        message: "Not authenticated",
+      });
     }
 
-    const user = await ctx.table('user').getX(session.userId);
+    const user = await ctx.table("user").getX(session.userId);
 
     return next({
       ctx: {
@@ -816,7 +831,7 @@ export const privateMutation = c.mutation.internal();
 
 /** Optional auth mutation - ctx.user may be null, rate limited, supports dev: true */
 export const optionalAuthMutation = c.mutation
-  .meta({ auth: 'optional' })
+  .meta({ auth: "optional" })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
     const session = await getSession(ctx);
@@ -824,7 +839,7 @@ export const optionalAuthMutation = c.mutation
       return next({ ctx: { ...ctx, user: null, userId: null } });
     }
 
-    const user = await ctx.table('user').getX(session.userId);
+    const user = await ctx.table("user").getX(session.userId);
 
     return next({
       ctx: {
@@ -843,15 +858,18 @@ export const optionalAuthMutation = c.mutation
 
 /** Auth mutation - ctx.user required, rate limited, supports role: 'admin' and dev: true */
 export const authMutation = c.mutation
-  .meta({ auth: 'required' })
+  .meta({ auth: "required" })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
     const session = await getSession(ctx);
     if (!session) {
-      throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+      throw new CRPCError({
+        code: "UNAUTHORIZED",
+        message: "Not authenticated",
+      });
     }
 
-    const user = await ctx.table('user').getX(session.userId);
+    const user = await ctx.table("user").getX(session.userId);
 
     return next({
       ctx: {
@@ -881,16 +899,21 @@ export const privateAction = c.action.internal();
 
 /** Auth action - ctx.user required, supports dev: true in meta */
 export const authAction = c.action
-  .meta({ auth: 'required' })
+  .meta({ auth: "required" })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
     // Actions don't have db access - use runQuery
     // biome-ignore lint/suspicious/noExplicitAny: circular reference
     const rawUser: any = await ctx.runQuery(api.user.getSessionUser, {});
     if (!rawUser) {
-      throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+      throw new CRPCError({
+        code: "UNAUTHORIZED",
+        message: "Not authenticated",
+      });
     }
-    return next({ ctx: { ...ctx, user: rawUser as SessionUser, userId: rawUser.id } });
+    return next({
+      ctx: { ...ctx, user: rawUser as SessionUser, userId: rawUser.id },
+    });
   });
 
 // =============================================================================
@@ -909,16 +932,16 @@ export const internalMutationWithTriggers = customMutation(
 ### types.ts
 
 ```ts title="convex/shared/types.ts"
-import type { inferApiInputs, inferApiOutputs } from 'better-convex/server';
-import type { WithoutSystemFields } from 'convex/server';
+import type { inferApiInputs, inferApiOutputs } from "better-convex/server";
+import type { WithoutSystemFields } from "convex/server";
 
-import type { api } from '../functions/_generated/api';
-import type { Doc, TableNames } from '../functions/_generated/dataModel';
+import type { api } from "../functions/_generated/api";
+import type { Doc, TableNames } from "../functions/_generated/dataModel";
 
 export type DocWithId<TableName extends TableNames> = WithoutSystemFields<
   Doc<TableName>
 > & {
-  id: Doc<TableName>['_id'];
+  id: Doc<TableName>["_id"];
 };
 
 // API type inference (tRPC-style)
@@ -942,17 +965,21 @@ bunx better-convex dev
 ### auth.ts (ctx.db)
 
 ```ts title="convex/functions/auth.ts"
-import { betterAuth, type BetterAuthOptions } from 'better-auth';
-import { convex } from '@convex-dev/better-auth/plugins';
-import { admin } from 'better-auth/plugins';
-import { createClient, createApi, type AuthFunctions } from 'better-convex/auth';
-import { internal } from './_generated/api';
-import type { MutationCtx, QueryCtx } from './_generated/server';
-import type { GenericCtx } from '../lib/crpc';
-import type { DataModel } from './_generated/dataModel';
-import { internalMutationWithTriggers } from '../lib/crpc';
-import schema from './schema';
-import authConfig from './auth.config';
+import { betterAuth, type BetterAuthOptions } from "better-auth";
+import { convex } from "@convex-dev/better-auth/plugins";
+import { admin } from "better-auth/plugins";
+import {
+  createClient,
+  createApi,
+  type AuthFunctions,
+} from "better-convex/auth";
+import { internal } from "./_generated/api";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { GenericCtx } from "../lib/crpc";
+import type { DataModel } from "./_generated/dataModel";
+import { internalMutationWithTriggers } from "../lib/crpc";
+import schema from "./schema";
+import authConfig from "./auth.config";
 
 const authFunctions: AuthFunctions = internal.auth;
 
@@ -965,14 +992,14 @@ export const authClient = createClient<DataModel, typeof schema>({
       beforeCreate: async (_ctx, data) => {
         const username =
           data.username?.trim() ||
-          data.email?.split('@')[0] ||
+          data.email?.split("@")[0] ||
           `user-${Date.now()}`;
         return { ...data, username };
       },
       onCreate: async (ctx, user) => {
-        await ctx.db.insert('profiles', {
+        await ctx.db.insert("profiles", {
           userId: user._id,
-          bio: '',
+          bio: "",
         });
       },
     },
@@ -983,10 +1010,7 @@ export const createAuthOptions = (ctx: GenericCtx) =>
   ({
     baseURL: process.env.SITE_URL!,
     database: authClient.httpAdapter(ctx),
-    plugins: [
-      convex({ authConfig, jwks: process.env.JWKS }),
-      admin(),
-    ],
+    plugins: [convex({ authConfig, jwks: process.env.JWKS }), admin()],
     session: {
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24 * 15,
@@ -997,14 +1021,15 @@ export const createAuthOptions = (ctx: GenericCtx) =>
         clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       },
     },
-    trustedOrigins: [process.env.SITE_URL ?? 'http://localhost:3000'],
+    trustedOrigins: [process.env.SITE_URL ?? "http://localhost:3000"],
   }) satisfies BetterAuthOptions;
 
-export const createAuth = (ctx: GenericCtx) => betterAuth(createAuthOptions(ctx));
+export const createAuth = (ctx: GenericCtx) =>
+  betterAuth(createAuthOptions(ctx));
 
 export const getAuth = <Ctx extends QueryCtx | MutationCtx>(ctx: Ctx) => {
   return betterAuth({
-    ...createAuthOptions({} as GenericCtx),
+    ...createAuthOptions(ctx),
     database: authClient.adapter(ctx, createAuthOptions),
   });
 };
@@ -1040,19 +1065,23 @@ export const auth = betterAuth(createAuthOptions({} as any));
 ### auth.ts (ctx.table - Ents)
 
 ```ts title="convex/functions/auth.ts"
-import { betterAuth, type BetterAuthOptions } from 'better-auth';
-import { convex } from '@convex-dev/better-auth/plugins';
-import { admin } from 'better-auth/plugins';
-import { createClient, createApi, type AuthFunctions } from 'better-convex/auth';
-import { entsTableFactory } from 'convex-ents';
-import { entDefinitions } from '../lib/ents';
-import { internalMutationWithTriggers } from '../lib/crpc';
-import { internal } from './_generated/api';
-import type { MutationCtx, QueryCtx } from './_generated/server';
-import type { GenericCtx } from '../lib/crpc';
-import type { DataModel } from './_generated/dataModel';
-import schema from './schema';
-import authConfig from './auth.config';
+import { betterAuth, type BetterAuthOptions } from "better-auth";
+import { convex } from "@convex-dev/better-auth/plugins";
+import { admin } from "better-auth/plugins";
+import {
+  createClient,
+  createApi,
+  type AuthFunctions,
+} from "better-convex/auth";
+import { entsTableFactory } from "convex-ents";
+import { entDefinitions } from "../lib/ents";
+import { internalMutationWithTriggers } from "../lib/crpc";
+import { internal } from "./_generated/api";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { GenericCtx } from "../lib/crpc";
+import type { DataModel } from "./_generated/dataModel";
+import schema from "./schema";
+import authConfig from "./auth.config";
 
 const authFunctions: AuthFunctions = internal.auth;
 
@@ -1065,16 +1094,16 @@ export const authClient = createClient<DataModel, typeof schema>({
       beforeCreate: async (_ctx, data) => {
         const username =
           data.username?.trim() ||
-          data.email?.split('@')[0] ||
+          data.email?.split("@")[0] ||
           `user-${Date.now()}`;
         return { ...data, username };
       },
       onCreate: async (ctx, user) => {
         const table = entsTableFactory(ctx, entDefinitions);
 
-        await table('profiles').insert({
+        await table("profiles").insert({
           userId: user._id,
-          bio: '',
+          bio: "",
         });
       },
     },
@@ -1085,10 +1114,7 @@ export const createAuthOptions = (ctx: GenericCtx) =>
   ({
     baseURL: process.env.SITE_URL!,
     database: authClient.httpAdapter(ctx),
-    plugins: [
-      convex({ authConfig, jwks: process.env.JWKS }),
-      admin(),
-    ],
+    plugins: [convex({ authConfig, jwks: process.env.JWKS }), admin()],
     session: {
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24 * 15,
@@ -1099,14 +1125,15 @@ export const createAuthOptions = (ctx: GenericCtx) =>
         clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
       },
     },
-    trustedOrigins: [process.env.SITE_URL ?? 'http://localhost:3000'],
+    trustedOrigins: [process.env.SITE_URL ?? "http://localhost:3000"],
   }) satisfies BetterAuthOptions;
 
-export const createAuth = (ctx: GenericCtx) => betterAuth(createAuthOptions(ctx));
+export const createAuth = (ctx: GenericCtx) =>
+  betterAuth(createAuthOptions(ctx));
 
 export const getAuth = <Ctx extends QueryCtx | MutationCtx>(ctx: Ctx) => {
   return betterAuth({
-    ...createAuthOptions({} as GenericCtx),
+    ...createAuthOptions(ctx),
     database: authClient.adapter(ctx, createAuthOptions),
   });
 };
@@ -1142,8 +1169,8 @@ export const auth = betterAuth(createAuthOptions({} as any));
 ### auth.config.ts
 
 ```ts title="convex/functions/auth.config.ts"
-import { getAuthConfigProvider } from '@convex-dev/better-auth/auth-config';
-import type { AuthConfig } from 'convex/server';
+import { getAuthConfigProvider } from "@convex-dev/better-auth/auth-config";
+import type { AuthConfig } from "convex/server";
 
 export default {
   providers: [getAuthConfigProvider({ jwks: process.env.JWKS })],
@@ -1153,9 +1180,9 @@ export default {
 ### http.ts
 
 ```ts title="convex/functions/http.ts"
-import { httpRouter } from 'convex/server';
-import { registerRoutes } from 'better-convex/auth';
-import { createAuth } from './auth';
+import { httpRouter } from "convex/server";
+import { registerRoutes } from "better-convex/auth";
+import { createAuth } from "./auth";
 
 const http = httpRouter();
 
@@ -1167,16 +1194,16 @@ export default http;
 ### user.ts
 
 ```ts title="convex/functions/user.ts"
-import { z } from 'zod';
-import { zid } from 'convex-helpers/server/zod';
-import { optionalAuthQuery } from '../lib/crpc';
+import { z } from "zod";
+import { zid } from "convex-helpers/server/zod";
+import { optionalAuthQuery } from "../lib/crpc";
 
 /** Get session user - used by AuthSync and authAction */
 export const getSessionUser = optionalAuthQuery
   .output(
     z.union([
       z.object({
-        id: zid('user'),
+        id: zid("user"),
         email: z.string(),
         image: z.string().nullish(),
         name: z.string(),
@@ -1202,35 +1229,31 @@ export const getSessionUser = optionalAuthQuery
 ### auth-shared.ts
 
 ```ts title="convex/shared/auth-shared.ts"
-import type { Doc, Id } from '../functions/_generated/dataModel';
+import type { Doc, Id } from "../functions/_generated/dataModel";
 
-export type SessionUser = Omit<Doc<'user'>, '_creationTime' | '_id'> & {
-  id: Id<'user'>;
+export type SessionUser = Omit<Doc<"user">, "_creationTime" | "_id"> & {
+  id: Id<"user">;
   isAdmin: boolean;
-  session: Doc<'session'>;
+  session: Doc<"session">;
   impersonatedBy?: string;
-  plan?: 'premium' | 'team';
+  plan?: "premium" | "team";
 };
 ```
 
 ### auth-client.ts
 
 ```ts title="src/lib/convex/auth-client.ts"
-import { convexClient } from '@convex-dev/better-auth/client/plugins';
-import { adminClient, inferAdditionalFields } from 'better-auth/client/plugins';
-import { createAuthClient } from 'better-auth/react';
-import { createAuthMutations } from 'better-convex/react';
+import { convexClient } from "@convex-dev/better-auth/client/plugins";
+import { adminClient, inferAdditionalFields } from "better-auth/client/plugins";
+import { createAuthClient } from "better-auth/react";
+import { createAuthMutations } from "better-convex/react";
 
 // Import your Auth type from convex
-import type { Auth } from '@convex/auth-shared';
+import type { Auth } from "@convex/auth-shared";
 
 export const authClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_SITE_URL!,
-  plugins: [
-    inferAdditionalFields<Auth>(),
-    adminClient(),
-    convexClient(),
-  ],
+  plugins: [inferAdditionalFields<Auth>(), adminClient(), convexClient()],
 });
 
 export const { useActiveOrganization, useListOrganizations } = authClient;
@@ -1251,24 +1274,24 @@ export const {
 ### convex-provider.tsx
 
 ```tsx title="src/lib/convex/convex-provider.tsx"
-'use client';
+"use client";
 
-import { QueryClientProvider as TanstackQueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { ConvexAuthProvider } from 'better-convex/auth-client';
+import { QueryClientProvider as TanstackQueryClientProvider } from "@tanstack/react-query";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { ConvexAuthProvider } from "better-convex/auth-client";
 import {
   ConvexReactClient,
   getConvexQueryClientSingleton,
   getQueryClientSingleton,
   useAuthStore,
-} from 'better-convex/react';
-import { useRouter } from 'next/navigation';
-import type { ReactNode } from 'react';
-import { toast } from 'sonner';
+} from "better-convex/react";
+import { useRouter } from "next/navigation";
+import type { ReactNode } from "react";
+import { toast } from "sonner";
 
-import { authClient } from '@/lib/convex/auth-client';
-import { CRPCProvider } from '@/lib/convex/crpc';
-import { createQueryClient } from '@/lib/convex/query-client';
+import { authClient } from "@/lib/convex/auth-client";
+import { CRPCProvider } from "@/lib/convex/crpc";
+import { createQueryClient } from "@/lib/convex/query-client";
 
 const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -1287,13 +1310,13 @@ export function BetterConvexProvider({
       client={convex}
       initialToken={token}
       onMutationUnauthorized={() => {
-        router.push('/login');
+        router.push("/login");
       }}
       onQueryUnauthorized={({ queryName }) => {
-        if (process.env.NODE_ENV === 'development') {
+        if (process.env.NODE_ENV === "development") {
           toast.error(`${queryName} requires authentication`);
         } else {
-          router.push('/login');
+          router.push("/login");
         }
       }}
     >
@@ -1316,7 +1339,10 @@ function QueryClientProvider({ children }: { children: ReactNode }) {
     <TanstackQueryClientProvider client={queryClient}>
       <CRPCProvider convexClient={convex} convexQueryClient={convexQueryClient}>
         {children}
-        <ReactQueryDevtools buttonPosition="bottom-left" initialIsOpen={false} />
+        <ReactQueryDevtools
+          buttonPosition="bottom-left"
+          initialIsOpen={false}
+        />
       </CRPCProvider>
     </TanstackQueryClientProvider>
   );
@@ -1331,17 +1357,17 @@ import {
   defaultShouldDehydrateQuery,
   QueryCache,
   QueryClient,
-} from '@tanstack/react-query';
-import { isCRPCClientError } from 'better-convex/crpc';
-import { toast } from 'sonner';
-import SuperJSON from 'superjson';
+} from "@tanstack/react-query";
+import { isCRPCClientError } from "better-convex/crpc";
+import { toast } from "sonner";
+import SuperJSON from "superjson";
 
 /** Shared hydration config for SSR data transfer (used by client + server) */
-export const hydrationConfig: Pick<DefaultOptions, 'dehydrate' | 'hydrate'> = {
+export const hydrationConfig: Pick<DefaultOptions, "dehydrate" | "hydrate"> = {
   dehydrate: {
     serializeData: SuperJSON.serialize,
     shouldDehydrateQuery: (query) =>
-      defaultShouldDehydrateQuery(query) || query.state.status === 'pending',
+      defaultShouldDehydrateQuery(query) || query.state.status === "pending",
     shouldRedactErrors: () => false,
   },
   hydrate: {
@@ -1364,7 +1390,9 @@ export function createQueryClient() {
       mutations: {
         onError: (err) => {
           const error = err as Error & { data?: { message?: string } };
-          toast.error(error.data?.message || error.message || 'Something went wrong');
+          toast.error(
+            error.data?.message || error.message || "Something went wrong"
+          );
         },
       },
       queries: {
@@ -1376,7 +1404,7 @@ export function createQueryClient() {
             error instanceof Error ? error.message : String(error);
 
           // Retry timeouts
-          if (message.includes('timed out') && failureCount < 3) {
+          if (message.includes("timed out") && failureCount < 3) {
             console.warn(
               `[QueryClient] Retrying timed out query (attempt ${failureCount + 1}/3)`
             );
@@ -1396,9 +1424,9 @@ export function createQueryClient() {
 ### crpc.tsx
 
 ```tsx title="src/lib/convex/crpc.tsx"
-import { api } from '@convex/api';
-import { meta } from '@convex/meta';
-import { createCRPCContext } from 'better-convex/react';
+import { api } from "@convex/api";
+import { meta } from "@convex/meta";
+import { createCRPCContext } from "better-convex/react";
 
 export const { CRPCProvider, useCRPC, useCRPCClient } = createCRPCContext(
   api,
@@ -1413,9 +1441,9 @@ export const { CRPCProvider, useCRPC, useCRPCClient } = createCRPCContext(
 ### server.ts
 
 ```ts title="src/lib/convex/server.ts"
-import { api } from '@convex/api';
-import { meta } from '@convex/meta';
-import { convexBetterAuth } from 'better-convex/auth-nextjs';
+import { api } from "@convex/api";
+import { meta } from "@convex/meta";
+import { convexBetterAuth } from "better-convex/auth-nextjs";
 
 export const { createContext, createCaller, handler } = convexBetterAuth({
   api,
@@ -1427,7 +1455,7 @@ export const { createContext, createCaller, handler } = convexBetterAuth({
 ### route.ts
 
 ```ts title="src/app/api/auth/[...all]/route.ts"
-import { handler } from '@/lib/convex/server';
+import { handler } from "@/lib/convex/server";
 
 export const { GET, POST } = handler;
 ```
@@ -1435,25 +1463,25 @@ export const { GET, POST } = handler;
 ### rsc.tsx
 
 ```tsx title="src/lib/convex/rsc.tsx"
-import 'server-only';
+import "server-only";
 
-import { api } from '@convex/api';
-import { meta } from '@convex/meta';
-import type { FetchQueryOptions } from '@tanstack/react-query';
+import { api } from "@convex/api";
+import { meta } from "@convex/meta";
+import type { FetchQueryOptions } from "@tanstack/react-query";
 import {
   dehydrate,
   HydrationBoundary,
   QueryClient,
-} from '@tanstack/react-query';
+} from "@tanstack/react-query";
 import {
   createServerCRPCProxy,
   getServerQueryClientOptions,
-} from 'better-convex/rsc';
-import { headers } from 'next/headers';
-import { cache } from 'react';
+} from "better-convex/rsc";
+import { headers } from "next/headers";
+import { cache } from "react";
 
-import { hydrationConfig } from './query-client';
-import { createCaller, createContext } from './server';
+import { hydrationConfig } from "./query-client";
+import { createCaller, createContext } from "./server";
 
 // CRPC proxy for RSC
 export const crpc = createServerCRPCProxy(api, meta);
@@ -1518,11 +1546,11 @@ export function HydrateClient({ children }: { children: React.ReactNode }) {
 ### ents.ts
 
 ```ts title="convex/lib/ents.ts"
-import type { GenericEnt, GenericEntWriter } from 'convex-ents';
-import { entsTableFactory, getEntDefinitions } from 'convex-ents';
-import type { TableNames } from '../functions/_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../functions/_generated/server';
-import schema from '../functions/schema';
+import type { GenericEnt, GenericEntWriter } from "convex-ents";
+import { entsTableFactory, getEntDefinitions } from "convex-ents";
+import type { TableNames } from "../functions/_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../functions/_generated/server";
+import schema from "../functions/schema";
 
 export const entDefinitions = getEntDefinitions(schema);
 
@@ -1539,7 +1567,9 @@ export type EntWriter<TableName extends TableNames> = GenericEntWriter<
 export type CtxWithTable<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
   ReturnType<typeof getCtxWithTable<Ctx>>;
 
-export const getCtxWithTable = <Ctx extends MutationCtx | QueryCtx>(ctx: Ctx) => ({
+export const getCtxWithTable = <Ctx extends MutationCtx | QueryCtx>(
+  ctx: Ctx
+) => ({
   ...ctx,
   table: entsTableFactory(ctx, entDefinitions),
 });
@@ -1550,9 +1580,9 @@ export const getCtxWithTable = <Ctx extends MutationCtx | QueryCtx>(ctx: Ctx) =>
 ## Convex Components (Optional)
 
 ```ts title="convex/functions/convex.config.ts"
-import aggregate from '@convex-dev/aggregate/convex.config';
-import rateLimiter from '@convex-dev/rate-limiter/convex.config';
-import { defineApp } from 'convex/server';
+import aggregate from "@convex-dev/aggregate/convex.config";
+import rateLimiter from "@convex-dev/rate-limiter/convex.config";
+import { defineApp } from "convex/server";
 
 const app = defineApp();
 
@@ -1572,8 +1602,8 @@ export default app;
 ### triggers.ts
 
 ```ts title="convex/lib/triggers.ts"
-import { Triggers } from 'convex-helpers/server/triggers';
-import type { DataModel } from '../_generated/dataModel';
+import { Triggers } from "convex-helpers/server/triggers";
+import type { DataModel } from "../_generated/dataModel";
 
 export const registerTriggers = () => {
   const triggers = new Triggers<DataModel>();
@@ -1595,44 +1625,44 @@ export const registerTriggers = () => {
 ### rate-limiter.ts
 
 ```ts title="convex/lib/rate-limiter.ts"
-import { HOUR, MINUTE, RateLimiter, SECOND } from '@convex-dev/rate-limiter';
-import { CRPCError } from 'better-convex/server';
-import { components } from '../_generated/api';
-import type { MutationCtx } from '../_generated/server';
+import { HOUR, MINUTE, RateLimiter, SECOND } from "@convex-dev/rate-limiter";
+import { CRPCError } from "better-convex/server";
+import { components } from "../_generated/api";
+import type { MutationCtx } from "../_generated/server";
 
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // Token bucket: smooth limiting with burst capacity
-  'ai:free': { kind: 'token bucket', period: 10 * SECOND, rate: 10 },
-  'ai:premium': { kind: 'token bucket', period: 10 * SECOND, rate: 50 },
+  "ai:free": { kind: "token bucket", period: 10 * SECOND, rate: 10 },
+  "ai:premium": { kind: "token bucket", period: 10 * SECOND, rate: 50 },
 
   // Fixed window: strict limits per period
-  'post/create:free': { kind: 'fixed window', period: MINUTE, rate: 5 },
-  'post/create:premium': { kind: 'fixed window', period: MINUTE, rate: 20 },
+  "post/create:free": { kind: "fixed window", period: MINUTE, rate: 5 },
+  "post/create:premium": { kind: "fixed window", period: MINUTE, rate: 20 },
 
   // Default fallbacks
-  'default:free': { kind: 'fixed window', period: MINUTE, rate: 30 },
-  'default:premium': { kind: 'fixed window', period: MINUTE, rate: 100 },
-  'default:public': { kind: 'fixed window', period: MINUTE, rate: 20 },
+  "default:free": { kind: "fixed window", period: MINUTE, rate: 30 },
+  "default:premium": { kind: "fixed window", period: MINUTE, rate: 100 },
+  "default:public": { kind: "fixed window", period: MINUTE, rate: 20 },
 });
 
-type SessionUser = { id: string; plan?: 'premium' | null; isAdmin?: boolean };
+type SessionUser = { id: string; plan?: "premium" | null; isAdmin?: boolean };
 
 /** Get user tier based on subscription */
 export function getUserTier(
-  user: Pick<SessionUser, 'plan' | 'isAdmin'> | null
-): 'free' | 'premium' | 'public' {
-  if (!user) return 'public';
-  if (user.isAdmin) return 'premium';
-  if (user.plan) return 'premium';
-  return 'free';
+  user: Pick<SessionUser, "plan" | "isAdmin"> | null
+): "free" | "premium" | "public" {
+  if (!user) return "public";
+  if (user.isAdmin) return "premium";
+  if (user.plan) return "premium";
+  return "free";
 }
 
 /** Build rate limit key with tier suffix */
 export function getRateLimitKey(
   baseKey: string,
-  tier: 'free' | 'premium' | 'public'
+  tier: "free" | "premium" | "public"
 ) {
-  if (['free', 'premium', 'public'].includes(baseKey)) {
+  if (["free", "premium", "public"].includes(baseKey)) {
     return baseKey;
   }
   return `${baseKey}:${tier}`;
@@ -1642,12 +1672,12 @@ export function getRateLimitKey(
 export async function rateLimitGuard(
   ctx: MutationCtx & {
     rateLimitKey: string;
-    user: Pick<SessionUser, 'id' | 'plan'> | null;
+    user: Pick<SessionUser, "id" | "plan"> | null;
   }
 ) {
   const tier = getUserTier(ctx.user);
   const limitKey = getRateLimitKey(ctx.rateLimitKey, tier);
-  const identifier = ctx.user?.id ?? 'anonymous';
+  const identifier = ctx.user?.id ?? "anonymous";
 
   const status = await rateLimiter.limit(ctx, limitKey, {
     key: identifier,
@@ -1655,8 +1685,8 @@ export async function rateLimitGuard(
 
   if (!status.ok) {
     throw new CRPCError({
-      code: 'TOO_MANY_REQUESTS',
-      message: 'Rate limit exceeded. Please try again later.',
+      code: "TOO_MANY_REQUESTS",
+      message: "Rate limit exceeded. Please try again later.",
     });
   }
 }
@@ -1669,12 +1699,12 @@ export async function rateLimitGuard(
 ### reset.ts
 
 ```ts title="convex/functions/reset.ts"
-import { CRPCError } from 'better-convex/server';
-import { z } from 'zod';
-import { privateAction, privateMutation } from '../lib/crpc';
-import { internal } from './_generated/api';
-import type { TableNames } from './_generated/dataModel';
-import schema from './schema';
+import { CRPCError } from "better-convex/server";
+import { z } from "zod";
+import { privateAction, privateMutation } from "../lib/crpc";
+import { internal } from "./_generated/api";
+import type { TableNames } from "./_generated/dataModel";
+import schema from "./schema";
 
 const DELETE_BATCH_SIZE = 64;
 
@@ -1686,10 +1716,10 @@ const excludedTables = new Set<TableNames>([
 
 /** Dev-only check helper */
 const assertDevOnly = () => {
-  if (process.env.DEPLOY_ENV === 'production') {
+  if (process.env.DEPLOY_ENV === "production") {
     throw new CRPCError({
-      code: 'FORBIDDEN',
-      message: 'This function is only available in development',
+      code: "FORBIDDEN",
+      message: "This function is only available in development",
     });
   }
 };
@@ -1753,30 +1783,30 @@ export const deletePage = privateMutation
 ### init.ts
 
 ```ts title="convex/functions/init.ts"
-import { CRPCError } from 'better-convex/server';
-import { privateMutation } from '../lib/crpc';
-import { internal } from './_generated/api';
+import { CRPCError } from "better-convex/server";
+import { privateMutation } from "../lib/crpc";
+import { internal } from "./_generated/api";
 
 /**
  * Initialize the database on startup.
  * Runs automatically with: convex dev --run init
  */
 export default privateMutation.mutation(async ({ ctx }) => {
-  if (process.env.DEPLOY_ENV === 'production') {
+  if (process.env.DEPLOY_ENV === "production") {
     throw new CRPCError({
-      code: 'FORBIDDEN',
-      message: 'This function is only available in development',
+      code: "FORBIDDEN",
+      message: "This function is only available in development",
     });
   }
 
   // Check if database needs seeding (e.g., no users exist)
-  const existingUser = await ctx.table('user').first();
+  const existingUser = await ctx.table("user").first();
 
   if (!existingUser) {
-    console.info('  📦 First init - running seed...');
+    console.info("  📦 First init - running seed...");
     await ctx.runMutation(internal.seed.seed, {});
   } else {
-    console.info('  ✅ Database already initialized');
+    console.info("  ✅ Database already initialized");
   }
 
   return null;
@@ -1797,13 +1827,13 @@ export default privateMutation.mutation(async ({ ctx }) => {
 }
 ```
 
-| Script | Description |
-|--------|-------------|
-| `convex:dev` | Initialize DB then run Convex dev with meta generation |
-| `reset` | Clear all tables then reinitialize |
-| `seed` | Run seed function manually |
-| `sync:jwks` | Sync JWKS from Convex to env |
-| `sync:rotate` | Rotate keys and update JWKS |
+| Script        | Description                                            |
+| ------------- | ------------------------------------------------------ |
+| `convex:dev`  | Initialize DB then run Convex dev with meta generation |
+| `reset`       | Clear all tables then reinitialize                     |
+| `seed`        | Run seed function manually                             |
+| `sync:jwks`   | Sync JWKS from Convex to env                           |
+| `sync:rotate` | Rotate keys and update JWKS                            |
 
 ---
 
@@ -1827,20 +1857,22 @@ Import boundary enforcement with Ultracite:
                 "paths": {
                   "convex/values": {
                     "importNames": ["ConvexError"],
-                    "message": "Use CRPCError from 'better-convex/crpc' instead."
+                    "message": "Use CRPCError from 'better-convex/crpc' instead.",
                   },
                   "convex/react": "Use useCRPC from '@/lib/convex/crpc' instead.",
-                  "convex/nextjs": "Use caller from '@/lib/convex/rsc' instead."
+                  "convex/nextjs": "Use caller from '@/lib/convex/rsc' instead.",
                 },
-                "patterns": [{
-                  "group": ["**/../convex/**"],
-                  "message": "Use @convex/* alias instead of relative convex imports."
-                }]
-              }
-            }
-          }
-        }
-      }
+                "patterns": [
+                  {
+                    "group": ["**/../convex/**"],
+                    "message": "Use @convex/* alias instead of relative convex imports.",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
     },
     {
       // convex/ cannot import from src/
@@ -1851,15 +1883,17 @@ Import boundary enforcement with Ultracite:
             "noRestrictedImports": {
               "level": "error",
               "options": {
-                "patterns": [{
-                  "group": ["@/*", "**/src/**"],
-                  "message": "Convex files cannot import from src/."
-                }]
-              }
-            }
-          }
-        }
-      }
+                "patterns": [
+                  {
+                    "group": ["@/*", "**/src/**"],
+                    "message": "Convex files cannot import from src/.",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
     },
     {
       // convex/shared/ is client-importable, so restrict its imports
@@ -1870,16 +1904,18 @@ Import boundary enforcement with Ultracite:
             "noRestrictedImports": {
               "level": "error",
               "options": {
-                "patterns": [{
-                  "group": ["**/convex/lib/**"],
-                  "message": "convex/shared cannot import from convex/lib."
-                }]
-              }
-            }
-          }
-        }
-      }
-    }
-  ]
+                "patterns": [
+                  {
+                    "group": ["**/convex/lib/**"],
+                    "message": "convex/shared cannot import from convex/lib.",
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    },
+  ],
 }
 ```

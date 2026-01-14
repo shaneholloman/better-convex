@@ -60,14 +60,14 @@ export default function TagsPage() {
 
   const crpc = useCRPC();
 
-  const { data: tags, isLoading } = useQuery(
+  const { data: tags, isPlaceholderData: isLoading } = useQuery(
     crpc.tags.list.queryOptions(
       {},
       {
         skipUnauth: true,
         placeholderData: [
           {
-            _id: '1' as Id<'tags'>,
+            _id: '0' as Id<'tags'>,
             _creationTime: new Date('2025-11-04').getTime(),
             name: 'Work',
             color: '#3B82F6',

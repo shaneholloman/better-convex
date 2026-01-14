@@ -91,6 +91,7 @@ export type DataModel = {
   };
   invitation: {
     document: {
+      createdAt: number;
       email: string;
       expiresAt: number;
       inviterId: Id<"user">;
@@ -103,6 +104,7 @@ export type DataModel = {
     fieldPaths:
       | "_creationTime"
       | "_id"
+      | "createdAt"
       | "email"
       | "expiresAt"
       | "inviterId"
@@ -316,7 +318,7 @@ export type DataModel = {
       endedAt?: string | null;
       metadata: Record<string, any>;
       modifiedAt?: string | null;
-      organizationId: string;
+      organizationId: Id<"organization">;
       priceId?: string;
       productId: string;
       recurringInterval?: string | null;

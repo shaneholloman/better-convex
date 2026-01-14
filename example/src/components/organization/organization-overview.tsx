@@ -1,18 +1,18 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
 import type { ApiInputs } from '@convex/types';
-import { useMutation } from '@tanstack/react-query';
+import { skipToken, useMutation, useQuery } from '@tanstack/react-query';
 import {
   Calendar,
+  CreditCard,
   Crown,
   Edit3,
-  ExternalLink,
   Settings,
   Trash2,
   UserCheck,
   Users,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -27,26 +27,18 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { authClient } from '@/lib/convex/auth-client';
 import { useCRPC } from '@/lib/convex/crpc';
 
 type OrganizationOverviewProps = {
-  organization?: {
-    id: Id<'organization'>;
-    createdAt: number;
-    isActive: boolean;
-    isPersonal: boolean;
-    logo?: string | null;
-    membersCount: number;
-    name: string;
-    role?: string;
-    slug: string;
-  } | null;
+  onManageMembersAction?: () => void;
+  slug: string;
 };
 
 export function OrganizationOverview({
-  organization,
+  onManageMembersAction,
+  slug,
 }: OrganizationOverviewProps) {
-  const [now] = useState(new Date('2025-11-04').getTime());
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [editData, setEditData] = useState({
@@ -55,7 +47,27 @@ export function OrganizationOverview({
     logo: '',
   });
 
+  const router = useRouter();
   const crpc = useCRPC();
+
+  // Lazy state initialization - only runs once on mount
+  const [now] = useState(() => Date.now());
+
+  // Fetch organization data
+  const { data: organization } = useQuery(
+    crpc.organization.getOrganizationOverview.queryOptions(
+      { slug },
+      { skipUnauth: true }
+    )
+  );
+
+  // Subscription query
+  const subscriptionQuery = useQuery(
+    crpc.polarSubscription.getOrganizationSubscription.queryOptions(
+      organization?.id ? { organizationId: organization.id } : skipToken
+    )
+  );
+  const subscription = subscriptionQuery.data;
 
   const updateOrganization = useMutation(
     crpc.organization.updateOrganization.mutationOptions({
@@ -73,7 +85,7 @@ export function OrganizationOverview({
       onSuccess: () => {
         setShowDeleteDialog(false);
         toast.success('Organization deleted successfully');
-        // Redirect handled by the mutation
+        router.push('/');
       },
     })
   );
@@ -122,6 +134,27 @@ export function OrganizationOverview({
 
   const isOwner = organization.role === 'owner';
   const canEdit = isOwner && !organization.isPersonal;
+  const daysActive = Math.floor(
+    (now - organization.createdAt) / (1000 * 60 * 60 * 24)
+  );
+
+  const handleManageSubscription = async () => {
+    try {
+      if (subscription) {
+        // Has subscription - open customer portal
+        await authClient.customer.portal();
+      } else {
+        // No subscription - checkout
+        await authClient.checkout({
+          slug: 'premium',
+          referenceId: organization.id,
+        });
+      }
+    } catch (error) {
+      console.error('Subscription error:', error);
+      toast.error('Failed to manage subscription');
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -206,16 +239,47 @@ export function OrganizationOverview({
               <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <p className="font-bold text-2xl">
-                {Math.floor(
-                  (now - organization.createdAt) / (1000 * 60 * 60 * 24)
-                )}
-              </p>
+              <p className="font-bold text-2xl">{daysActive}</p>
               <p className="text-muted-foreground text-sm">Days Active</p>
             </div>
           </div>
         </div>
       </section>
+
+      {/* Billing */}
+      {isOwner && (
+        <section>
+          <h2 className="mb-4 font-medium text-muted-foreground text-sm uppercase tracking-wide">
+            Billing
+          </h2>
+          <div className="flex items-center justify-between rounded-lg bg-secondary/30 p-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-purple-500/10 p-2">
+                <CreditCard className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <p className="font-medium text-sm">
+                  {subscription ? 'Premium Plan' : 'Free Plan'}
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  {subscription
+                    ? subscription.cancelAtPeriodEnd
+                      ? `Cancels ${subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : 'soon'}`
+                      : `Renews ${subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : 'soon'}`
+                    : 'Upgrade to unlock premium features'}
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={handleManageSubscription}
+              size="sm"
+              variant="secondary"
+            >
+              {subscription ? 'Manage' : 'Upgrade'}
+            </Button>
+          </div>
+        </section>
+      )}
 
       {/* Quick Actions */}
       <section>
@@ -223,17 +287,23 @@ export function OrganizationOverview({
           Quick Actions
         </h2>
         <div className="flex flex-wrap gap-2">
-          <Button className="justify-start" size="sm" variant="secondary">
-            <ExternalLink className="h-4 w-4" />
-            View Profile
-          </Button>
           {isOwner && (
             <>
-              <Button className="justify-start" size="sm" variant="secondary">
+              <Button
+                className="justify-start"
+                onClick={onManageMembersAction}
+                size="sm"
+                variant="secondary"
+              >
                 <UserCheck className="h-4 w-4" />
                 Manage Members
               </Button>
-              <Button className="justify-start" size="sm" variant="secondary">
+              <Button
+                className="justify-start"
+                onClick={handleEditOrganization}
+                size="sm"
+                variant="secondary"
+              >
                 <Settings className="h-4 w-4" />
                 Settings
               </Button>

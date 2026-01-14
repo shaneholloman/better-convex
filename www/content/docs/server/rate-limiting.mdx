@@ -31,7 +31,7 @@ export default app;
 
 ## Setup
 
-Create a rate limiter configuration:
+Create a rate limiter configuration. Extract config to a const so `getRateLimitKey` can check if keys exist:
 
 ```ts title="convex/lib/rate-limiter.ts"
 import { HOUR, MINUTE, RateLimiter, SECOND } from '@convex-dev/rate-limiter';
@@ -39,7 +39,8 @@ import { CRPCError } from 'better-convex/server'; // See Error Handling
 import { components } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
 
-export const rateLimiter = new RateLimiter(components.rateLimiter, {
+// Extract config for key checking in getRateLimitKey
+const rateLimitConfig = {
   // Token bucket: smooth limiting with burst capacity
   'ai:free': { kind: 'token bucket', period: 10 * SECOND, rate: 10 },
   'ai:premium': { kind: 'token bucket', period: 10 * SECOND, rate: 50 },
@@ -48,11 +49,13 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   'post/create:free': { kind: 'fixed window', period: MINUTE, rate: 5 },
   'post/create:premium': { kind: 'fixed window', period: MINUTE, rate: 20 },
 
-  // Default limits
+  // Default fallbacks (used when specific key not defined)
   'default:free': { kind: 'fixed window', period: MINUTE, rate: 30 },
   'default:premium': { kind: 'fixed window', period: MINUTE, rate: 100 },
   'default:public': { kind: 'fixed window', period: MINUTE, rate: 20 },
-});
+} as const;
+
+export const rateLimiter = new RateLimiter(components.rateLimiter, rateLimitConfig);
 ```
 
 ## Rate Limit Types
@@ -88,8 +91,9 @@ Strict limit per time window:
 Pattern for free/premium/public tiers:
 
 ```ts title="convex/lib/rate-limiter.ts"
-export const rateLimiter = new RateLimiter(components.rateLimiter, {
-  // Feature-specific limits
+// Extract config for key checking in getRateLimitKey
+const rateLimitConfig = {
+  // Feature-specific limits (override defaults)
   'post/create:free': { kind: 'fixed window', period: MINUTE, rate: 5 },
   'post/create:premium': { kind: 'fixed window', period: MINUTE, rate: 20 },
   'post/create:public': { kind: 'fixed window', period: MINUTE, rate: 3 },
@@ -97,11 +101,13 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   'comment/create:free': { kind: 'fixed window', period: MINUTE, rate: 30 },
   'comment/create:premium': { kind: 'fixed window', period: MINUTE, rate: 100 },
 
-  // General fallback limits
-  free: { kind: 'token bucket', period: 10 * SECOND, rate: 40 },
-  premium: { kind: 'token bucket', period: 10 * SECOND, rate: 100 },
-  public: { kind: 'token bucket', period: 10 * SECOND, rate: 20 },
-});
+  // Default fallbacks (used when specific key not defined)
+  'default:free': { kind: 'fixed window', period: MINUTE, rate: 30 },
+  'default:premium': { kind: 'fixed window', period: MINUTE, rate: 100 },
+  'default:public': { kind: 'fixed window', period: MINUTE, rate: 20 },
+} as const;
+
+export const rateLimiter = new RateLimiter(components.rateLimiter, rateLimitConfig);
 ```
 
 ## Helper Functions
@@ -119,16 +125,19 @@ export function getUserTier(
   return 'free';
 }
 
-/** Build rate limit key with tier suffix */
+/** Build rate limit key with tier suffix, falls back to default */
 export function getRateLimitKey(
   baseKey: string,
   tier: 'free' | 'premium' | 'public'
 ) {
-  // Keys without tiers
-  if (['free', 'premium', 'public', 'scraper'].includes(baseKey)) {
-    return baseKey;
+  const specificKey = `${baseKey}:${tier}`;
+
+  // Use specific key if defined, otherwise fall back to default
+  if (specificKey in rateLimitConfig) {
+    return specificKey;
   }
-  return `${baseKey}:${tier}`;
+
+  return `default:${tier}`;
 }
 
 /** Check rate limit and throw if exceeded */
@@ -204,12 +213,13 @@ export const create = authMutation
 
 ## Complete Configuration
 
-Full rate limiter config with tiered limits:
+Full rate limiter config with tiered limits. Extract config to a const so `getRateLimitKey` can check if keys exist:
 
 ```ts title="convex/lib/rate-limiter.ts"
 import { HOUR, MINUTE, RateLimiter, SECOND } from '@convex-dev/rate-limiter';
 
-export const rateLimiter = new RateLimiter(components.rateLimiter, {
+// Extract config for key checking in getRateLimitKey
+const rateLimitConfig = {
   // AI operations
   'ai:free': { kind: 'token bucket', period: 10 * SECOND, rate: 10 },
   'ai:premium': { kind: 'token bucket', period: 10 * SECOND, rate: 50 },
@@ -233,11 +243,13 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   'organization/invite:free': { kind: 'fixed window', period: HOUR, rate: 5 },
   'organization/invite:premium': { kind: 'fixed window', period: HOUR, rate: 25 },
 
-  // Default fallbacks
+  // Default fallbacks (used when specific key not defined)
   'default:free': { kind: 'fixed window', period: MINUTE, rate: 30 },
   'default:premium': { kind: 'fixed window', period: MINUTE, rate: 100 },
   'default:public': { kind: 'fixed window', period: MINUTE, rate: 20 },
-});
+} as const;
+
+export const rateLimiter = new RateLimiter(components.rateLimiter, rateLimitConfig);
 ```
 
 ## Next Steps
