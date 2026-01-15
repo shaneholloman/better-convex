@@ -166,11 +166,13 @@ session: defineEnt({})
 
 ```ts
 posts: defineEnt({})
-  .edges('tags', { to: 'tags', table: 'postTags', field: 'postId' }),
+  .edges('tags', { to: 'tags', table: 'postTags' }),
 
 tags: defineEnt({})
-  .edges('posts', { to: 'posts', table: 'postTags', field: 'tagId' }),
+  .edges('posts', { to: 'posts', table: 'postTags' }),
 ```
+
+The `field` option defaults to edge name + `Id` (e.g., `tagsId` for `posts.edges('tags')`).
 
 ### Join Table Patterns
 
@@ -179,9 +181,10 @@ tags: defineEnt({})
 ```ts
 // Auto-generated join table - no custom fields possible
 posts: defineEnt({})
-  .edges('tags', { to: 'tags', table: 'postTags', field: 'postId' }),
+  .edges('tags', { to: 'tags', table: 'postTags' }),
 
 // If you need TypeScript types or aggregates, define the table explicitly:
+// (Use intuitive field names that describe what ID is stored)
 postTags: defineEnt({})
   .field('postId', v.id('posts'), { index: true })
   .field('tagId', v.id('tags'), { index: true })
@@ -469,7 +472,7 @@ await post.edge('tags').replace([tag1Id, tag2Id]);
 
 ## Triggers Integration
 
-When using [triggers](/docs/server/triggers), wrap the db before creating ents:
+When using [triggers](/docs/db/triggers), wrap the db before creating ents:
 
 ```ts title="convex/lib/crpc.ts"
 const c = initCRPC
@@ -480,6 +483,28 @@ const c = initCRPC
   })
   .create({ ... });
 ```
+
+## Common Gotchas
+
+| Issue | Solution |
+|-------|----------|
+| `ctx.db` still used | Only exception: `stream(ctx.db, schema)` for [streams](/docs/db/filters#streams) |
+| Index not found | Index names must match schema exactly |
+| Edge not working | Must be defined in schema first |
+| Duplicate index error | Edges auto-create indexes - don't add manually |
+| Can't filter edge | many:many edges don't support `.filter()` - use `ctx.table()` |
+| Can't search edge | No edges support `.search()` - use `ctx.table()` |
+| Write on edge result | Edge results are read-only - re-fetch via `ctx.table()` |
+
+## ctx.db vs ctx.table
+
+| ctx.db | ctx.table |
+|--------|-----------|
+| Returns plain documents | Returns ents with methods |
+| Manual joins via queries | Edge traversal |
+| Generic errors | Typed errors with `getX`, `firstX` |
+| Manual cascade deletes | Auto cascade based on schema |
+| No table name validation | Table names type-checked |
 
 ## Next Steps
 

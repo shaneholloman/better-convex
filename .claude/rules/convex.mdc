@@ -38,7 +38,7 @@ Read as needed:
 
 - convex/functions/schema.ts - Database schema
 - convex/lib/crpc.ts - cRPC setup and procedure builders
-- .claude/rules/convex-ents.mdc - Entity relationships
+- .claude/rules/convex-ents.mdc - Advanced Ents (rules, cascading deletes, self-directed edges)
 - .claude/rules/convex-aggregate.mdc - Efficient counting
 - .claude/rules/convex-search.mdc - Full-text search
 - .claude/rules/convex-streams.mdc - Advanced filtering
@@ -1211,7 +1211,7 @@ await ctx.table('user').getX(userId).patch({ deletionTime: undefined }); // Unde
 .edges('profiles', { ref: true, deletion: 'soft' }) // Cascade soft delete
 ```
 
-For detailed deletion patterns and rules, see [convex-ents.mdc](mdc:.claude/rules/convex-ents.mdc).
+For detailed cascading delete patterns, rules system, and soft/scheduled deletion, see [convex-ents.mdc](mdc:.claude/rules/convex-ents.mdc).
 
 ## Triggers
 

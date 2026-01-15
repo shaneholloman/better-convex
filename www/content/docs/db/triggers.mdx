@@ -117,6 +117,41 @@ interface Change<TableName> {
 
 ## Common Patterns
 
+### Audit Logging
+
+Log all changes with user context:
+
+```ts
+triggers.register('teams', async (ctx, change) => {
+  const user = await getAuthUserId(ctx);
+
+  await ctx.db.insert('auditLog', {
+    table: 'teams',
+    operation: change.operation,
+    documentId: change.id,
+    userId: user,
+    timestamp: Date.now(),
+    oldDoc: change.oldDoc,
+    newDoc: change.newDoc,
+  });
+});
+```
+
+### Authorization Rules
+
+Enforce ownership at the database level:
+
+```ts
+triggers.register('messages', async (ctx, change) => {
+  const userId = await getAuthUserId(ctx);
+
+  const owner = change.oldDoc?.userId ?? change.newDoc?.userId;
+  if (userId !== owner) {
+    throw new Error(`User ${userId} cannot modify message owned by ${owner}`);
+  }
+});
+```
+
 ### Activity Tracking
 
 ```ts
@@ -242,7 +277,39 @@ triggers.register('user', async (ctx, change) => {
 });
 ```
 
-## Aggregate Triggers
+### Async Debounced Processing
+
+When a document changes multiple times in one mutation, only process the final state:
+
+```ts
+// Track scheduled function within mutation scope
+let scheduledSync: Id<'_scheduled_functions'> | null = null;
+
+triggers.register('user', async (ctx, change) => {
+  if (change.operation === 'delete') return;
+
+  // Cancel previously scheduled sync from this mutation
+  if (scheduledSync) {
+    await ctx.scheduler.cancel(scheduledSync);
+  }
+
+  // Schedule new sync - only final state will be sent
+  scheduledSync = await ctx.scheduler.runAfter(0, internal.sync.syncUser, {
+    userId: change.id,
+  });
+});
+```
+
+Use when:
+- Processing has side effects (external API calls)
+- Document changes multiple times in one mutation
+- You only care about final state
+
+## Component Integration
+
+Many Convex components provide trigger helpers for automatic maintenance.
+
+### Aggregates
 
 Use with [Aggregates](/docs/db/aggregates) for efficient counts:
 
@@ -264,6 +331,19 @@ export const registerTriggers = () => {
 
   return triggers;
 };
+```
+
+### Sharded Counter
+
+Use with [@convex-dev/sharded-counter](https://www.convex.dev/components/sharded-counter) for distributed counters:
+
+```ts
+import { ShardedCounter } from '@convex-dev/sharded-counter';
+
+const counter = new ShardedCounter(components.shardedCounter);
+
+// Auto-increment on insert, decrement on delete
+triggers.register('votes', counter.trigger('voteCount'));
 ```
 
 ## Better Auth Integration

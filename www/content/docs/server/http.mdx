@@ -1,0 +1,435 @@
+---
+title: HTTP Endpoints
+description: REST APIs, webhooks, CORS, and HTTP actions
+---
+
+## Overview
+
+HTTP endpoints handle requests from external services that can't use the Convex client:
+
+- **Webhooks**: Stripe, GitHub, Discord, payment providers
+- **REST APIs**: Third-party integrations
+- **File operations**: Downloads, uploads from non-browser clients
+- **Server-to-server**: Backend services calling your API
+
+<Callout type="info">
+For browser clients, prefer [queries and mutations](/docs/server/procedures) - they're reactive, type-safe, and handle caching automatically.
+</Callout>
+
+## When to Use HTTP Endpoints
+
+| Scenario | Use HTTP | Use Queries/Mutations |
+|----------|----------|----------------------|
+| Webhooks (Stripe, GitHub) | ✅ External service callback | ❌ |
+| Browser JavaScript | ❌ | ✅ Reactive, cached |
+| Next.js RSC | ✅ `ConvexHttpClient` | ✅ With [prefetching](/docs/nextjs/rsc) |
+| Mobile apps | ❌ | ✅ Native client |
+| Third-party integrations | ✅ REST API | ❌ |
+| File downloads | ✅ Direct response | ❌ |
+| Real-time updates | ❌ | ✅ Subscriptions |
+
+## Setup
+
+Create `convex/functions/http.ts` with an `httpRouter`:
+
+```ts title="convex/functions/http.ts"
+import { httpRouter } from 'convex/server';
+import { httpAction } from './_generated/server';
+
+const http = httpRouter();
+
+// Health check endpoint
+http.route({
+  path: '/api/health',
+  method: 'GET',
+  handler: httpAction(async () => {
+    return new Response('OK', { status: 200 });
+  }),
+});
+
+export default http;
+```
+
+HTTP endpoints use the standard [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) - `Request` and `Response` objects.
+
+<Callout type="info">
+For Better Auth routes, use `registerRoutes(http, createAuth)` - see [Auth HTTP Routes](/docs/auth/server#4-http-routes).
+</Callout>
+
+## Request Handling
+
+### JSON Body
+
+```ts
+http.route({
+  path: '/api/users',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    const data = await req.json();
+
+    // Validate with Zod
+    const parsed = z.object({
+      name: z.string(),
+      email: z.string().email(),
+    }).parse(data);
+
+    const userId = await ctx.runMutation(internal.users.create, parsed);
+
+    return Response.json({ userId }, { status: 201 });
+  }),
+});
+```
+
+### Form Data / File Upload
+
+```ts
+http.route({
+  path: '/api/upload',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    const formData = await req.formData();
+    const file = formData.get('file') as File;
+
+    if (!file) {
+      return new Response('No file provided', { status: 400 });
+    }
+
+    const blob = new Blob([await file.arrayBuffer()]);
+    const storageId = await ctx.storage.store(blob);
+
+    return Response.json({ storageId });
+  }),
+});
+```
+
+### Query Parameters
+
+```ts
+http.route({
+  path: '/api/search',
+  method: 'GET',
+  handler: httpAction(async (ctx, req) => {
+    const url = new URL(req.url);
+    const query = url.searchParams.get('q') ?? '';
+    const limit = parseInt(url.searchParams.get('limit') ?? '10');
+
+    const results = await ctx.runQuery(internal.search.find, { query, limit });
+
+    return Response.json(results);
+  }),
+});
+```
+
+### Path Parameters
+
+Extract from URL pathname:
+
+```ts
+http.route({
+  path: '/api/files/:fileId',
+  method: 'GET',
+  handler: httpAction(async (ctx, req) => {
+    const url = new URL(req.url);
+    const fileId = url.pathname.split('/').pop() as Id<'files'>;
+
+    const file = await ctx.runQuery(internal.files.get, { fileId });
+    if (!file) {
+      return new Response('Not found', { status: 404 });
+    }
+
+    return Response.json(file);
+  }),
+});
+```
+
+### Authentication with Better Auth
+
+HTTP endpoints are **not** automatically protected. Verify the session manually:
+
+```ts
+import { createAuth } from './auth';
+
+http.route({
+  path: '/api/protected',
+  method: 'GET',
+  handler: httpAction(async (ctx, req) => {
+    const auth = createAuth(ctx);
+    const session = await auth.api.getSession({ headers: req.headers });
+
+    if (!session) {
+      return new Response('Unauthorized', { status: 401 });
+    }
+
+    const data = await ctx.runQuery(internal.data.getProtected, {
+      userId: session.user.id,
+    });
+    return Response.json(data);
+  }),
+});
+```
+
+<Callout type="info">
+For queries/mutations, use the [auth middleware](/docs/server/middlewares) instead - it's more efficient than HTTP session verification.
+</Callout>
+
+## Response Patterns
+
+### JSON Response
+
+```ts
+return Response.json({ success: true, data });
+return Response.json({ error: 'Bad request' }, { status: 400 });
+```
+
+### File Download
+
+```ts
+http.route({
+  path: '/api/download/:fileId',
+  method: 'GET',
+  handler: httpAction(async (ctx, req) => {
+    const url = new URL(req.url);
+    const fileId = url.pathname.split('/').pop() as Id<'files'>;
+
+    const file = await ctx.runQuery(internal.files.get, { fileId });
+    if (!file) return new Response('Not found', { status: 404 });
+
+    const blob = await ctx.storage.get(file.storageId);
+    if (!blob) return new Response('File data not found', { status: 404 });
+
+    return new Response(blob, {
+      headers: {
+        'Content-Type': file.mimeType ?? 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${file.name}"`,
+      },
+    });
+  }),
+});
+```
+
+## CORS
+
+CORS (Cross-Origin Resource Sharing) is required when browser JavaScript calls your HTTP endpoints from a different domain.
+
+### Helper Function
+
+```ts title="convex/functions/http.ts"
+function corsHeaders(origin?: string | null) {
+  return {
+    'Access-Control-Allow-Origin': origin ?? '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+```
+
+### Preflight Handler
+
+Browsers send OPTIONS requests before actual requests:
+
+```ts
+http.route({
+  path: '/api/*',
+  method: 'OPTIONS',
+  handler: httpAction(async (ctx, req) => {
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders(req.headers.get('Origin')),
+    });
+  }),
+});
+```
+
+### Add to Responses
+
+```ts
+http.route({
+  path: '/api/data',
+  method: 'GET',
+  handler: httpAction(async (ctx, req) => {
+    const data = await ctx.runQuery(internal.data.getPublic, {});
+
+    return Response.json(data, {
+      headers: corsHeaders(req.headers.get('Origin')),
+    });
+  }),
+});
+```
+
+## Webhooks
+
+Webhooks receive HTTP callbacks from external services. Always verify signatures before processing.
+
+<Callout type="warning">
+For high-volume webhooks, consider [rate limiting](/docs/server/rate-limiting) to prevent abuse.
+</Callout>
+
+### Stripe
+
+```ts
+http.route({
+  path: '/webhooks/stripe',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    const signature = req.headers.get('stripe-signature');
+    if (!signature) {
+      return new Response('No signature', { status: 400 });
+    }
+
+    const body = await req.text();
+
+    // Verify webhook signature
+    const isValid = await ctx.runAction(internal.stripe.verifyWebhook, {
+      body,
+      signature,
+    });
+
+    if (!isValid) {
+      return new Response('Invalid signature', { status: 400 });
+    }
+
+    const event = JSON.parse(body);
+
+    switch (event.type) {
+      case 'payment_intent.succeeded':
+        await ctx.runMutation(internal.payments.markPaid, {
+          paymentIntentId: event.data.object.id,
+        });
+        break;
+      case 'customer.subscription.deleted':
+        await ctx.runMutation(internal.subscriptions.cancel, {
+          subscriptionId: event.data.object.id,
+        });
+        break;
+    }
+
+    return new Response('OK', { status: 200 });
+  }),
+});
+```
+
+### GitHub
+
+```ts
+http.route({
+  path: '/webhooks/github',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    const event = req.headers.get('X-GitHub-Event');
+    const signature = req.headers.get('X-Hub-Signature-256');
+
+    if (!event || !signature) {
+      return new Response('Missing headers', { status: 400 });
+    }
+
+    const body = await req.json();
+
+    if (event === 'push') {
+      await ctx.runMutation(internal.github.processPush, {
+        repository: body.repository.full_name,
+        commits: body.commits,
+      });
+    } else if (event === 'pull_request') {
+      await ctx.runMutation(internal.github.processPR, {
+        action: body.action,
+        pr: body.pull_request,
+      });
+    }
+
+    return new Response('OK', { status: 200 });
+  }),
+});
+```
+
+## ConvexHttpClient
+
+For server-side code that can't use the reactive Convex client (Next.js RSC, scripts, backend services):
+
+```ts
+import { ConvexHttpClient } from 'convex/browser';
+
+const client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+// Query
+const data = await client.query(api.users.list, {});
+
+// Mutation
+const id = await client.mutation(api.users.create, { name: 'Alice' });
+
+// Action
+const result = await client.action(api.ai.generate, { prompt: 'Hello' });
+```
+
+### Local Development
+
+For localhost with self-signed certificates:
+
+```ts
+const client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!, {
+  skipConvexDeploymentUrlCheck: true,
+});
+```
+
+### With Authentication
+
+```ts
+client.setAuth(token);
+const protectedData = await client.query(api.users.me, {});
+```
+
+## Error Handling
+
+```ts
+http.route({
+  path: '/api/process',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    try {
+      const data = await req.json();
+
+      const parsed = z.object({
+        action: z.enum(['create', 'update', 'delete']),
+        id: z.string(),
+      }).safeParse(data);
+
+      if (!parsed.success) {
+        return Response.json(
+          { error: 'Invalid input', details: parsed.error.flatten() },
+          { status: 400 }
+        );
+      }
+
+      const result = await ctx.runMutation(internal.api.process, parsed.data);
+      return Response.json(result);
+    } catch (error) {
+      console.error('API error:', error);
+
+      if (error instanceof ConvexError) {
+        return Response.json({ error: error.data.message }, { status: 400 });
+      }
+
+      return Response.json({ error: 'Internal server error' }, { status: 500 });
+    }
+  }),
+});
+```
+
+## Best Practices
+
+1. **Validate input** - Use Zod for request body validation
+2. **Use status codes** - 200 OK, 201 Created, 400 Bad Request, 401 Unauthorized, 404 Not Found, 429 Too Many Requests, 500 Internal Server Error
+3. **Verify webhooks** - Always check signatures before processing
+4. **Handle errors** - Return meaningful error messages
+5. **Add CORS** - When endpoints are called from browsers
+6. **Use internal functions** - Keep business logic in mutations/actions, not HTTP handlers
+7. **Return consistent formats** - Always use JSON for API responses
+
+## Next Steps
+
+<Cards>
+  <Card title="Auth HTTP Routes" href="/docs/auth/server#4-http-routes" />
+  <Card title="Rate Limiting" href="/docs/server/rate-limiting" />
+  <Card title="Scheduling" href="/docs/server/scheduling" />
+  <Card title="Error Handling" href="/docs/server/error-handling" />
+</Cards>

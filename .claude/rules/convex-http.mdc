@@ -1,0 +1,264 @@
+---
+description: Advanced HTTP patterns - Hono integration, streaming, rate limiting, Discord bots
+globs: convex/functions/http.ts,convex/**/*.ts
+alwaysApply: false
+---
+
+# Convex HTTP - Advanced Patterns
+
+> Prerequisites: See /docs/server/http for setup, request handling, CORS, and basic webhooks
+
+## Hono Integration
+
+Use [Hono](https://hono.dev/) when you need complex routing, middleware chains, or better DX:
+
+```typescript
+// convex/functions/http.ts
+import { Hono } from 'hono';
+import { HonoWithConvex, HttpRouterWithHono } from 'convex-helpers/server/hono';
+import { ActionCtx } from './_generated/server';
+
+const app: HonoWithConvex<ActionCtx> = new Hono();
+
+// Middleware
+app.use('*', async (c, next) => {
+  console.log(`${c.req.method} ${c.req.path}`);
+  await next();
+});
+
+// Route groups
+const api = app.basePath('/api');
+
+api.get('/users', async (c) => {
+  const users = await c.env.runQuery(internal.users.list, {});
+  return c.json(users);
+});
+
+api.post('/users', async (c) => {
+  const body = await c.req.json();
+  const id = await c.env.runMutation(internal.users.create, body);
+  return c.json({ id }, 201);
+});
+
+// Error handling middleware
+app.onError((err, c) => {
+  console.error('Error:', err);
+  return c.json({ error: err.message }, 500);
+});
+
+export default new HttpRouterWithHono(app);
+```
+
+### When to Use Hono
+
+- **Complex routing**: Nested routes, route groups, parameter validation
+- **Middleware**: Auth, logging, rate limiting across routes
+- **OpenAPI**: Auto-generate docs with `@hono/zod-openapi`
+- **Better DX**: Cleaner syntax than raw httpAction
+
+## Streaming Responses
+
+### Server-Sent Events (SSE)
+
+```typescript
+http.route({
+  path: '/api/stream',
+  method: 'GET',
+  handler: httpAction(async (ctx, req) => {
+    const encoder = new TextEncoder();
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        for (let i = 0; i < 10; i++) {
+          const data = await ctx.runQuery(internal.data.getChunk, { index: i });
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    });
+  }),
+});
+```
+
+### AI Streaming Integration
+
+```typescript
+http.route({
+  path: '/api/ai/stream',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    const { prompt } = await req.json();
+
+    // Call AI action that returns a stream
+    const stream = await ctx.runAction(internal.ai.streamResponse, { prompt });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+      },
+    });
+  }),
+});
+```
+
+## Rate Limiting in HTTP
+
+IP-based rate limiting for public endpoints:
+
+```typescript
+http.route({
+  path: '/api/public',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    // Extract client IP
+    const ip = req.headers.get('X-Forwarded-For')?.split(',')[0]?.trim()
+      ?? req.headers.get('CF-Connecting-IP')
+      ?? 'unknown';
+
+    // Check rate limit
+    const allowed = await ctx.runMutation(internal.rateLimit.check, {
+      key: `http:${ip}`,
+      limit: 100,
+      window: 3600000, // 1 hour
+    });
+
+    if (!allowed) {
+      return new Response('Rate limit exceeded', {
+        status: 429,
+        headers: {
+          'Retry-After': '3600',
+          'X-RateLimit-Limit': '100',
+          'X-RateLimit-Remaining': '0',
+        },
+      });
+    }
+
+    const result = await ctx.runMutation(internal.api.process, {});
+    return Response.json(result);
+  }),
+});
+```
+
+## Discord Bot Webhooks
+
+### Interaction Handler
+
+Discord sends interactions (slash commands, buttons) to your webhook:
+
+```typescript
+import { verifyKey } from 'discord-interactions';
+
+const DISCORD_PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY!;
+
+http.route({
+  path: '/webhooks/discord',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    // Get verification headers
+    const signature = req.headers.get('X-Signature-Ed25519');
+    const timestamp = req.headers.get('X-Signature-Timestamp');
+
+    if (!signature || !timestamp) {
+      return new Response('Missing signature', { status: 401 });
+    }
+
+    // Get raw body for verification
+    const body = await req.text();
+
+    // Verify request is from Discord
+    const isValid = verifyKey(body, signature, timestamp, DISCORD_PUBLIC_KEY);
+    if (!isValid) {
+      return new Response('Invalid signature', { status: 401 });
+    }
+
+    const interaction = JSON.parse(body);
+
+    // Handle PING (Discord verification)
+    if (interaction.type === 1) {
+      return Response.json({ type: 1 });
+    }
+
+    // Handle slash command
+    if (interaction.type === 2) {
+      const { name, options } = interaction.data;
+
+      switch (name) {
+        case 'stats':
+          const stats = await ctx.runQuery(internal.stats.get, {});
+          return Response.json({
+            type: 4, // CHANNEL_MESSAGE_WITH_SOURCE
+            data: { content: `Users: ${stats.users}, Posts: ${stats.posts}` },
+          });
+
+        case 'create':
+          // Defer for long operations
+          await ctx.runMutation(internal.discord.deferResponse, {
+            token: interaction.token,
+          });
+
+          // Process in background
+          await ctx.scheduler.runAfter(0, internal.discord.processCreate, {
+            token: interaction.token,
+            options,
+          });
+
+          return Response.json({ type: 5 }); // DEFERRED_CHANNEL_MESSAGE
+
+        default:
+          return Response.json({
+            type: 4,
+            data: { content: 'Unknown command' },
+          });
+      }
+    }
+
+    // Handle button clicks
+    if (interaction.type === 3) {
+      const customId = interaction.data.custom_id;
+
+      await ctx.runMutation(internal.discord.handleButton, {
+        customId,
+        userId: interaction.user.id,
+      });
+
+      return Response.json({
+        type: 7, // UPDATE_MESSAGE
+        data: { content: 'Action completed!' },
+      });
+    }
+
+    return new Response('Unknown interaction type', { status: 400 });
+  }),
+});
+```
+
+### Deferred Response Follow-up
+
+```typescript
+// internal action to follow up on deferred responses
+export const followUpResponse = internalAction({
+  args: { token: v.string(), content: v.string() },
+  handler: async (ctx, { token, content }) => {
+    const applicationId = process.env.DISCORD_APPLICATION_ID!;
+
+    await fetch(
+      `https://discord.com/api/v10/webhooks/${applicationId}/${token}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      }
+    );
+  },
+});
+```

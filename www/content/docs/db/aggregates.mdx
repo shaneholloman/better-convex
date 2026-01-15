@@ -349,6 +349,33 @@ const topScore = await aggregate.max(ctx, { namespace: gameId });
 const lowestScore = await aggregate.min(ctx, { namespace: gameId });
 ```
 
+### Batch Operations
+
+Reduce function call overhead with batch versions:
+
+```ts
+// Instead of multiple individual calls
+const counts = await Promise.all([
+  aggregate.count(ctx, { namespace: id1, bounds: {} }),
+  aggregate.count(ctx, { namespace: id2, bounds: {} }),
+  aggregate.count(ctx, { namespace: id3, bounds: {} }),
+]);
+
+// Use batch for better performance
+const counts = await aggregate.countBatch(ctx, [
+  { namespace: id1, bounds: {} },
+  { namespace: id2, bounds: {} },
+  { namespace: id3, bounds: {} },
+]);
+
+// Also available: sumBatch, atBatch
+const sums = await aggregate.sumBatch(ctx, [
+  { namespace: id1 },
+  { namespace: id2 },
+]);
+const items = await aggregate.atBatch(ctx, [0, 1, 2], { namespace: gameId });
+```
+
 ## Backfill and Repair
 
 ### Initial Backfill
@@ -547,6 +574,257 @@ app.use(aggregate, { name: 'aggregateTotalUsers' });
 app.use(aggregate, { name: 'aggregateTotalPosts' });
 
 export default app;
+```
+
+## Advanced
+
+### DirectAggregate
+
+For aggregating data not stored in tables (manual management):
+
+```ts
+import { DirectAggregate } from '@convex-dev/aggregate';
+
+const aggregate = new DirectAggregate<{
+  Key: number;
+  Id: string;
+}>(components.aggregate);
+
+// Insert manually
+await aggregate.insert(ctx, {
+  key: Date.now(),
+  id: `${userId}-${Date.now()}`,
+  sumValue: value,
+});
+
+// Replace (update key or value)
+await aggregate.replace(
+  ctx,
+  { key: oldTimestamp, id: eventId },
+  { key: Date.now(), id: eventId, sumValue: newValue }
+);
+```
+
+### Multiple Sort Orders
+
+Define multiple aggregates for different access patterns on the same table:
+
+```ts
+// By score for rankings
+const byScore = new TableAggregate<{
+  Key: number;
+  DataModel: DataModel;
+  TableName: 'players';
+}>(components.byScore, {
+  sortKey: (doc) => doc.score,
+});
+
+// By username for alphabetical listing
+const byUsername = new TableAggregate<{
+  Key: string;
+  DataModel: DataModel;
+  TableName: 'players';
+}>(components.byUsername, {
+  sortKey: (doc) => doc.username,
+});
+
+// By activity for recency
+const byActivity = new TableAggregate<{
+  Key: number;
+  DataModel: DataModel;
+  TableName: 'players';
+}>(components.byActivity, {
+  sortKey: (doc) => doc.lastActiveAt,
+});
+```
+
+### Composite Aggregation Patterns
+
+Multi-dimensional leaderboards with regional queries:
+
+```ts
+const leaderboard = new TableAggregate<{
+  Namespace: string; // game mode
+  Key: [string, number, number]; // [region, score, timestamp]
+  DataModel: DataModel;
+  TableName: 'matches';
+}>(components.leaderboard, {
+  namespace: (doc) => doc.gameMode,
+  sortKey: (doc) => [doc.region, doc.score, doc.timestamp],
+});
+
+// Regional high scores
+const regionalHighScore = await leaderboard.max(ctx, {
+  namespace: 'ranked',
+  bounds: { prefix: ['us-west'] },
+});
+
+// Count players per region
+const usWestCount = await leaderboard.count(ctx, {
+  namespace: 'ranked',
+  bounds: { prefix: ['us-west'] },
+});
+```
+
+### Cascade Deletes with Aggregates
+
+Aggregates update automatically when triggers handle cascade deletes:
+
+```ts
+// Register aggregate triggers
+triggers.register('characterStars', aggregateCharacterStars.trigger());
+triggers.register('characters', aggregateCharacters.trigger());
+
+// Cascade delete - aggregates update automatically
+triggers.register('user', async (ctx, change) => {
+  if (change.operation === 'delete') {
+    const characters = await ctx.table('characters', 'userId', (q) =>
+      q.eq('userId', change.id)
+    );
+
+    for (const char of characters) {
+      // Aggregate trigger fires on each delete!
+      await ctx.table('characters').getX(char._id).delete();
+    }
+  }
+});
+```
+
+### Lazy Aggregation Configuration
+
+Configure aggregation tree for different workloads:
+
+```ts
+// High-write scenarios: larger nodes, lazy root
+await aggregate.clear(ctx, 32, true);
+
+// High-read scenarios: smaller nodes, eager root
+await aggregate.clear(ctx, 16, false);
+```
+
+### Time-Based Aggregations
+
+Bucket data by time periods:
+
+```ts
+const activityByHour = new TableAggregate<{
+  Key: [number, string]; // [hour, userId]
+  DataModel: DataModel;
+  TableName: 'activities';
+}>(components.activityByHour, {
+  sortKey: (doc) => [
+    Math.floor(doc.timestamp / 3600000), // Hour bucket
+    doc.userId,
+  ],
+});
+
+// Get hourly activity counts
+const now = Date.now();
+const results = [];
+
+for (let i = 0; i < 24; i++) {
+  const hour = Math.floor((now - i * 3600000) / 3600000);
+  const count = await activityByHour.count(ctx, {
+    bounds: { prefix: [hour] },
+  });
+  results.push({ hour, count });
+}
+```
+
+### Leaderboard with User Stats
+
+Complete real-world example:
+
+```ts
+export const getUserStats = authQuery
+  .input(z.object({ gameId: zid('games') }))
+  .output(z.object({
+    highScore: z.number(),
+    averageScore: z.number(),
+    gamesPlayed: z.number(),
+    globalRank: z.number().nullable(),
+    percentile: z.number(),
+  }))
+  .query(async ({ ctx, input }) => {
+    // User's scores in this game
+    const gameScores = await ctx.table('scores', 'user_game', (q) =>
+      q.eq('userId', ctx.userId).eq('gameId', input.gameId)
+    );
+
+    if (gameScores.length === 0) {
+      return { highScore: 0, averageScore: 0, gamesPlayed: 0, globalRank: null, percentile: 0 };
+    }
+
+    const highScore = Math.max(...gameScores.map((s) => s.score));
+    const averageScore = gameScores.reduce((sum, s) => sum + s.score, 0) / gameScores.length;
+
+    // Global stats from aggregate
+    const globalRank = await leaderboardByGame.indexOf(ctx, highScore, {
+      namespace: input.gameId,
+    });
+
+    const totalPlayers = await leaderboardByGame.count(ctx, {
+      namespace: input.gameId,
+      bounds: {},
+    });
+
+    const percentile = globalRank && totalPlayers > 0
+      ? ((totalPlayers - globalRank) / totalPlayers) * 100
+      : 0;
+
+    return { highScore, averageScore, gamesPlayed: gameScores.length, globalRank, percentile };
+  });
+```
+
+### Testing Aggregates
+
+```ts
+import { expect, test } from 'vitest';
+import { ConvexTestingHelper } from 'convex-test';
+
+test('aggregate maintains consistency', async () => {
+  const t = new ConvexTestingHelper();
+
+  // Insert test data
+  const scoreId = await t.mutation(api.scores.addScore, {
+    gameId: 'game1',
+    score: 100,
+  });
+
+  // Verify aggregate
+  const stats = await t.query(api.scores.getStats, { gameId: 'game1' });
+  expect(stats.gameCount).toBe(1);
+
+  // Update and verify count unchanged
+  await t.mutation(api.scores.updateScore, { scoreId, newScore: 200 });
+  const newStats = await t.query(api.scores.getStats, { gameId: 'game1' });
+  expect(newStats.gameCount).toBe(1);
+});
+```
+
+### Error Handling
+
+Handle aggregate-specific errors gracefully:
+
+```ts
+export const deleteScore = authMutation
+  .input(z.object({ scoreId: zid('scores') }))
+  .mutation(async ({ ctx, input }) => {
+    const doc = await ctx.table('scores').getX(input.scoreId);
+
+    try {
+      await aggregate.delete(ctx, doc);
+    } catch (error) {
+      if (error.message.includes('not found in aggregate')) {
+        // Document wasn't in aggregate, safe to continue
+        console.warn('Document not in aggregate:', input.scoreId);
+      } else {
+        throw error;
+      }
+    }
+
+    await ctx.table('scores').getX(input.scoreId).delete();
+  });
 ```
 
 ## Next Steps
