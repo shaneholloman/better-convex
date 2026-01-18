@@ -1,16 +1,26 @@
 ---
 title: Triggers
-description: Lifecycle hooks for user and session events
+description: Lifecycle hooks for user and session events.
+links:
+  doc: https://www.better-auth.com/docs
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore auth triggers in better-convex. You'll learn to run custom logic when auth data changes, including creating related records on signup, cleaning up on deletion, and validating data before writes.
 
 ## Overview
 
-Triggers let you run custom logic when auth data changes. Use them to:
+Triggers let you run custom logic when auth data changes:
 
-- Create related records when users sign up
-- Clean up data when users are deleted
-- Validate or transform data before writes
-- Sync with external services
+| Use Case | Description |
+|----------|-------------|
+| Create related records | When users sign up |
+| Clean up data | When users are deleted |
+| Validate or transform | Before writes |
+| Sync external services | After changes |
+
+Let's explore the available triggers.
 
 ## Available Triggers
 
@@ -38,7 +48,7 @@ Run after the database write. Use for side effects.
 
 Pass triggers to `createClient`:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {4-15}
 import { createClient } from 'better-convex/auth';
 
 export const authClient = createClient({
@@ -66,7 +76,7 @@ export const authClient = createClient({
 
 Transform user data before insertion:
 
-```ts
+```ts showLineNumbers {3-12}
 triggers: {
   user: {
     beforeCreate: async (ctx, data) => {
@@ -92,7 +102,7 @@ Create related records after user signup:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts
+    ```ts showLineNumbers {3-18}
     triggers: {
       user: {
         onCreate: async (ctx, user) => {
@@ -121,7 +131,7 @@ Create related records after user signup:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts
+    ```ts showLineNumbers {1-2,6-7,10-18}
     import { entsTableFactory } from 'convex-ents';
     import { entDefinitions } from '../lib/ents';
 
@@ -162,7 +172,7 @@ Sync changes to related records:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts
+    ```ts showLineNumbers {3-14}
     triggers: {
       user: {
         onUpdate: async (ctx, newDoc, oldDoc) => {
@@ -183,7 +193,7 @@ Sync changes to related records:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts
+    ```ts showLineNumbers {1-2,6-7,10-14}
     import { entsTableFactory } from 'convex-ents';
     import { entDefinitions } from '../lib/ents';
 
@@ -211,13 +221,13 @@ Sync changes to related records:
 
 Clean up related data:
 
-<Callout type="warn">
+<Callout icon={<InfoIcon />}>
 Cascade deletes in triggers are permanent. Test thoroughly and consider soft deletes for critical data.
 </Callout>
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts
+    ```ts showLineNumbers {3-20}
     triggers: {
       user: {
         onDelete: async (ctx, user) => {
@@ -246,7 +256,7 @@ Cascade deletes in triggers are permanent. Test thoroughly and consider soft del
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts
+    ```ts showLineNumbers {1-2,6-7,10-21}
     import { entsTableFactory } from 'convex-ents';
     import { entDefinitions } from '../lib/ents';
 
@@ -287,7 +297,7 @@ Set default session state:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts
+    ```ts showLineNumbers {3-13}
     triggers: {
       session: {
         onCreate: async (ctx, session) => {
@@ -307,7 +317,7 @@ Set default session state:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts
+    ```ts showLineNumbers {1-2,6-7,10-17}
     import { entsTableFactory } from 'convex-ents';
     import { entDefinitions } from '../lib/ents';
 
@@ -337,7 +347,7 @@ Set default session state:
 
 After configuring triggers, export them from your auth file:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {2-9}
 // Export trigger functions for Better Auth adapter
 export const {
   beforeCreate,
@@ -355,7 +365,7 @@ These functions are called by the Better Auth adapter during CRUD operations.
 
 Triggers are fully typed based on your schema:
 
-```ts
+```ts showLineNumbers {3-6,9-12,15-18}
 triggers: {
   user: {
     // `data` is typed as Infer<Schema['tables']['user']['validator']>

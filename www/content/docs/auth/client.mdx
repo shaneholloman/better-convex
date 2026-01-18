@@ -1,17 +1,32 @@
 ---
 title: Client
-description: Client-side authentication with sign in, sign out, and auth hooks
+description: Client-side authentication with sign in, sign out, and auth hooks.
+links:
+  doc: https://www.better-auth.com/docs/authentication
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore client-side authentication with better-convex. You'll learn to implement sign in/out flows, use auth state hooks, and render components conditionally based on authentication state.
 
 ## Overview
 
-Client-side auth utilities for React components. Includes sign in/out flows, auth state hooks, and conditional rendering components.
+Client-side auth utilities for React components:
+
+| Feature | Description |
+|---------|-------------|
+| Sign in/out mutations | TanStack Query hooks for auth flows |
+| Auth state hooks | `useAuth`, `useAuthGuard`, `useMaybeAuth`, `useIsAuth` |
+| Conditional rendering | `Authenticated`, `Unauthenticated`, `MaybeAuthenticated` |
+| Provider callbacks | Handle unauthorized queries/mutations |
+
+Let's start with setup.
 
 ## Setup
 
 Create an auth client with mutation hooks:
 
-```ts title="src/lib/convex/auth-client.ts"
+```ts title="src/lib/convex/auth-client.ts" showLineNumbers {4,8-9,12-16}
 import { convexClient } from '@convex-dev/better-auth/client/plugins';
 import { inferAdditionalFields } from 'better-auth/client/plugins';
 import { createAuthClient } from 'better-auth/react';
@@ -36,7 +51,7 @@ export const {
 
 ### Social Providers
 
-```tsx title="src/components/login-form.tsx"
+```tsx title="src/components/login-form.tsx" showLineNumbers {6,8-11,13-16}
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
@@ -76,7 +91,7 @@ function LoginForm() {
 
 First enable email/password in your Convex auth config:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {3-5}
 const createAuthOptions = (ctx: GenericCtx) =>
   ({
     emailAndPassword: {
@@ -88,7 +103,7 @@ const createAuthOptions = (ctx: GenericCtx) =>
 
 Then use the sign in/up hooks:
 
-```tsx title="src/components/login-form.tsx"
+```tsx title="src/components/login-form.tsx" showLineNumbers {8-9,13-20,22-39}
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
@@ -175,13 +190,13 @@ function EmailLoginForm() {
 }
 ```
 
-<Callout type="info">
+<Callout icon={<InfoIcon />}>
 Unlike OAuth (which redirects server-side), email/password auth requires a client-side redirect via `onSuccess`.
 </Callout>
 
 ## Sign Out
 
-```tsx title="src/components/logout-button.tsx"
+```tsx title="src/components/logout-button.tsx" showLineNumbers {6,8-12,15}
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
@@ -210,9 +225,10 @@ function LogoutButton() {
 
 The hooks provide two key features:
 
-1. **Auth query cleanup**: `useSignOutMutationOptions` automatically calls `unsubscribeAuthQueries()` before `signOut()` to prevent `UNAUTHORIZED` errors from subscribed queries during logout.
-
-2. **Proper loading state**: The mutation's `isPending` stays `true` until the auth token is actually cleared (not just when the API call completes). This prevents UI flicker where the button shows "Sign out" briefly before redirecting.
+| Feature | Description |
+|---------|-------------|
+| Auth query cleanup | `useSignOutMutationOptions` automatically calls `unsubscribeAuthQueries()` before `signOut()` to prevent `UNAUTHORIZED` errors from subscribed queries during logout |
+| Proper loading state | The mutation's `isPending` stays `true` until the auth token is actually cleared (not just when the API call completes), preventing UI flicker |
 
 ## Client Hooks
 
@@ -220,7 +236,7 @@ The hooks provide two key features:
 
 Get comprehensive auth state:
 
-```tsx title="src/components/auth-status.tsx"
+```tsx title="src/components/auth-status.tsx" showLineNumbers {1,4,6}
 import { useAuth } from 'better-convex/auth-client';
 
 function AuthStatus() {
@@ -246,7 +262,7 @@ function AuthStatus() {
 
 Check if user maybe has auth (optimistic, has token):
 
-```tsx
+```tsx showLineNumbers {1,4}
 import { useMaybeAuth } from 'better-convex/auth-client';
 
 function Component() {
@@ -259,7 +275,7 @@ function Component() {
 
 Check if user is authenticated (server-verified):
 
-```tsx
+```tsx showLineNumbers {1,4}
 import { useIsAuth } from 'better-convex/auth-client';
 
 function SecureComponent() {
@@ -272,7 +288,7 @@ function SecureComponent() {
 
 Guard mutations that require authentication:
 
-```tsx title="src/components/create-post.tsx"
+```tsx title="src/components/create-post.tsx" showLineNumbers {1,5,8-9,12}
 import { useAuthGuard } from 'better-convex/auth-client';
 import { useMutation } from '@tanstack/react-query';
 
@@ -294,7 +310,7 @@ function CreatePostButton() {
 
 With callback:
 
-```tsx
+```tsx showLineNumbers {1-6}
 const handleClick = () => {
   guard(async () => {
     // Only runs if authenticated
@@ -310,7 +326,7 @@ const handleClick = () => {
 
 Render children only when has session (optimistic):
 
-```tsx
+```tsx showLineNumbers {1,5-7}
 import { MaybeAuthenticated } from 'better-convex/auth-client';
 
 function App() {
@@ -326,7 +342,7 @@ function App() {
 
 Render children only when server-verified:
 
-```tsx
+```tsx showLineNumbers {1,5-7}
 import { Authenticated } from 'better-convex/auth-client';
 
 function App() {
@@ -342,7 +358,7 @@ function App() {
 
 Render children only when no session (optimistic):
 
-```tsx
+```tsx showLineNumbers {1,5-11}
 import { MaybeAuthenticated, MaybeUnauthenticated } from 'better-convex/auth-client';
 
 function App() {
@@ -363,7 +379,7 @@ function App() {
 
 Render children only when not server-verified (waits for loading):
 
-```tsx
+```tsx showLineNumbers {1,5-7}
 import { Unauthenticated } from 'better-convex/auth-client';
 
 function App() {
@@ -379,7 +395,7 @@ function App() {
 
 Configure auth callbacks in the provider:
 
-```tsx title="src/app.tsx"
+```tsx title="src/app.tsx" showLineNumbers {1,5-14}
 import { ConvexAuthProvider } from 'better-convex/auth-client';
 
 function App() {
@@ -412,6 +428,68 @@ function App() {
 | `initialToken` | `string?` | Initial session token (from SSR) |
 | `onMutationUnauthorized` | `() => void` | Called when mutation is blocked |
 | `onQueryUnauthorized` | `({ queryName }) => void` | Called when query is blocked |
+
+## Auth Flow
+
+Let's understand how the SSR → client hydration flow works:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              SERVER (RSC)                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  1. caller.getToken()                                                        │
+│     └─> Reads Better Auth session cookie                                     │
+│     └─> Returns JWT token (or undefined)                                     │
+│                                                                              │
+│  2. prefetch(crpc.user.getCurrentUser.queryOptions())                        │
+│     └─> Fetches user data via HTTP with token in Authorization header        │
+│     └─> Stores result in server QueryClient                                  │
+│                                                                              │
+│  3. <BetterConvexProvider token={token}>                                     │
+│     └─> Passes token to client as initialToken prop                          │
+│                                                                              │
+│  4. <HydrateClient>                                                          │
+│     └─> Dehydrates QueryClient state for client hydration                    │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CLIENT (Hydration)                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  5. ConvexAuthProvider mount                                                 │
+│     └─> AuthProvider sets initial store: token, expiresAt                    │
+│     └─> isLoading: true, isAuthenticated: false (waiting for Convex)         │
+│                                                                              │
+│  6. ConvexProviderWithAuth                                                   │
+│     └─> Calls useAuth().fetchAccessToken with cached token                   │
+│     └─> Convex backend validates JWT                                         │
+│                                                                              │
+│  7. AuthStateSync (inside ConvexProviderWithAuth)                            │
+│     └─> useConvexAuth() returns { isLoading: true, isAuthenticated: false }  │
+│     └─> Defensive: isLoading = true (has token but not yet authenticated)    │
+│                                                                              │
+│  8. Convex validates token                                                   │
+│     └─> useConvexAuth() returns { isLoading: false, isAuthenticated: true }  │
+│     └─> AuthStateSync syncs to store                                         │
+│                                                                              │
+│  9. HydrationBoundary                                                        │
+│     └─> Hydrates client QueryClient with prefetched data                     │
+│     └─> useQuery(crpc.user.getCurrentUser.queryOptions()) → instant data     │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Points
+
+| Point | Description |
+|-------|-------------|
+| Token flows server → client | Via `initialToken` prop |
+| Instant hydration | Prefetched queries hydrate immediately - no loading spinner |
+| Defensive isLoading | Prevents `UNAUTHORIZED` errors during hydration race |
+| Two sources sync together | Better Auth (cookie-based) and Convex (WebSocket-based) |
 
 ## Next Steps
 

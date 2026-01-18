@@ -304,6 +304,7 @@ import type { DataModel, Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import {
   action,
+  httpAction,
   internalAction,
   internalMutation,
   internalQuery,
@@ -387,6 +388,7 @@ const c = initCRPC
       }),
     action,
     internalAction,
+    httpAction,
   });
 
 // =============================================================================
@@ -594,6 +596,27 @@ export const authAction = c.action
   });
 
 // =============================================================================
+// HTTP Action Procedures
+// =============================================================================
+
+/** Public HTTP route - no auth required */
+export const publicRoute = c.httpAction;
+
+/** Auth HTTP route - verifies JWT and adds userId to context */
+export const authRoute = c.httpAction.use(async ({ ctx, next }) => {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new CRPCError({ code: "UNAUTHORIZED" });
+  }
+  return next({
+    ctx: { ...ctx, userId: identity.subject as Id<"user"> },
+  });
+});
+
+/** HTTP router factory - create nested HTTP routers */
+export const router = c.router;
+
+// =============================================================================
 // Exports for Better Auth
 // =============================================================================
 
@@ -621,6 +644,7 @@ import type { DataModel, Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import {
   action,
+  httpAction,
   internalAction,
   internalMutation,
   internalQuery,
@@ -710,6 +734,7 @@ const c = initCRPC
       }),
     action,
     internalAction,
+    httpAction,
   });
 
 // =============================================================================
@@ -917,6 +942,27 @@ export const authAction = c.action
   });
 
 // =============================================================================
+// HTTP Action Procedures
+// =============================================================================
+
+/** Public HTTP route - no auth required */
+export const publicRoute = c.httpAction;
+
+/** Auth HTTP route - verifies JWT and adds userId to context */
+export const authRoute = c.httpAction.use(async ({ ctx, next }) => {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new CRPCError({ code: "UNAUTHORIZED" });
+  }
+  return next({
+    ctx: { ...ctx, userId: identity.subject as Id<"user"> },
+  });
+});
+
+/** HTTP router factory - create nested HTTP routers */
+export const router = c.router;
+
+// =============================================================================
 // Exports for Better Auth
 // =============================================================================
 
@@ -932,11 +978,17 @@ export const internalMutationWithTriggers = customMutation(
 ### types.ts
 
 ```ts title="convex/shared/types.ts"
-import type { inferApiInputs, inferApiOutputs } from "better-convex/server";
+import type {
+  inferApiInputs,
+  inferApiOutputs,
+  WithHttpRouter,
+} from "better-convex/server";
 import type { WithoutSystemFields } from "convex/server";
 
 import type { api } from "../functions/_generated/api";
 import type { Doc, TableNames } from "../functions/_generated/dataModel";
+// biome-ignore lint/style/noRestrictedImports: type
+import type { appRouter } from "../functions/http";
 
 export type DocWithId<TableName extends TableNames> = WithoutSystemFields<
   Doc<TableName>
@@ -944,8 +996,8 @@ export type DocWithId<TableName extends TableNames> = WithoutSystemFields<
   id: Doc<TableName>["_id"];
 };
 
-// API type inference (tRPC-style)
-export type Api = typeof api;
+// API type with HTTP router (http is optional for type inference)
+export type Api = WithHttpRouter<typeof api, typeof appRouter>;
 export type ApiInputs = inferApiInputs<Api>;
 export type ApiOutputs = inferApiOutputs<Api>;
 ```
@@ -1180,13 +1232,32 @@ export default {
 ### http.ts
 
 ```ts title="convex/functions/http.ts"
-import { httpRouter } from "convex/server";
 import { registerRoutes } from "better-convex/auth";
+import { registerCRPCRoutes } from "better-convex/server";
+import { httpRouter } from "convex/server";
+import { router } from "../lib/crpc";
+import { httpAction } from "./_generated/server";
 import { createAuth } from "./auth";
 
 const http = httpRouter();
 
+// Better Auth routes
 registerRoutes(http, createAuth);
+
+// HTTP API router (tRPC-style) - add your routes here
+export const appRouter = router({
+  // health,
+  // todos: todosRouter,
+});
+
+// Register cRPC routes to Convex httpRouter
+registerCRPCRoutes(http, appRouter, {
+  httpAction,
+  cors: {
+    allowedOrigins: [process.env.SITE_URL!],
+    allowCredentials: true,
+  },
+});
 
 export default http;
 ```
@@ -1426,12 +1497,14 @@ export function createQueryClient() {
 ```tsx title="src/lib/convex/crpc.tsx"
 import { api } from "@convex/api";
 import { meta } from "@convex/meta";
+import type { Api } from "@convex/types";
 import { createCRPCContext } from "better-convex/react";
 
-export const { CRPCProvider, useCRPC, useCRPCClient } = createCRPCContext(
+export const { CRPCProvider, useCRPC, useCRPCClient } = createCRPCContext<Api>({
   api,
-  meta
-);
+  meta,
+  convexSiteUrl: process.env.NEXT_PUBLIC_CONVEX_SITE_URL!,
+});
 ```
 
 ---
@@ -1467,6 +1540,7 @@ import "server-only";
 
 import { api } from "@convex/api";
 import { meta } from "@convex/meta";
+import type { Api } from "@convex/types";
 import type { FetchQueryOptions } from "@tanstack/react-query";
 import {
   dehydrate,
@@ -1483,9 +1557,6 @@ import { cache } from "react";
 import { hydrationConfig } from "./query-client";
 import { createCaller, createContext } from "./server";
 
-// CRPC proxy for RSC
-export const crpc = createServerCRPCProxy(api, meta);
-
 // RSC context factory
 const createRSCContext = cache(async () =>
   createContext({ headers: await headers() })
@@ -1494,6 +1565,9 @@ const createRSCContext = cache(async () =>
 /** RSC caller for server-side data fetching */
 export const caller = createCaller(createRSCContext);
 
+// CRPC proxy for RSC (no auth config - handled by QueryClient)
+export const crpc = createServerCRPCProxy<Api>({ api, meta });
+
 /** Create server-side QueryClient */
 function createServerQueryClient() {
   return new QueryClient({
@@ -1501,6 +1575,7 @@ function createServerQueryClient() {
       ...hydrationConfig,
       ...getServerQueryClientOptions({
         getToken: caller.getToken,
+        convexSiteUrl: process.env.NEXT_PUBLIC_CONVEX_SITE_URL!,
       }),
     },
   });

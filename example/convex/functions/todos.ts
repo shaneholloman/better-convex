@@ -82,9 +82,9 @@ export const list = optionalAuthQuery
       }
 
       // For public projects or authorized users, show all project todos
-      let query = ctx.table('todos', 'projectId', (q) =>
-        q.eq('projectId', input.projectId)
-      );
+      let query = ctx
+        .table('todos', 'projectId', (q) => q.eq('projectId', input.projectId))
+        .filter((q) => q.eq(q.field('deletionTime'), undefined));
 
       // Apply filters
       if (input.completed !== undefined) {
@@ -124,10 +124,10 @@ export const list = optionalAuthQuery
         }));
     }
 
-    // Start with user's todos
-    let query = ctx.table('todos', 'userId', (q) =>
-      q.eq('userId', ctx.userId!)
-    );
+    // Start with user's todos (exclude soft-deleted)
+    let query = ctx
+      .table('todos', 'userId', (q) => q.eq('userId', ctx.userId!))
+      .filter((q) => q.eq(q.field('deletionTime'), undefined));
 
     // Apply completed filter if specified
     if (input.completed !== undefined) {
@@ -194,7 +194,7 @@ export const search = optionalAuthQuery
         }
       }
 
-      // Search within the project
+      // Search within the project (exclude soft-deleted)
       return await ctx
         .table('todos')
         .search('search_title_description', (q) => {
@@ -208,6 +208,7 @@ export const search = optionalAuthQuery
 
           return searchQuery;
         })
+        .filter((q) => q.eq(q.field('deletionTime'), undefined))
         .paginate(paginationOpts)
         .map(async (todo) => ({
           ...todo.doc(),
@@ -224,6 +225,7 @@ export const search = optionalAuthQuery
       });
     }
 
+    // Exclude soft-deleted
     return await ctx
       .table('todos')
       .search('search_title_description', (q) => {
@@ -237,6 +239,7 @@ export const search = optionalAuthQuery
 
         return searchQuery;
       })
+      .filter((q) => q.eq(q.field('deletionTime'), undefined))
       .paginate(paginationOpts)
       .map(async (todo) => ({
         ...todo.doc(),
@@ -432,7 +435,7 @@ export const update = authMutation
       }
     }
 
-    // Handle tag updates
+    // Handle tag updates (edge, must be done before patch)
     if (input.tagIds !== undefined) {
       if (input.tagIds.length > 0) {
         const tags = await ctx.table('tags').getMany(input.tagIds);
@@ -447,7 +450,25 @@ export const update = authMutation
           });
         }
       }
-      updates.tags = input.tagIds;
+
+      // Update tag edges using ents
+      const currentTags = await todo.edge('tags');
+      const currentTagIds = new Set(currentTags.map((t) => t._id));
+      const newTagIds = new Set(input.tagIds);
+
+      // Remove tags no longer in the list
+      const toRemove = currentTags
+        .filter((t) => !newTagIds.has(t._id))
+        .map((t) => t._id);
+      // Add new tags
+      const toAdd = input.tagIds.filter((id) => !currentTagIds.has(id));
+
+      if (toRemove.length > 0) {
+        await todo.patch({ tags: { remove: toRemove } });
+      }
+      if (toAdd.length > 0) {
+        await todo.patch({ tags: { add: toAdd } });
+      }
     }
 
     // Apply updates

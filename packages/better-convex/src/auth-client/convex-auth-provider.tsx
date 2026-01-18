@@ -6,15 +6,15 @@
 
 import type { AuthTokenFetcher } from 'convex/browser';
 import type { ConvexReactClient } from 'convex/react';
-import { ConvexProviderWithAuth } from 'convex/react';
+import { ConvexProviderWithAuth, useConvexAuth } from 'convex/react';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo } from 'react';
 
 import { CRPCClientError, defaultIsUnauthorized } from '../crpc/error';
 import {
   AuthProvider,
-  getPersistedToken,
-  persistToken,
+  decodeJwtExp,
+  FetchAccessTokenContext,
   useAuthStore,
   useAuthValue,
 } from '../react/auth-store';
@@ -55,6 +55,9 @@ const defaultMutationHandler = () => {
 /**
  * Unified auth provider for Convex + Better Auth.
  * Handles token sync, HMR persistence, and auth callbacks.
+ *
+ * Structure: AuthProvider wraps ConvexAuthProviderInner so that
+ * useAuthStore() is available when creating fetchAccessToken.
  */
 export function ConvexAuthProvider({
   children,
@@ -65,116 +68,161 @@ export function ConvexAuthProvider({
   onQueryUnauthorized,
   isUnauthorized,
 }: ConvexAuthProviderProps) {
-  // Use persisted token from globalThis when initialToken is undefined (HMR case)
-  const effectiveToken = initialToken ?? getPersistedToken();
-
-  // Persist token to globalThis for HMR survival
-  if (effectiveToken) {
-    persistToken(effectiveToken);
-  }
-
-  // Create useAuth hook for ConvexProviderWithAuth
-  const useAuth = useCreateConvexAuth(authClient);
-
   // Handle cross-domain one-time token
   useOTTHandler(authClient);
 
+  // Memoize decoded JWT to avoid re-parsing on every render
+  const tokenValues = useMemo(
+    () => ({
+      expiresAt: initialToken ? decodeJwtExp(initialToken) : null,
+      token: initialToken ?? null,
+    }),
+    [initialToken]
+  );
+
+  // AuthProvider wraps inner so useAuthStore() is available inside
+  // SSR initial values: set token/expiresAt, keep isLoading=true until Convex validates
   return (
-    <ConvexProviderWithAuth
-      client={client as IConvexReactClient}
-      useAuth={useAuth}
+    <AuthProvider
+      initialValues={tokenValues}
+      isUnauthorized={isUnauthorized ?? defaultIsUnauthorized}
+      onMutationUnauthorized={onMutationUnauthorized ?? defaultMutationHandler}
+      onQueryUnauthorized={onQueryUnauthorized ?? (() => {})}
     >
-      <AuthProvider
-        initialValues={{
-          isLoading: true,
-          token: effectiveToken ?? null,
-        }}
-        isUnauthorized={isUnauthorized ?? defaultIsUnauthorized}
-        onMutationUnauthorized={
-          onMutationUnauthorized ?? defaultMutationHandler
-        }
-        onQueryUnauthorized={onQueryUnauthorized ?? (() => {})}
-      >
-        <AuthSyncEffect authClient={authClient} />
+      <ConvexAuthProviderInner authClient={authClient} client={client}>
         {children}
-      </AuthProvider>
-    </ConvexProviderWithAuth>
+      </ConvexAuthProviderInner>
+    </AuthProvider>
   );
 }
 
 /**
- * Syncs Better Auth session to auth-store.
- * Automatically handles login/logout token updates.
+ * Inner provider that has access to AuthStore via useAuthStore().
+ * Creates fetchAccessToken and passes it through context (no race condition).
  */
-function AuthSyncEffect({ authClient }: { authClient: AuthClient }) {
-  const session = authClient.useSession();
+function ConvexAuthProviderInner({
+  children,
+  client,
+  authClient,
+}: {
+  children: ReactNode;
+  client: ConvexReactClient;
+  authClient: AuthClient;
+}) {
   const authStore = useAuthStore();
+  const { data: session, isPending } = authClient.useSession();
 
-  useEffect(() => {
-    if (!session.isPending) {
-      const token = session.data?.session.token ?? null;
-      const currentToken = authStore.get('token');
-
-      // Only update if token changed
-      if (token !== currentToken) {
-        authStore.set('token', token);
-        // Always persist, including null on logout (fixes HMR bug)
-        persistToken(token);
+  // Create fetchAccessToken at render time - immediately available via context
+  const fetchAccessToken = useCallback(
+    async ({
+      forceRefreshToken = false,
+    }: {
+      forceRefreshToken?: boolean;
+    } = {}) => {
+      // If no session:
+      // - If still pending (hydration), return cached token from SSR
+      // - If not pending (confirmed no session), clear cache
+      if (!session) {
+        if (!isPending) {
+          authStore.set('token', null);
+          authStore.set('expiresAt', null);
+        }
+        return authStore.get('token');
       }
-    }
-  }, [session.data, session.isPending, authStore]);
 
-  return null;
-}
+      // Check cached JWT from store
+      const cachedToken = authStore.get('token');
+      const expiresAt = authStore.get('expiresAt');
+      const timeRemaining = expiresAt ? expiresAt - Date.now() : 0;
 
-/**
- * Creates useAuth hook for ConvexProviderWithAuth.
- * Uses auth-store token as single source of truth.
- */
-function useCreateConvexAuth(authClient: AuthClient) {
-  return useMemo(
+      // Return cached if valid and not forced (60s leeway)
+      if (
+        !forceRefreshToken &&
+        cachedToken &&
+        expiresAt &&
+        timeRemaining >= 60_000
+      ) {
+        return cachedToken;
+      }
+
+      // Fetch fresh JWT
+      try {
+        // biome-ignore lint/suspicious/noExplicitAny: convex plugin type
+        const { data } = await (authClient as any).convex.token();
+        const jwt = data?.token || null;
+
+        if (jwt) {
+          const exp = decodeJwtExp(jwt);
+          authStore.set('token', jwt);
+          authStore.set('expiresAt', exp);
+        }
+
+        return jwt;
+      } catch {
+        return null;
+      }
+    },
+    // Rebuild when session/isPending changes to trigger setAuth()
+    [session, isPending, authStore, authClient]
+  );
+
+  // Create useAuth hook for ConvexProviderWithAuth
+  const useAuth = useMemo(
     () =>
-      function useConvexAuth() {
-        const { data: session, isPending: isSessionPending } =
-          authClient.useSession();
-        const token = useAuthValue('token');
-        const sessionId = session?.session?.id;
-
-        const fetchAccessToken = useCallback(
-          async ({
-            forceRefreshToken = false,
-          }: {
-            forceRefreshToken?: boolean;
-          } = {}) => {
-            if (token && !forceRefreshToken) {
-              return token;
-            }
-
-            try {
-              // biome-ignore lint/suspicious/noExplicitAny: convex plugin type
-              const { data } = await (authClient as any).convex.token();
-              return data?.token || null;
-            } catch {
-              return null;
-            }
-          },
-          // Rebuild when session changes to trigger setAuth()
-          // eslint-disable-next-line react-hooks/exhaustive-deps
-          [sessionId, token]
-        );
-
+      function useConvexAuthHook() {
         return useMemo(
           () => ({
-            isLoading: isSessionPending,
+            isLoading: isPending,
             isAuthenticated: session !== null,
             fetchAccessToken,
           }),
           // eslint-disable-next-line react-hooks/exhaustive-deps
-          [isSessionPending, sessionId, fetchAccessToken]
+          [isPending, session, fetchAccessToken]
         );
       },
-    [authClient]
+    [isPending, session, fetchAccessToken]
   );
+
+  return (
+    <FetchAccessTokenContext.Provider value={fetchAccessToken}>
+      <ConvexProviderWithAuth
+        client={client as IConvexReactClient}
+        useAuth={useAuth}
+      >
+        <AuthStateSync>{children}</AuthStateSync>
+      </ConvexProviderWithAuth>
+    </FetchAccessTokenContext.Provider>
+  );
+}
+
+/**
+ * Syncs auth state from useConvexAuth() to the auth store.
+ * MUST be inside ConvexProviderWithAuth to access useConvexAuth().
+ *
+ * Defensive isLoading computation handles SSR hydration race:
+ * 1. SSR sets token from cookie
+ * 2. Client hydrates
+ * 3. Better Auth's useSession() briefly returns null before loading cookie
+ * 4. Convex sets isConvexAuthenticated = false (no auth to wait for)
+ * 5. Without defensive check, we'd sync { isLoading: false, isAuthenticated: false }
+ * 6. Queries would throw UNAUTHORIZED before token is validated
+ */
+function AuthStateSync({ children }: { children: ReactNode }) {
+  const { isLoading: convexIsLoading, isAuthenticated } = useConvexAuth();
+  const authStore = useAuthStore();
+  const token = useAuthValue('token');
+
+  useEffect(() => {
+    // DEFENSIVE: If we have a token but Convex says not authenticated,
+    // stay in loading state to avoid UNAUTHORIZED errors during hydration
+    const hasTokenButNotAuth = !!token && !isAuthenticated;
+    const isLoading = convexIsLoading || hasTokenButNotAuth;
+
+    authStore.set('isLoading', isLoading);
+    authStore.set('isAuthenticated', isAuthenticated);
+  }, [convexIsLoading, isAuthenticated, token, authStore]);
+
+  return children;
 }
 
 /**

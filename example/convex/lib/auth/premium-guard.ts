@@ -1,5 +1,5 @@
 import { CRPCError } from 'better-convex/server';
-import type { SessionUser } from './auth-helpers';
+import type { SessionUser } from '../../shared/auth-shared';
 
 export function premiumGuard(user: { plan?: SessionUser['plan'] }) {
   if (!user.plan) {

@@ -2,7 +2,7 @@ import { createEnv } from '@t3-oss/env-nextjs';
 import { z } from 'zod';
 
 const DEFAULT = {
-  PORT: '3000',
+  PORT: '3005',
 };
 
 export const env = createEnv({

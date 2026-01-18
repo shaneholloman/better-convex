@@ -1,15 +1,32 @@
 ---
 title: Migration
-description: Migrate from vanilla Convex to better-convex
+description: Migrate from vanilla Convex to better-convex.
+links:
+  doc: https://docs.convex.dev/production/best-practices
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore migrating from vanilla Convex to better-convex. You'll learn to convert functions incrementally, set up middleware, and migrate client hooks while keeping existing code working.
 
 ## Overview
 
-Migrate incrementally—better-convex works alongside vanilla Convex. Convert functions one at a time while keeping existing code working.
+Migrate incrementally—better-convex works alongside vanilla Convex. Convert functions one at a time:
+
+| Aspect | What Changes |
+|--------|--------------|
+| Validators | `v.string()` → `z.string()` |
+| Arguments | `args: { ... }` → `.input(z.object({ ... }))` |
+| Handler params | `(ctx, args)` → `({ ctx, input })` |
+| Errors | `ConvexError` → `CRPCError` with codes |
+| Middleware | `customQuery` → `.use()` with `next()` |
+| Client hooks | `useQuery(api.x)` → `useQuery(crpc.x.queryOptions({}))` |
+
+Let's migrate step by step.
 
 ## Step 1: Install
 
-```bash
+```bash showLineNumbers
 bun add better-convex @tanstack/react-query zod
 ```
 
@@ -17,7 +34,7 @@ bun add better-convex @tanstack/react-query zod
 
 ### Create cRPC Builder
 
-```ts title="convex/lib/crpc.ts"
+```ts title="convex/lib/crpc.ts" showLineNumbers {10-11,16-18}
 import { initCRPC } from 'better-convex/server';
 import {
   query,
@@ -63,7 +80,7 @@ Base context properties work identically:
 ### Queries
 
 **Before:**
-```ts
+```ts showLineNumbers {3-4}
 import { query } from './_generated/server';
 import { v } from 'convex/values';
 
@@ -76,7 +93,7 @@ export const get = query({
 ```
 
 **After:**
-```ts
+```ts showLineNumbers {1-3,5-7}
 import { z } from 'zod';
 import { zid } from 'convex-helpers/server/zod';
 import { publicQuery } from '../lib/crpc';
@@ -91,7 +108,7 @@ export const get = publicQuery
 ### Mutations
 
 **Before:**
-```ts
+```ts showLineNumbers {1-2}
 export const create = mutation({
   args: { name: v.string(), email: v.string() },
   handler: async (ctx, args) => {
@@ -101,7 +118,7 @@ export const create = mutation({
 ```
 
 **After:**
-```ts
+```ts showLineNumbers {1-3}
 export const create = publicMutation
   .input(z.object({ name: z.string(), email: z.string() }))
   .mutation(async ({ ctx, input }) => {
@@ -112,7 +129,7 @@ export const create = publicMutation
 ### Actions
 
 **Before:**
-```ts
+```ts showLineNumbers {1-2}
 export const sendEmail = action({
   args: { to: v.string(), subject: v.string() },
   handler: async (ctx, args) => {
@@ -122,7 +139,7 @@ export const sendEmail = action({
 ```
 
 **After:**
-```ts
+```ts showLineNumbers {1-3}
 export const sendEmail = publicAction
   .input(z.object({ to: z.string(), subject: z.string() }))
   .action(async ({ ctx, input }) => {
@@ -133,7 +150,7 @@ export const sendEmail = publicAction
 ### Internal Procedures
 
 **Before:**
-```ts
+```ts showLineNumbers {1,3-4}
 import { internalQuery } from './_generated/server';
 
 export const internal_get = internalQuery({
@@ -143,7 +160,7 @@ export const internal_get = internalQuery({
 ```
 
 **After:**
-```ts
+```ts showLineNumbers {1-3}
 export const internal_get = publicQuery
   .internal()
   .input(z.object({ id: zid('user') }))
@@ -153,7 +170,7 @@ export const internal_get = publicQuery
 ### Paginated Procedures
 
 **Before:**
-```ts
+```ts showLineNumbers {2,4-5}
 import { query } from './_generated/server';
 import { paginationOptsValidator } from 'convex/server';
 
@@ -166,7 +183,7 @@ export const list = query({
 ```
 
 **After:**
-```ts
+```ts showLineNumbers {1-5,7-8}
 const UserSchema = z.object({
   _id: zid('user'),
   name: z.string(),
@@ -187,7 +204,7 @@ The output is automatically typed as `{ continueCursor, isDone, page: User[] }`.
 ### Authentication
 
 **Before (inline in every function):**
-```ts
+```ts showLineNumbers {2-3}
 export const me = query({
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -200,7 +217,7 @@ export const me = query({
 ```
 
 **Before (convex-helpers customQuery):**
-```ts
+```ts showLineNumbers {1,3-10}
 import { customQuery, customCtx } from 'convex-helpers/server/customFunctions';
 
 const authQuery = customQuery(query, customCtx(async (ctx) => {
@@ -220,7 +237,7 @@ export const me = authQuery({
 ```
 
 **After (cRPC middleware):**
-```ts title="convex/lib/crpc.ts"
+```ts title="convex/lib/crpc.ts" showLineNumbers {1-2,4-10,13}
 import { getSession } from 'better-convex/auth';
 import { CRPCError } from 'better-convex/server';
 
@@ -241,7 +258,7 @@ export const me = authQuery.query(async ({ ctx }) => ctx.user);
 
 Chain multiple middleware with `.use()`:
 
-```ts
+```ts showLineNumbers {1,3-4,8-9}
 const loggedQuery = c.query.use(async ({ ctx, next }) => {
   console.log('Query started');
   const result = await next({ ctx });
@@ -257,7 +274,7 @@ const authLoggedQuery = loggedQuery.use(async ({ ctx, next }) => {
 
 Extend existing middleware with `.pipe()`:
 
-```ts
+```ts showLineNumbers {1-5}
 const adminQuery = authQuery.pipe(async ({ ctx, next }) => {
   if (!ctx.user.isAdmin) {
     throw new CRPCError({ code: 'FORBIDDEN' });
@@ -269,7 +286,7 @@ const adminQuery = authQuery.pipe(async ({ ctx, next }) => {
 ### Typed Metadata
 
 **After (new feature):**
-```ts
+```ts showLineNumbers {1,3,5-6,8-10}
 type Meta = { rateLimit?: number };
 
 const c = initCRPC.dataModel<DataModel>().create<Meta>({ ... });
@@ -290,12 +307,12 @@ export const limited = c.query
 ### Server - CRPCError
 
 **Before:**
-```ts
+```ts showLineNumbers
 throw new ConvexError({ message: 'Not found' });
 ```
 
 **After:**
-```ts
+```ts showLineNumbers {1,3-6}
 import { CRPCError } from 'better-convex/server';
 
 throw new CRPCError({
@@ -310,7 +327,7 @@ Available codes: `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `BAD_REQUEST`, `CONFL
 ### Client - Error States
 
 **Before:**
-```ts
+```ts showLineNumbers
 try {
   await mutate(args);
 } catch (error) {
@@ -319,7 +336,7 @@ try {
 ```
 
 **After:**
-```tsx
+```tsx showLineNumbers {1-6,9}
 const { mutate, error, isError } = useMutation(
   crpc.user.create.mutationOptions({
     onError: (error) => {
@@ -340,7 +357,7 @@ if (isCRPCErrorCode(error, 'NOT_FOUND')) {
 
 ### Provider Setup
 
-```tsx title="src/app/providers.tsx"
+```tsx title="src/app/providers.tsx" showLineNumbers {3-7,9,11-12,14-17}
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -381,17 +398,22 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
 ### Create CRPC Context
 
-```tsx title="src/lib/convex/crpc.tsx"
-import { api } from '@convex/_generated/api';
+```tsx title="src/lib/convex/crpc.tsx" showLineNumbers {1-4,6-9}
+import { api } from '@convex/api';
 import { meta } from '@convex/meta';
+import type { Api } from '@convex/types';
 import { createCRPCContext } from 'better-convex/react';
 
-export const { CRPCProvider, useCRPC } = createCRPCContext(api, meta);
+export const { CRPCProvider, useCRPC, useCRPCClient } = createCRPCContext<Api>({
+  api,
+  meta,
+  convexSiteUrl: process.env.NEXT_PUBLIC_CONVEX_SITE_URL!,
+});
 ```
 
 ### Generate Metadata
 
-```bash
+```bash showLineNumbers
 bunx better-convex dev
 ```
 
@@ -400,7 +422,7 @@ bunx better-convex dev
 ### Queries
 
 **Before:**
-```tsx
+```tsx showLineNumbers {1,3-4}
 import { useQuery } from 'convex/react';
 
 const user = useQuery(api.user.get, { id });
@@ -408,7 +430,7 @@ if (user === undefined) return <div>Loading...</div>;
 ```
 
 **After:**
-```tsx
+```tsx showLineNumbers {1-2,4-5}
 import { useQuery } from '@tanstack/react-query';
 import { useCRPC } from '@/lib/convex/crpc';
 
@@ -419,7 +441,7 @@ if (isPending) return <div>Loading...</div>;
 ```
 
 **New options:**
-```tsx
+```tsx showLineNumbers {2,5,8-10}
 // Skip when not authenticated
 const { data } = useQuery(crpc.user.me.queryOptions({}, { skipUnauth: true }));
 
@@ -435,13 +457,13 @@ const { data } = useQuery(crpc.user.get.queryOptions({ id }, {
 ### Mutations
 
 **Before:**
-```tsx
+```tsx showLineNumbers {1-2}
 const createUser = useMutation(api.user.create);
 await createUser({ name: 'John' });
 ```
 
 **After:**
-```tsx
+```tsx showLineNumbers {1-7,9}
 const { mutate, mutateAsync, isPending } = useMutation(
   crpc.user.create.mutationOptions({
     onSuccess: () => toast.success('Created!'),
@@ -459,7 +481,7 @@ await mutateAsync({ name: 'John' });
 ### Infinite Queries
 
 **Before:**
-```tsx
+```tsx showLineNumbers {1-5,7-8}
 const { results, status, loadMore } = usePaginatedQuery(
   api.user.list,
   {},
@@ -471,7 +493,7 @@ const canLoadMore = status === 'CanLoadMore';
 ```
 
 **After:**
-```tsx
+```tsx showLineNumbers {1-2,4-10}
 import { skipToken } from '@tanstack/react-query';
 import { useInfiniteQuery } from 'better-convex/react';
 
@@ -492,7 +514,7 @@ const {
 ### Three Server Patterns
 
 **1. `prefetch()` - Fire-and-forget, non-blocking (NEW):**
-```tsx
+```tsx showLineNumbers {1,4,6-8,13}
 import { prefetch, HydrateClient } from '@/lib/convex/server';
 
 export default async function Page() {
@@ -512,7 +534,7 @@ function UserList() {
 ```
 
 **2. `caller` - Direct server calls:**
-```tsx
+```tsx showLineNumbers {1,4-5}
 import { caller } from '@/lib/convex/server';
 
 export default async function Page() {
@@ -522,7 +544,7 @@ export default async function Page() {
 ```
 
 **3. `preloadQuery()` - Awaited, data + hydration:**
-```tsx
+```tsx showLineNumbers {1,4,6-10}
 import { preloadQuery, HydrateClient } from '@/lib/convex/rsc';
 
 export default async function Page() {
@@ -538,7 +560,7 @@ export default async function Page() {
 
 ### HydrateClient Setup
 
-```tsx title="src/lib/convex/server.ts"
+```tsx title="src/lib/convex/server.ts" showLineNumbers {1,4-6}
 import { createCallerFactory, createHydrateClient, createPrefetch } from 'better-convex/rsc';
 import { api } from '@convex/_generated/api';
 import { meta } from '@convex/meta';
@@ -573,8 +595,16 @@ export const { HydrateClient, prefetch } = createHydrateClient(api, meta);
 4. **Add middleware last** — After basic migration works
 5. **Test as you go** — Each migration is isolated
 
-```ts
+```ts showLineNumbers {2,3}
 // Both work in the same file
 export const legacyList = query({ handler: async (ctx) => { ... } });
 export const list = publicQuery.query(async ({ ctx }) => { ... });
 ```
+
+## Next Steps
+
+<Cards>
+  <Card title="Server Setup" href="/docs/server/setup" />
+  <Card title="React Setup" href="/docs/react/setup" />
+  <Card title="Comparison" href="/docs/comparison" />
+</Cards>

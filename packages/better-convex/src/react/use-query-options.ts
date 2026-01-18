@@ -39,7 +39,7 @@ import type {
 } from '../crpc/types';
 import { useAuthSkip } from '../internal/auth';
 import type { DistributiveOmit } from '../internal/types';
-import { useAuthValue } from './auth-store';
+import { useAuthGuard } from './auth-store';
 import { useFnMeta, useMeta } from './context';
 
 // Reserved options that we control - users cannot override these
@@ -264,7 +264,7 @@ export function useConvexMutationOptions<
   DefaultError,
   FunctionArgs<Mutation>
 > {
-  const guard = useAuthValue('guard');
+  const guard = useAuthGuard();
   const getMeta = useFnMeta();
   const name = getFunctionName(mutation);
   const [namespace, fnName] = name.split(':');
@@ -317,7 +317,7 @@ export function useConvexActionOptions<
   DefaultError,
   FunctionArgs<Action>
 > {
-  const guard = useAuthValue('guard');
+  const guard = useAuthGuard();
   const getMeta = useFnMeta();
   const name = getFunctionName(action);
   const [namespace, fnName] = name.split(':');

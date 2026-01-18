@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import Script from 'next/script';
+import { Suspense } from 'react';
 import { BreadcrumbNav } from '@/components/breadcrumb-nav';
 import { Providers } from '@/components/providers';
 
@@ -43,7 +44,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Providers>
-          <BreadcrumbNav />
+          <Suspense>
+            <BreadcrumbNav />
+          </Suspense>
           {children}
         </Providers>
       </body>

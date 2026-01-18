@@ -162,6 +162,10 @@
                     "message": "convex/shared cannot import from convex/lib."
                   },
                   {
+                    "group": ["**/convex/routers/**", "../routers/**"],
+                    "message": "convex/shared cannot import from convex/routers."
+                  },
+                  {
                     "group": [
                       "**/../functions/*",
                       "!**/../functions/_generated/**"

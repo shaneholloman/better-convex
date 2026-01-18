@@ -1,17 +1,37 @@
 ---
 title: Type Inference
-description: Infer input and output types from your Convex API
+description: Infer input and output types from your Convex API.
+links:
+  doc: https://docs.convex.dev/functions
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore type inference in cRPC. You'll learn to extract input and output types from your API for use in components, utilities, and type-safe operations.
 
 ## Overview
 
-cRPC provides type inference utilities similar to tRPC. Extract input and output types from your API for use in components, utilities, and type-safe operations.
+cRPC provides type inference utilities similar to tRPC:
 
-```ts title="convex/types.ts"
-import type { inferApiInputs, inferApiOutputs } from 'better-convex/server';
-import { api } from './_generated/api';
+| Type | Description |
+|------|-------------|
+| `ApiOutputs` | Return types of all procedures |
+| `ApiInputs` | Input/argument types of all procedures |
+| `Api` | Combined API type with HTTP router |
 
-export type Api = typeof api;
+Let's set it up.
+
+```ts title="convex/types.ts" showLineNumbers {1-4,7-10}
+import type {
+  inferApiInputs,
+  inferApiOutputs,
+  WithHttpRouter,
+} from 'better-convex/server';
+import type { api } from './_generated/api';
+import type { appRouter } from './http'; // optional, if using HTTP routes
+
+// WithHttpRouter combines API with HTTP router (http is optional)
+export type Api = WithHttpRouter<typeof api, typeof appRouter>;
 export type ApiInputs = inferApiInputs<Api>;
 export type ApiOutputs = inferApiOutputs<Api>;
 ```
@@ -20,7 +40,7 @@ export type ApiOutputs = inferApiOutputs<Api>;
 
 Access nested procedure types using bracket notation:
 
-```tsx title="src/components/user-card.tsx"
+```tsx title="src/components/user-card.tsx" showLineNumbers {4-6,9-10}
 import type { ApiInputs, ApiOutputs } from '@convex/types';
 
 // Output types
@@ -35,7 +55,9 @@ type CreatePostArgs = ApiInputs['post']['create'];
 
 ### In Components
 
-```tsx title="src/components/user-profile.tsx"
+Use output types for component props:
+
+```tsx title="src/components/user-profile.tsx" showLineNumbers {3,5}
 import type { ApiOutputs } from '@convex/types';
 
 type User = ApiOutputs['user']['get'];
@@ -52,7 +74,9 @@ function UserProfile({ user }: { user: User }) {
 
 ### In Utility Functions
 
-```tsx title="src/lib/utils/user.ts"
+Use both input and output types for type-safe utilities:
+
+```tsx title="src/lib/utils/user.ts" showLineNumbers {3-4,6-8,10-12}
 import type { ApiInputs, ApiOutputs } from '@convex/types';
 
 type User = ApiOutputs['user']['get'];
@@ -71,7 +95,7 @@ function validateUpdateArgs(args: UpdateUserArgs): boolean {
 
 For deeply nested APIs, chain bracket notation:
 
-```ts
+```ts showLineNumbers {2,5}
 // api.organization.members.list
 type OrgMember = ApiOutputs['organization']['members']['list'][number];
 
@@ -79,10 +103,24 @@ type OrgMember = ApiOutputs['organization']['members']['list'][number];
 type ProjectSettings = ApiOutputs['project']['settings']['get'];
 ```
 
-## Comparison with Convex
+<Callout icon={<InfoIcon />}>
+**Tip:** Use `[number]` to extract the item type from array return types.
+</Callout>
+
+## Migrate from Convex
+
+If you're coming from vanilla Convex, here's what changes.
+
+### What stays the same
+
+- Type inference from function definitions
+- Full TypeScript support
+
+### What's new
 
 **Before (vanilla Convex):**
-```tsx
+
+```tsx showLineNumbers
 import type { FunctionReturnType, FunctionArgs } from 'convex/server';
 import { api } from '@convex/_generated/api';
 
@@ -91,7 +129,8 @@ type GetUserArgs = FunctionArgs<typeof api.user.get>;
 ```
 
 **After (cRPC):**
-```tsx
+
+```tsx showLineNumbers {1,3-4}
 import type { ApiInputs, ApiOutputs } from '@convex/types';
 
 type User = ApiOutputs['user']['get'];
@@ -99,10 +138,13 @@ type GetUserArgs = ApiInputs['user']['get'];
 ```
 
 **Key differences:**
-- Cleaner bracket notation instead of `typeof api.path`
-- Centralized type definitions in one file
-- Consistent pattern across all procedures
-- Works with nested namespaces
+
+| Feature | Description |
+|---------|-------------|
+| Bracket notation | Cleaner than `typeof api.path` |
+| Centralized types | All definitions in one file |
+| Consistent pattern | Same across all procedures |
+| Nested namespaces | Works with deep nesting |
 
 ## Next Steps
 

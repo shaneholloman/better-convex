@@ -1,184 +1,225 @@
 ---
 title: Concepts
-description: Architecture and vocabulary for Better Convex
+description: Architecture and vocabulary for Better Convex.
+links:
+  doc: https://docs.convex.dev
 ---
 
-## Architecture
+import { InfoIcon } from "lucide-react"
 
-Better Convex organizes your application into layers:
+## Overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Client                               │
-│  ┌─────────────────┐     ┌──────────────────────────────┐   │
-│  │  TanStack Query │────▶│    ConvexQueryClient         │   │
-│  │     Cache       │◀────│  (WebSocket subscriptions)   │   │
-│  └─────────────────┘     └──────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        Server                               │
-│  ┌─────────────────┐     ┌──────────────────────────────┐   │
-│  │  cRPC Builder   │────▶│     Convex Functions         │   │
-│  │  (procedures)   │     │  (queries/mutations/actions) │   │
-│  └─────────────────┘     └──────────────────────────────┘   │
-│           │                         │                       │
-│           ▼                         ▼                       │
-│  ┌─────────────────┐     ┌──────────────────────────────┐   │
-│  │   Middleware    │     │    Database (Ents)           │   │
-│  │  (auth, rate)   │     │  Triggers → Aggregates       │   │
-│  └─────────────────┘     └──────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
+| Concept | What It Does |
+|---------|--------------|
+| **cRPC Builder** | tRPC-style fluent API for defining procedures |
+| **Real-time First** | WebSocket subscriptions flow into TanStack Query |
+| **Context & Middleware** | Composable layers for auth, rate limiting, custom logic |
+| **Database Layer** | Ents relationships, triggers, aggregates |
+| **File Structure** | Organized `functions/`, `lib/`, `shared/` directories |
 
-## Server
+Let's explore each concept.
 
-### Procedures
+## The Problem
 
-Functions exposed to the client. Three types:
+You know how Convex works: you write functions, the database is reactive, and everything syncs in real-time. It's powerful, but as your application grows, you encounter friction.
 
-| Type | Description | Use case |
-|------|-------------|----------|
-| **query** | Read-only, cached, real-time | Fetching data |
-| **mutation** | Write operations | Creating, updating, deleting |
-| **action** | Side effects, external APIs | Emails, third-party services |
+The generated `api` object lacks type inference for inputs. You import functions directly instead of through a typed router. There's no middleware pattern for shared logic like authentication. **You end up duplicating auth checks across functions, manually wiring up TanStack Query, and losing the ergonomics that made Convex appealing.**
 
-```ts
-export const list = publicQuery
+This is what Better Convex solves. It is built around the following principles:
+
+- **tRPC-style API:** A fluent builder pattern for defining procedures with full type inference.
+- **TanStack Query Native:** First-class integration with `useQuery`, `useMutation`, and React Query DevTools.
+- **Real-time by Default:** Queries subscribe to WebSocket updates automatically—no extra setup.
+- **End-to-end Type Safety:** From your schema to your React components, everything is typed.
+- **Middleware Chains:** Composable layers for auth, rate limiting, and custom context.
+
+## cRPC Builder
+
+Better Convex introduces a tRPC-style builder for defining procedures. Instead of writing standalone functions, you chain methods to build queries and mutations with validation, middleware, and type inference.
+
+```ts showLineNumbers {12-17}
+// Before: Manual validation, no middleware
+export const list = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const user = await getUser(ctx); // repeated everywhere
+    if (!user) throw new Error('Unauthorized');
+    return ctx.db.query('todos').take(args.limit ?? 10).collect();
+  },
+});
+
+// After: Fluent API with middleware and Zod validation
+export const list = authQuery
   .input(z.object({ limit: z.number().optional() }))
   .query(async ({ ctx, input }) => {
-    return ctx.table('user').take(input.limit ?? 10);
+    // ctx.user is already available from middleware
+    return ctx.table('todos').take(input.limit ?? 10);
   });
 ```
 
-### Middleware
+_The auth middleware runs once, adds `user` to context, and every procedure that uses `authQuery` gets it automatically. No more copy-pasting auth checks._
 
-Runs before procedures. Chain with `.use()`:
+## Real-time First
 
-```ts
-const authQuery = c.query
-  .use(async ({ ctx, next }) => {
-    const user = await getAuthenticatedUser(ctx);
-    if (!user) throw new CRPCError({ code: 'UNAUTHORIZED' });
-    return next({ ctx: { user, userId: user._id } });
-  });
+Convex queries are reactive—when data changes, subscribers get updates. Better Convex preserves this while giving you TanStack Query's API:
+
+```tsx showLineNumbers {1}
+const { data, isPending } = useQuery(crpc.todos.list.queryOptions({}));
 ```
 
-### Context
+This single line does three things:
 
-Passed to every handler. Contains database access and custom data from middleware:
+1. **Fetches** the initial data from Convex
+2. **Subscribes** to real-time updates via WebSocket
+3. **Caches** the result in TanStack Query's cache
 
-- `ctx.db` — Native Convex database
-- `ctx.table` — Ents fluent API (if configured)
-- `ctx.user`, `ctx.userId` — Added by auth middleware
+| Behavior | TanStack Query Alone | Better Convex |
+|----------|---------------------|---------------|
+| Initial fetch | ✅ | ✅ |
+| Real-time updates | ❌ (polling) | ✅ (WebSocket) |
+| Optimistic updates | ✅ | ✅ |
+| DevTools | ✅ | ✅ |
 
-## Database
+_When another user creates a todo, your list updates instantly. No polling, no manual refetching. The reactive database and TanStack Query work together._
+
+## Context & Middleware
+
+Every procedure receives a `ctx` object containing database access and any data added by middleware. Middleware chains let you compose reusable logic:
+
+```ts showLineNumbers {7-8}
+// Base context from cRPC setup
+ctx.db        // Native Convex database
+ctx.table     // Ents fluent API (if configured)
+ctx.auth      // Convex auth object
+
+// Added by auth middleware
+ctx.user      // The authenticated user document
+ctx.userId    // User's ID for quick access
+```
+
+Middleware runs before your handler and can transform context:
+
+```ts showLineNumbers {1,6}
+const authQuery = c.query.use(async ({ ctx, next }) => {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new CRPCError({ code: 'UNAUTHORIZED' });
+
+  const user = await ctx.table('user').get(identity.subject);
+  return next({ ctx: { user, userId: user._id } });
+});
+```
+
+_Define the middleware once, use it everywhere. When you need admin-only access, create `adminQuery` that extends `authQuery` with a role check._
+
+## Database Layer
+
+Better Convex works with Convex's native database, but integrates seamlessly with ecosystem tools for enhanced capabilities.
 
 ### Ents
 
-Convex Ents adds relationships and a fluent API:
+[Convex Ents](https://github.com/xixixao/convex-ents) adds relationships and a fluent query API. Instead of manual ID lookups, you traverse edges:
 
-```ts
-// Define relationships
+```ts showLineNumbers {3-6,10-11}
+// Define relationships in schema
 const schema = defineEntSchema({
-  user: defineEnt({ name: v.string() }).edges('sessions', { to: 'session', ref: 'userId' }),
-  session: defineEnt({ token: v.string() }).edge('user', { to: 'user', field: 'userId' }),
+  user: defineEnt({ name: v.string() })
+    .edges('posts', { to: 'post', ref: 'authorId' }),
+  post: defineEnt({ title: v.string() })
+    .edge('author', { to: 'user', field: 'authorId' }),
 });
 
 // Query with relationships
-const sessions = await ctx.table('session').edge('user');
+const user = await ctx.table('user').getX(userId);
+const posts = await user.edge('posts');
 ```
+
+_Ents makes your database feel like an ORM while keeping Convex's reactivity. The fluent API chains naturally with Better Convex's builder pattern._
 
 ### Triggers
 
-Automatic side effects when data changes using [convex-helpers](https://github.com/get-convex/convex-helpers):
+Automatic side effects when data changes. Use [convex-helpers](https://github.com/get-convex/convex-helpers) triggers for:
 
-```ts
-import { Triggers } from 'convex-helpers/server/triggers';
+- Maintaining denormalized counts
+- Cascade deletes
+- Audit logging
+- Syncing to external systems
 
-const triggers = new Triggers<DataModel>();
-
+```ts showLineNumbers {1-2,4-8}
 triggers.register('user', async (ctx, change) => {
-  if (change.operation === 'insert') {
-    console.log('User created:', change.newDoc?.name);
+  if (change.operation === 'delete') {
+    // Cascade delete user's posts
+    const posts = await ctx.table('post')
+      .filter(q => q.eq(q.field('authorId'), change.id));
+    for (const post of posts) {
+      await ctx.table('post').delete(post._id);
+    }
   }
 });
 ```
 
-Use cases: maintain counts, cascade deletes, sync denormalized data. See [Triggers](/docs/db/triggers) for full API.
-
 ### Aggregates
 
-O(log n) operations for counts, sums, rankings:
+O(log n) operations for counts, sums, and rankings. Essential for dashboards and leaderboards at scale:
 
-```ts
-// Instead of counting all rows (O(n))
-const count = await ctx.table('user').count(); // slow
+```ts showLineNumbers {5-6}
+// Slow: Counting all rows (O(n))
+const count = await ctx.table('user').count();
 
-// Use aggregates (O(log n))
-const count = await userAggregate.count(ctx); // fast
+// Fast: Using aggregates (O(log n))
+const count = await userAggregate.count(ctx);
+const topUsers = await userAggregate.rank(ctx, { limit: 10 });
 ```
 
-## Client
-
-### TanStack Query Integration
-
-Native hooks with Convex real-time:
-
-```tsx
-// Queries auto-subscribe to WebSocket updates
-const { data } = useQuery(crpc.user.list.queryOptions({}));
-
-// Full TanStack Query API
-const mutation = useMutation(crpc.user.create.mutationOptions({
-  onSuccess: () => toast.success('Created!'),
-}));
-```
-
-### Auth-Aware Queries
-
-Queries skip automatically when user is not authenticated:
-
-```tsx
-// Won't error if logged out — just returns undefined
-const { data } = useQuery(crpc.user.me.queryOptions({}, { skipUnauth: true }));
-```
+_Aggregates are critical when you have thousands of records. A naive count query scans every row; aggregates use tree structures for constant-time lookups._
 
 ## File Structure
 
-```
+Better Convex follows a consistent organization pattern:
+
+```plaintext showLineNumbers {2-6,7-11,12-14}
 convex/
-├── functions/           # Convex functions
-│   ├── _generated/      # api.ts, dataModel.ts
-│   ├── schema.ts        # Database schema
-│   └── *.ts             # Procedures
-├── lib/                 # Helpers
-│   ├── crpc.ts          # cRPC builder
-│   ├── ents.ts          # Ents setup
+├── functions/           # Convex functions (deployed)
+│   ├── _generated/      # api.ts, dataModel.ts (auto-generated)
+│   ├── schema.ts        # Database schema definition
+│   ├── user.ts          # User procedures
+│   └── todos.ts         # Todo procedures
+├── lib/                 # Shared helpers (not deployed)
+│   ├── crpc.ts          # cRPC builder and middleware
+│   ├── ents.ts          # Ents configuration
 │   ├── triggers.ts      # Database triggers
-│   └── rate-limiter.ts  # Rate limiting
-└── shared/              # Client-importable
+│   └── rate-limiter.ts  # Rate limiting logic
+└── shared/              # Client-importable code
+    ├── types.ts         # Shared TypeScript types
     └── meta.ts          # Generated procedure metadata
 ```
 
+The `functions/` directory contains your deployed Convex code. The `lib/` directory holds configuration that's imported by functions but not deployed directly. The `shared/` directory contains code that's safe to import on both client and server.
+
 ## Configuration
 
-```json title="convex.json"
+Your `convex.json` configures Convex codegen:
+
+```json title="convex.json" showLineNumbers {2,4-5,7}
 {
   "functions": "convex/functions",
-  "codegen": { "staticApi": true, "staticDataModel": true },
+  "codegen": {
+    "staticApi": true,
+    "staticDataModel": true
+  },
   "typescriptCompiler": "tsgo"
 }
 ```
 
 | Option | Purpose |
 |--------|---------|
-| `functions` | Codegen from `convex/functions/` |
-| `codegen.staticApi` | Static API types |
-| `typescriptCompiler` | `"tsgo"` for TypeScript 7 native |
+| `functions` | Directory containing your Convex functions |
+| `codegen.staticApi` | Generate static API types for better inference |
+| `codegen.staticDataModel` | Generate static data model types |
+| `typescriptCompiler` | Use `"tsgo"` for native TypeScript 7 support |
 
-## Next steps
+_Static codegen improves type inference and IDE performance. The `tsgo` compiler is significantly faster for large codebases._
+
+## Next Steps
 
 <Cards>
   <Card title="Server Setup" href="/docs/server/setup" />

@@ -1,15 +1,32 @@
 ---
 title: Error Handling
-description: Throw typed errors with error codes and HTTP status mapping
+description: Throw typed errors with error codes and HTTP status mapping.
+links:
+  doc: https://docs.convex.dev/functions/error-handling
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll master error handling in cRPC. You'll learn to throw typed errors with error codes, use helper functions, and handle common error scenarios like authorization failures and rate limits.
 
 ## Overview
 
 cRPC provides `CRPCError`, a typed error class that extends Convex's `ConvexError` with tRPC-style error codes and HTTP status mapping.
 
+| Feature | Benefit |
+|---------|---------|
+| Typed error codes | Consistent error handling across your app |
+| HTTP status mapping | Automatic status codes for HTTP endpoints |
+| Error chaining | Preserve original error with `cause` |
+| Helper functions | Type guards and status code utilities |
+
+Let's explore how to use them.
+
 ## Throwing Errors
 
-```ts
+The basic pattern is simple - import `CRPCError` and throw it with a code:
+
+```ts showLineNumbers {1,3-6}
 import { CRPCError } from 'better-convex/server';
 
 throw new CRPCError({
@@ -20,9 +37,11 @@ throw new CRPCError({
 
 ### Constructor
 
-```ts
+The `CRPCError` constructor accepts these parameters:
+
+```ts showLineNumbers {2-4}
 new CRPCError({
-  code: CRPCErrorCode;  // Required
+  code: CRPCErrorCode;  // Required - see table below
   message?: string;     // Optional, defaults to code
   cause?: unknown;      // Optional, original error
 });
@@ -30,9 +49,9 @@ new CRPCError({
 
 ### With Cause
 
-Preserve the original error stack trace:
+When catching external errors, preserve the original stack trace using `cause`:
 
-```ts
+```ts showLineNumbers {5-8}
 try {
   await externalApi.call();
 } catch (error) {
@@ -44,7 +63,11 @@ try {
 }
 ```
 
+This helps with debugging by keeping the full error chain.
+
 ## Error Codes
+
+Here are all available error codes with their HTTP status mappings:
 
 | Code | Description | HTTP |
 |------|-------------|------|
@@ -62,13 +85,19 @@ try {
 | `TOO_MANY_REQUESTS` | Rate limit exceeded | 429 |
 | `INTERNAL_SERVER_ERROR` | Unexpected server error | 500 |
 
-## Helpers
+<Callout icon={<InfoIcon />}>
+**Tip:** Use `UNAUTHORIZED` when the user isn't logged in, and `FORBIDDEN` when they're logged in but don't have permission.
+</Callout>
+
+## Helper Functions
+
+cRPC provides several helper functions for working with errors.
 
 ### getCRPCErrorFromUnknown
 
-Wrap unknown errors in `CRPCError`:
+Wrap unknown errors in `CRPCError`. Useful in catch blocks:
 
-```ts
+```ts showLineNumbers {1,6}
 import { getCRPCErrorFromUnknown } from 'better-convex/crpc';
 
 try {
@@ -80,9 +109,9 @@ try {
 
 ### getHTTPStatusCodeFromError
 
-Get HTTP status code from error:
+Get the HTTP status code from an error. Useful for HTTP endpoints:
 
-```ts
+```ts showLineNumbers {1,3}
 import { getHTTPStatusCodeFromError } from 'better-convex/crpc';
 
 const httpStatus = getHTTPStatusCodeFromError(error); // 404
@@ -90,9 +119,9 @@ const httpStatus = getHTTPStatusCodeFromError(error); // 404
 
 ### isCRPCError
 
-Type guard for `CRPCError`:
+Type guard for checking if an error is a `CRPCError`:
 
-```ts
+```ts showLineNumbers {1,3-5}
 import { isCRPCError } from 'better-convex/crpc';
 
 if (isCRPCError(error)) {
@@ -102,9 +131,13 @@ if (isCRPCError(error)) {
 
 ## Common Patterns
 
+Here are battle-tested error patterns you can copy into your project.
+
 ### Authorization
 
-```ts
+Check authentication in middleware and throw `UNAUTHORIZED`:
+
+```ts title="convex/lib/crpc.ts" showLineNumbers {3-5}
 const authMiddleware = c.middleware(async ({ ctx, next }) => {
   const user = await getSessionUser(ctx);
   if (!user) {
@@ -116,9 +149,11 @@ const authMiddleware = c.middleware(async ({ ctx, next }) => {
 
 ### Not Found
 
+Throw `NOT_FOUND` when a resource doesn't exist:
+
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts
+    ```ts title="convex/functions/posts.ts" showLineNumbers {5-9}
     export const getById = authQuery
       .input(z.object({ id: zid('posts') }))
       .query(async ({ ctx, input }) => {
@@ -134,7 +169,7 @@ const authMiddleware = c.middleware(async ({ ctx, next }) => {
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts
+    ```ts title="convex/functions/posts.ts" showLineNumbers {5-9}
     export const getById = authQuery
       .input(z.object({ id: zid('posts') }))
       .query(async ({ ctx, input }) => {
@@ -153,7 +188,9 @@ const authMiddleware = c.middleware(async ({ ctx, next }) => {
 
 ### Rate Limiting
 
-```ts
+Throw `TOO_MANY_REQUESTS` when rate limits are exceeded:
+
+```ts showLineNumbers {2-5}
 if (isRateLimited) {
   throw new CRPCError({
     code: 'TOO_MANY_REQUESTS',
@@ -164,7 +201,9 @@ if (isRateLimited) {
 
 ### Permission Check
 
-```ts
+Throw `FORBIDDEN` when the user doesn't have permission:
+
+```ts showLineNumbers {2-5}
 if (post.authorId !== ctx.userId) {
   throw new CRPCError({
     code: 'FORBIDDEN',
@@ -173,7 +212,22 @@ if (post.authorId !== ctx.userId) {
 }
 ```
 
+### Input Validation
+
+Throw `BAD_REQUEST` for custom validation failures (beyond Zod validation):
+
+```ts showLineNumbers {2-5}
+if (input.startDate > input.endDate) {
+  throw new CRPCError({
+    code: 'BAD_REQUEST',
+    message: 'Start date must be before end date',
+  });
+}
+```
+
 ## Migrate from Convex
+
+If you're coming from vanilla Convex, here's what changes.
 
 ### What stays the same
 
@@ -183,7 +237,8 @@ if (post.authorId !== ctx.userId) {
 ### What's new
 
 **Before (vanilla Convex):**
-```ts
+
+```ts showLineNumbers
 import { ConvexError } from 'convex/values';
 
 throw new ConvexError('Post not found');
@@ -192,7 +247,8 @@ throw new ConvexError({ message: 'Post not found' });
 ```
 
 **After (cRPC):**
-```ts
+
+```ts showLineNumbers {1,3-6}
 import { CRPCError } from 'better-convex/server';
 
 throw new CRPCError({
@@ -207,9 +263,10 @@ Key differences:
 - `cause` parameter for error chaining
 - Helper functions for error handling
 
-## Next steps
+## Next Steps
 
 <Cards>
   <Card title="Server Side Calls" href="/docs/server/server-side-calls" />
   <Card title="Client Error Handling" href="/docs/react/error-handling" />
+  <Card title="Rate Limiting" href="/docs/server/rate-limiting" />
 </Cards>

@@ -12,6 +12,7 @@ import type {
   PaginatedQueryItem,
   PaginatedQueryReference,
 } from 'convex/react';
+import { useConvexAuth } from 'convex/react';
 import {
   type FunctionReference,
   type FunctionReturnType,
@@ -158,7 +159,7 @@ const useInfiniteQueryInternal = <Query extends PaginatedQueryReference>(
   // Extract our custom options, the rest are TanStack Query options for page queries
   const { limit, enabled, placeholderData, ...queryOptions } = options;
 
-  const isAuthLoading = useAuthValue('isLoading');
+  const { isLoading: isAuthLoading } = useConvexAuth();
   const meta = useMeta();
   const queryClient = useQueryClient();
 
@@ -612,8 +613,7 @@ export function useInfiniteQuery<
   // Extract function reference from Symbol (attached by proxy)
   const query = infiniteOptions[FUNC_REF_SYMBOL];
   const onQueryUnauthorized = useAuthValue('onQueryUnauthorized');
-  const isAuthLoading = useAuthValue('isLoading');
-  const isAuthenticated = useAuthValue('isAuthenticated');
+  const { isLoading: isAuthLoading, isAuthenticated } = useConvexAuth();
 
   // Extract metadata and query options from infiniteOptions
   const {

@@ -1,13 +1,28 @@
 ---
 title: Organizations
-description: Multi-tenant organization features with Better Auth and Convex
+description: Multi-tenant organization features with Better Auth and Convex.
+links:
+  doc: https://www.better-auth.com/docs/plugins/organization
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore multi-tenant organization features with better-convex. You'll learn to set up the organization plugin, define roles and permissions, manage members and invitations, and implement team functionality.
 
 ## Overview
 
-Multi-tenant organization system with Better Auth's organization plugin. Provides organization management, member roles, invitations, and team features.
+Multi-tenant organization system with [Better Auth's organization plugin](https://www.better-auth.com/docs/plugins/organization):
 
-**Architecture:** Organizations → Members with role-based access control
+| Feature | Description |
+|---------|-------------|
+| Organizations | Create, update, delete workspaces |
+| Members | Role-based access within orgs |
+| Invitations | Email invites with expiration |
+| Teams | Group members within orgs |
+| Access control | Custom permissions per role |
+| Hooks | Lifecycle events for all operations |
+
+Let's set up organizations step by step.
 
 ## Prerequisites
 
@@ -17,7 +32,7 @@ Ensure you have [Auth Server](/docs/auth/server) set up before adding organizati
 
 Add the organization plugin to your auth options:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {5-32}
 import { organization } from 'better-auth/plugins';
 import type { ActionCtx } from './_generated/server';
 
@@ -63,7 +78,7 @@ export const createAuthOptions = (ctx: GenericCtx) =>
 
 Add the organization client plugin:
 
-```ts title="src/lib/convex/auth-client.ts"
+```ts title="src/lib/convex/auth-client.ts" showLineNumbers {1-2,7-11}
 import { organizationClient } from 'better-auth/client/plugins';
 import { ac, roles } from '@convex/auth-shared';
 
@@ -87,7 +102,7 @@ Add organization tables to your schema:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts title="convex/functions/schema.ts"
+    ```ts title="convex/functions/schema.ts" showLineNumbers {6-14,16-24,26-36,39-42}
     import { defineSchema, defineTable } from 'convex/server';
     import { v } from 'convex/values';
 
@@ -138,7 +153,7 @@ Add organization tables to your schema:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts title="convex/functions/schema.ts"
+    ```ts title="convex/functions/schema.ts" showLineNumbers {6-10,12-20,22-30,32-41,44-48}
     import { v } from 'convex/values';
     import { defineEnt, defineEntSchema } from 'convex-ents';
 
@@ -197,7 +212,7 @@ Add organization tables to your schema:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts title="convex/functions/schema.ts"
+    ```ts title="convex/functions/schema.ts" showLineNumbers {1-8,10-16}
     team: defineTable({
       name: v.string(),
       organizationId: v.id('organization'),
@@ -216,7 +231,7 @@ Add organization tables to your schema:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts title="convex/functions/schema.ts"
+    ```ts title="convex/functions/schema.ts" showLineNumbers {1-7,9-15}
     team: defineEnt({
       name: v.string(),
       createdAt: v.number(),
@@ -239,7 +254,7 @@ Add organization tables to your schema:
 
 Add custom fields to organization tables:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {2-18}
 organization({
   schema: {
     organization: {
@@ -269,7 +284,7 @@ Then update your schema to include these fields:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts title="convex/functions/schema.ts"
+    ```ts title="convex/functions/schema.ts" showLineNumbers {3-6,10-11}
     organization: defineTable({
       // ... existing fields
       description: v.optional(v.string()),
@@ -286,7 +301,7 @@ Then update your schema to include these fields:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts title="convex/functions/schema.ts"
+    ```ts title="convex/functions/schema.ts" showLineNumbers {3-6,10-11}
     organization: defineEnt({
       // ... existing fields
       description: v.optional(v.string()),
@@ -310,7 +325,7 @@ Define roles and permissions using Better Auth's access control system.
 
 ### Basic Setup
 
-```ts title="convex/shared/auth-shared.ts"
+```ts title="convex/shared/auth-shared.ts" showLineNumbers {1-5,7-11,13-19}
 import { createAccessControl } from 'better-auth/plugins/access';
 import {
   defaultStatements,
@@ -340,7 +355,7 @@ export const roles = { member, owner };
 
 Define custom resources and permissions beyond the defaults:
 
-```ts title="convex/shared/auth-shared.ts"
+```ts title="convex/shared/auth-shared.ts" showLineNumbers {1-7,11-14,16-21,23-29}
 const statement = {
   ...defaultStatements,
   // Custom resources
@@ -375,7 +390,7 @@ export const roles = { viewer, editor, admin };
 
 ### Check Role Permissions
 
-```ts
+```ts showLineNumbers {2-5}
 // Check if a role has specific permission
 const canEdit = ac.checkRolePermission({
   role: 'editor',
@@ -387,7 +402,7 @@ const canEdit = ac.checkRolePermission({
 
 For runtime role creation (e.g., user-defined roles):
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {2-16}
 organization({
   ac: {
     ...ac,
@@ -412,7 +427,7 @@ organization({
 
 ### Permission Helper
 
-```ts title="convex/lib/auth/auth-helpers.ts"
+```ts title="convex/lib/auth/auth-helpers.ts" showLineNumbers {1-2,4-7,9-17}
 import { CRPCError } from 'better-convex/server';
 import type { AuthCtx } from '../crpc';
 
@@ -439,7 +454,7 @@ export const hasPermission = async (
 
 ### Check Permission (Client)
 
-```tsx
+```tsx showLineNumbers {2-4,6-8}
 // Check permission before showing UI
 const { data } = await authClient.organization.hasPermission({
   permissions: { project: ['delete'] },
@@ -454,7 +469,7 @@ if (data?.success) {
 
 **Pattern:** Use Better Auth API for multi-table operations (create, delete, invitations). Use direct table operations for simple reads/updates.
 
-<Callout type="info">
+<Callout icon={<InfoIcon />}>
 Function examples use `ctx.table` (Convex Ents). For `ctx.db`, replace edge traversal with manual joins. See [Ents](/docs/db/ents) for migration patterns.
 </Callout>
 
@@ -462,7 +477,7 @@ Function examples use `ctx.table` (Convex Ents). For `ctx.db`, replace edge trav
 
 Before creating an organization, validate the slug is unique:
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-5}
 export const checkSlug = authQuery
   .input(z.object({ slug: z.string() }))
   .output(z.object({ available: z.boolean() }))
@@ -472,7 +487,7 @@ export const checkSlug = authQuery
   });
 ```
 
-```tsx title="Client usage"
+```tsx title="Client usage" showLineNumbers {1-4}
 const { data } = await authClient.organization.checkSlug({ slug: 'my-org' });
 if (!data.available) {
   // Show error: slug already taken
@@ -481,7 +496,7 @@ if (!data.available) {
 
 ### List Organizations
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-5,7-18,20-29}
 import { z } from 'zod';
 import { zid } from 'convex-helpers/server/zod';
 import { asyncMap } from 'convex-helpers';
@@ -523,7 +538,7 @@ export const list = authQuery
 
 ### Create Organization
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-12,14-23,25-30}
 export const create = authMutation
   .input(
     z.object({
@@ -564,7 +579,7 @@ export const create = authMutation
 
 ### Update Organization
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {2-8,10-19}
 // Direct table patch (simpler for single-table updates)
 export const update = authMutation
   .input(
@@ -593,7 +608,7 @@ export const update = authMutation
 
 ### Delete Organization
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {2-5,7-12,14-22}
 // Use Better Auth API (handles cleanup)
 export const remove = authMutation
   .output(z.null())
@@ -627,7 +642,7 @@ export const remove = authMutation
 
 ### Set Active Organization
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-3,5-9}
 export const setActive = authMutation
   .input(z.object({ organizationId: zid('organization') }))
   .output(z.null())
@@ -645,7 +660,7 @@ export const setActive = authMutation
 
 ### Send Invitation
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-6,8-15}
 export const inviteMember = authMutation
   .input(
     z.object({
@@ -672,7 +687,7 @@ export const inviteMember = authMutation
 
 ### Accept Invitation
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-4,6-18}
 export const acceptInvitation = authMutation
   .input(z.object({ invitationId: zid('invitation') }))
   .output(z.null())
@@ -704,7 +719,7 @@ export const acceptInvitation = authMutation
 
 ### Reject Invitation
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-4,6-14}
 export const rejectInvitation = authMutation
   .input(z.object({ invitationId: zid('invitation') }))
   .output(z.null())
@@ -729,7 +744,7 @@ export const rejectInvitation = authMutation
 
 ### Cancel Invitation
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-4,6-12}
 export const cancelInvitation = authMutation
   .input(z.object({ invitationId: zid('invitation') }))
   .output(z.null())
@@ -749,7 +764,7 @@ export const cancelInvitation = authMutation
 
 Get invitations sent to the current user:
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-13,15-26}
 export const listUserInvitations = authQuery
   .output(
     z.array(
@@ -785,7 +800,7 @@ export const listUserInvitations = authQuery
 
 ### List Pending Invitations
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-12,14-26}
 export const listPendingInvitations = authQuery
   .input(z.object({ slug: z.string() }))
   .output(
@@ -823,7 +838,7 @@ export const listPendingInvitations = authQuery
 
 Get the current user's membership in the active organization:
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-8,10-23}
 export const getActiveMember = authQuery
   .output(
     z.object({
@@ -857,7 +872,7 @@ export const getActiveMember = authQuery
 
 Add a member without invitation (admin use):
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-6,8-16}
 export const addMember = authMutation
   .input(
     z.object({
@@ -884,7 +899,7 @@ export const addMember = authMutation
 
 ### List Members
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-15,17-32}
 export const listMembers = authQuery
   .input(z.object({ slug: z.string() }))
   .output(
@@ -931,7 +946,7 @@ export const listMembers = authQuery
 
 ### Update Member Role
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-6,8-12}
 export const updateMemberRole = authMutation
   .input(
     z.object({
@@ -951,7 +966,7 @@ export const updateMemberRole = authMutation
 
 ### Remove Member
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-4,6-13}
 export const removeMember = authMutation
   .input(z.object({ memberId: zid('member') }))
   .output(z.null())
@@ -972,7 +987,7 @@ export const removeMember = authMutation
 
 ### Leave Organization
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-4,6-18,20-24}
 export const leave = authMutation
   .output(z.null())
   .mutation(async ({ ctx }) => {
@@ -1009,7 +1024,7 @@ Teams allow grouping members within an organization.
 
 ### Create Team
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {1-4,6-13}
 export const createTeam = authMutation
   .input(z.object({ name: z.string().min(1).max(100) }))
   .output(zid('team'))
@@ -1028,7 +1043,7 @@ export const createTeam = authMutation
 
 ### Team Operations
 
-```ts title="convex/functions/organization.ts"
+```ts title="convex/functions/organization.ts" showLineNumbers {2-5,8-11,14-17,20-23}
 // List teams
 const teams = await ctx.auth.api.listTeams({
   query: { organizationId: ctx.user.activeOrganization!.id },
@@ -1060,7 +1075,7 @@ Hooks allow custom logic during organization lifecycle events.
 
 ### Organization Hooks
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {2-14}
 organization({
   // Organization creation
   organizationCreation: {
@@ -1087,7 +1102,7 @@ organization({
 
 ### Member Hooks
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {2-20}
 organization({
   membershipManagement: {
     beforeAddMember: async ({ organization, member, user }) => {
@@ -1115,7 +1130,7 @@ organization({
 
 ### Invitation Hooks
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {2-15}
 organization({
   invitationManagement: {
     beforeCreateInvitation: async ({ invitation, organization, inviter }) => {
@@ -1136,7 +1151,7 @@ organization({
 
 ### Team Hooks
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {2-12}
 organization({
   teamManagement: {
     beforeCreateTeam: async ({ team, organization }) => {
@@ -1155,7 +1170,7 @@ organization({
 
 ### React Hooks
 
-```tsx title="src/components/org-switcher.tsx"
+```tsx title="src/components/org-switcher.tsx" showLineNumbers {1,4-8,11-13,16-18,21-29}
 import { authClient } from '@/lib/convex/auth-client';
 
 function OrgSwitcher() {
@@ -1189,7 +1204,7 @@ function OrgSwitcher() {
 
 ### Get Full Organization
 
-```tsx
+```tsx showLineNumbers {2-4,6}
 // Get full organization details (non-reactive)
 const { data: fullOrg } = await authClient.organization.getFullOrganization({
   query: { organizationId: orgId },
@@ -1200,7 +1215,7 @@ const { data: fullOrg } = await authClient.organization.getFullOrganization({
 
 ### Invitation Operations
 
-```tsx
+```tsx showLineNumbers {2,5-7,10-12,15-17}
 // Get user's pending invitations
 const { data: invitations } = await authClient.organization.listInvitations();
 
@@ -1222,7 +1237,7 @@ await authClient.organization.cancelInvitation({
 
 ### Member Operations
 
-```tsx
+```tsx showLineNumbers {2,5,8-10,13-16}
 // Get active member info
 const { data: member } = await authClient.organization.getActiveMember();
 
@@ -1243,7 +1258,7 @@ await authClient.organization.updateMemberRole({
 
 ### Permission Check
 
-```tsx
+```tsx showLineNumbers {2-4,6-8}
 // Check permission before showing UI
 const { data } = await authClient.organization.hasPermission({
   permissions: { organization: ['delete'] },
@@ -1256,7 +1271,7 @@ if (data?.success) {
 
 ### Team Operations (Client)
 
-```tsx
+```tsx showLineNumbers {2,5-7,10-12}
 // List teams
 const { data: teams } = await authClient.organization.listTeams();
 
@@ -1293,7 +1308,7 @@ await authClient.organization.setActiveTeam({
 | Add team member | Better Auth API | Yes |
 | Remove team member | Better Auth API | Yes |
 
-<Callout type="info">
+<Callout icon={<InfoIcon />}>
 Use Better Auth API for operations that modify multiple tables. Use direct table operations for simple single-table reads/updates.
 </Callout>
 

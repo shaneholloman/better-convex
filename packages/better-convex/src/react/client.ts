@@ -231,8 +231,8 @@ export class ConvexQueryClient {
   private getAuthState() {
     if (!this.authStore) return;
     return {
-      isAuthenticated: !!this.authStore.get('token'),
       isLoading: this.authStore.get('isLoading'),
+      isAuthenticated: this.authStore.get('isAuthenticated'),
       onUnauthorized: this.authStore.get('onQueryUnauthorized'),
       isUnauthorized: this.authStore.get('isUnauthorized'),
     };
@@ -396,12 +396,6 @@ export class ConvexQueryClient {
     } else {
       const { error } = result;
       const authState = this.getAuthState();
-
-      // Suppress UNAUTHORIZED errors during auth loading - subscription will
-      // get fresh data once auth state settles (e.g., after HMR or server reload)
-      if (authState?.isLoading && authState.isUnauthorized(error)) {
-        return;
-      }
 
       // Push error state to TanStack cache
       query.setState(
