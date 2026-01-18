@@ -8,9 +8,12 @@
 
 import type { ConvexReactClient } from 'convex/react';
 import { createContext, type ReactNode, useContext, useMemo } from 'react';
-
+import type { HttpClientError } from '../crpc/http-types';
 import type { CRPCClient, FnMeta, Meta } from '../crpc/types';
+import type { CRPCHttpRouter, HttpRouterRecord } from '../server/http-router';
+import { useAuthStore, useFetchAccessToken } from './auth-store';
 import type { ConvexQueryClient } from './client';
+import { createHttpProxy, type HttpCRPCClientFromRouter } from './http-proxy';
 import { createCRPCOptionsProxy } from './proxy';
 
 // ============================================================================
@@ -52,39 +55,92 @@ export function useFnMeta(): (
 // Context Factory
 // ============================================================================
 
+// ============================================================================
+// HTTP Options
+// ============================================================================
+
+/** Headers record that allows empty objects and optional properties */
+type HeadersInput = { [key: string]: string | undefined };
+
+export type CRPCHttpOptions = {
+  /** Base URL for the Convex HTTP API (e.g., https://your-site.convex.site) */
+  convexSiteUrl: string;
+  /** Default headers or async function returning headers (for auth tokens) */
+  headers?: HeadersInput | (() => HeadersInput | Promise<HeadersInput>);
+  /** Custom fetch function (defaults to global fetch) */
+  fetch?: typeof fetch;
+  /** Error handler called on HTTP errors */
+  onError?: (error: HttpClientError) => void;
+};
+
+export type CreateCRPCContextOptions<TApi> = {
+  api: TApi;
+  meta: Meta;
+} & Partial<CRPCHttpOptions>;
+
+/**
+ * Extract HTTP router from TApi['http'] if present (optional).
+ * Uses NonNullable to handle optional http property.
+ */
+type ExtractHttpRouter<TApi> = TApi extends { http?: infer R }
+  ? NonNullable<R> extends CRPCHttpRouter<HttpRouterRecord>
+    ? NonNullable<R>
+    : undefined
+  : undefined;
+
 /**
  * Create CRPC context, provider, and hooks for a Convex API.
  *
- * @param api - The Convex API object (from `@convex/api`)
+ * @param options - Configuration object containing api, meta, and optional HTTP settings
  * @returns Object with CRPCProvider, useCRPC, and useCRPCClient
  *
  * @example
  * ```tsx
  * // lib/crpc.ts
  * import { api } from '@convex/api';
- * import { createCRPCContext } from './crpc';
+ * import { meta } from '@convex/meta';
+ * import { createCRPCContext } from 'better-convex/react';
  *
- * export const { CRPCProvider, useCRPC, useCRPCClient } = createCRPCContext(api);
+ * // Without HTTP endpoints
+ * export const { useCRPC } = createCRPCContext({ api, meta });
  *
- * // app/providers.tsx
- * <CRPCProvider>
- *   <App />
- * </CRPCProvider>
+ * // With HTTP endpoints (Api = Api & { http?: typeof appRouter })
+ * export const { useCRPC } = createCRPCContext<Api>({
+ *   api,
+ *   meta,
+ *   convexSiteUrl: process.env.NEXT_PUBLIC_CONVEX_SITE_URL!,
+ * });
  *
  * // components/user-profile.tsx
  * function UserProfile({ id }) {
  *   const crpc = useCRPC();
  *   const { data } = useQuery(crpc.user.get.queryOptions({ id }));
+ *
+ *   // HTTP endpoints (if configured)
+ *   const { data: httpData } = useQuery(crpc.http.todos.get.queryOptions({ id }));
  * }
  * ```
  */
 export function createCRPCContext<TApi extends Record<string, unknown>>(
-  api: TApi,
-  meta: Meta
+  options: CreateCRPCContextOptions<TApi>
 ) {
+  type THttpRouter = ExtractHttpRouter<TApi>;
+
+  const { api, meta, ...httpOptions } = options;
   // Create contexts
   const CRPCProxyContext = createContext<CRPCClient<TApi> | null>(null);
   const CRPCClientContext = createContext<ConvexReactClient | null>(null);
+  const HttpProxyContext = createContext<
+    HttpCRPCClientFromRouter<NonNullable<THttpRouter>> | undefined
+  >(undefined);
+
+  // Combined return type - use Omit to prevent type conflicts
+  type CRPCWithHttp =
+    THttpRouter extends CRPCHttpRouter<HttpRouterRecord>
+      ? CRPCClient<Omit<TApi, 'http'>> & {
+          http: HttpCRPCClientFromRouter<THttpRouter>;
+        }
+      : CRPCClient<TApi>;
 
   /** Inner provider */
   function CRPCProviderInner({
@@ -96,6 +152,61 @@ export function createCRPCContext<TApi extends Record<string, unknown>>(
     convexClient: ConvexReactClient;
     convexQueryClient: ConvexQueryClient;
   }) {
+    const authStore = useAuthStore();
+    // Get fetchAccessToken from context (immediately available, no race condition)
+    const fetchAccessToken = useFetchAccessToken();
+
+    // Create HTTP proxy inside component with authStore access
+    const httpProxy = useMemo(() => {
+      if (!httpOptions.convexSiteUrl || !meta._http) return;
+
+      return createHttpProxy<NonNullable<THttpRouter>>({
+        convexSiteUrl: httpOptions.convexSiteUrl,
+        routes: meta._http,
+        headers: async () => {
+          // Use authStore.get() for non-reactive access
+          const token = authStore.get('token');
+          const expiresAt = authStore.get('expiresAt');
+
+          // Check cache (60s leeway)
+          // eslint-disable-next-line react-hooks/purity -- called in async callback, not during render
+          const now = Date.now();
+          const timeRemaining = expiresAt ? expiresAt - now : 0;
+
+          if (token && expiresAt && timeRemaining >= 60_000) {
+            const userHeaders =
+              typeof httpOptions.headers === 'function'
+                ? await httpOptions.headers()
+                : httpOptions.headers;
+            return { ...userHeaders, Authorization: `Bearer ${token}` };
+          }
+
+          // Use fetchAccessToken from context (available immediately, no race condition)
+          if (fetchAccessToken) {
+            const newToken = await fetchAccessToken({
+              forceRefreshToken: !!expiresAt,
+            });
+            if (newToken) {
+              const userHeaders =
+                typeof httpOptions.headers === 'function'
+                  ? await httpOptions.headers()
+                  : httpOptions.headers;
+              return { ...userHeaders, Authorization: `Bearer ${newToken}` };
+            }
+          }
+
+          // No auth - return user headers only
+          const userHeaders =
+            typeof httpOptions.headers === 'function'
+              ? await httpOptions.headers()
+              : httpOptions.headers;
+          return { ...userHeaders };
+        },
+        fetch: httpOptions.fetch,
+        onError: httpOptions.onError,
+      });
+    }, [authStore, fetchAccessToken]);
+
     // Memoize the proxy to prevent recreation on every render
     const proxy = useMemo(() => createCRPCOptionsProxy(api, meta), []);
 
@@ -103,9 +214,11 @@ export function createCRPCContext<TApi extends Record<string, unknown>>(
       <ConvexQueryClientContext.Provider value={convexQueryClient}>
         <MetaContext.Provider value={meta}>
           <CRPCClientContext.Provider value={convexClient}>
-            <CRPCProxyContext.Provider value={proxy}>
-              {children}
-            </CRPCProxyContext.Provider>
+            <HttpProxyContext.Provider value={httpProxy}>
+              <CRPCProxyContext.Provider value={proxy}>
+                {children}
+              </CRPCProxyContext.Provider>
+            </HttpProxyContext.Provider>
           </CRPCClientContext.Provider>
         </MetaContext.Provider>
       </ConvexQueryClientContext.Provider>
@@ -138,23 +251,38 @@ export function createCRPCContext<TApi extends Record<string, unknown>>(
   /**
    * Hook to access the CRPC proxy for building query/mutation options.
    *
-   * @returns The typed CRPC proxy
+   * @returns The typed CRPC proxy (with http namespace if configured)
    * @throws If used outside of CRPCProvider
    *
    * @example
    * ```tsx
    * const crpc = useCRPC();
    * const { data } = useQuery(crpc.user.get.queryOptions({ id }));
+   *
+   * // HTTP endpoints (if configured)
+   * const { data: httpData } = useQuery(crpc.http.todos.get.queryOptions({ id }));
    * ```
    */
-  function useCRPC(): CRPCClient<TApi> {
+  function useCRPC(): CRPCWithHttp {
     const ctx = useContext(CRPCProxyContext);
+    const httpProxy = useContext(HttpProxyContext);
 
     if (!ctx) {
       throw new Error('useCRPC must be used within CRPCProvider');
     }
 
-    return ctx;
+    // If HTTP proxy is configured, wrap with a proxy that adds http namespace
+    // Note: Can't spread a Proxy - need to wrap it
+    if (httpProxy) {
+      return new Proxy(ctx, {
+        get(target, prop) {
+          if (prop === 'http') return httpProxy;
+          return Reflect.get(target, prop);
+        },
+      }) as CRPCWithHttp;
+    }
+
+    return ctx as CRPCWithHttp;
   }
 
   /**

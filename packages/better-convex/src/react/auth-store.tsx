@@ -9,9 +9,28 @@
 
 import { useConvexAuth } from 'convex/react';
 import { createAtomStore } from 'jotai-x';
-import React from 'react';
+import { createContext, useContext } from 'react';
 
 import { CRPCClientError, defaultIsUnauthorized } from '../crpc/error';
+
+// ============================================================================
+// FetchAccessToken Context - Eliminates race condition by passing through context
+// ============================================================================
+
+export type FetchAccessTokenFn = (args: {
+  forceRefreshToken: boolean;
+}) => Promise<string | null>;
+
+export const FetchAccessTokenContext = createContext<FetchAccessTokenFn | null>(
+  null
+);
+
+/** Get fetchAccessToken from context (available immediately, no race condition) */
+export const useFetchAccessToken = () => useContext(FetchAccessTokenContext);
+
+// ============================================================================
+// Auth Store State
+// ============================================================================
 
 export type AuthStoreState = {
   /** Callback when mutation/action called while unauthorized. Throws by default. */
@@ -20,80 +39,44 @@ export type AuthStoreState = {
   onQueryUnauthorized: (info: { queryName: string }) => void;
   /** Custom function to detect UNAUTHORIZED errors. Default checks code or "auth" in message. */
   isUnauthorized: (error: unknown) => boolean;
-  /** Current session token */
+  /** Cached Convex JWT for HTTP requests */
   token: string | null;
-  /** Whether Convex auth is still loading (synced from useConvexAuth) */
+  /** JWT expiration timestamp (ms) */
+  expiresAt: number | null;
+  /** Auth loading state (synced from useConvexAuth for class methods) */
   isLoading: boolean;
-  /** Whether user is authenticated (synced from useConvexAuth + token) */
+  /** Auth state (synced from useConvexAuth for class methods) */
   isAuthenticated: boolean;
-  /** Guard function - returns true if blocked, else runs callback */
-  guard: (callback?: () => Promise<void> | void) => boolean | undefined;
 };
 
-// HMR persistence: globalThis survives module re-evaluation
-// biome-ignore lint/suspicious/noExplicitAny: globalThis symbol keys
-const globalStore = globalThis as any;
-const AUTH_TOKEN_KEY = Symbol.for('convex.authToken');
-
-/** Get persisted token from globalThis (survives HMR) */
-export const getPersistedToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  return globalStore[AUTH_TOKEN_KEY] ?? null;
-};
-
-/** Persist token to globalThis (survives HMR) */
-export const persistToken = (token: string | null) => {
-  if (typeof window !== 'undefined') {
-    globalStore[AUTH_TOKEN_KEY] = token;
+/** Decode JWT expiration (ms timestamp) from token */
+export function decodeJwtExp(token: string): number | null {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp ? payload.exp * 1000 : null;
+  } catch {
+    return null;
   }
-};
-
-function AuthEffect() {
-  const authStore = useAuthStore();
-  const { isAuthenticated, isLoading } = useConvexAuth();
-  const token = useAuthValue('token');
-  const onMutationUnauthorized = useAuthValue('onMutationUnauthorized');
-
-  // Sync auth state from useConvexAuth to store
-  React.useEffect(() => {
-    authStore.set('isLoading', isLoading);
-    authStore.set('isAuthenticated', isAuthenticated && !!token);
-    authStore.set('guard', (callback?: () => Promise<void> | void) => {
-      if (!token) {
-        onMutationUnauthorized();
-        return true;
-      }
-      return callback ? void callback() : false;
-    });
-  }, [isLoading, isAuthenticated, token, onMutationUnauthorized, authStore]);
-
-  return null;
 }
 
-export const {
-  authStore,
-  AuthProvider,
-  useAuthStore,
-  useAuthState,
-  useAuthValue,
-} = createAtomStore(
-  {
-    onMutationUnauthorized: () => {
-      throw new CRPCClientError({
-        code: 'UNAUTHORIZED',
-        functionName: 'mutation',
-      });
-    },
-    onQueryUnauthorized: () => {},
-    isUnauthorized: defaultIsUnauthorized,
-    token: getPersistedToken(),
-    enabled: false,
-    isLoading: false,
-    isAuthenticated: false,
-    guard: () => false,
-  } as AuthStoreState,
-  { effect: AuthEffect, name: 'auth' as const, suppressWarnings: true }
-);
+export const { AuthProvider, useAuthStore, useAuthState, useAuthValue } =
+  createAtomStore(
+    {
+      onMutationUnauthorized: () => {
+        throw new CRPCClientError({
+          code: 'UNAUTHORIZED',
+          functionName: 'mutation',
+        });
+      },
+      onQueryUnauthorized: () => {},
+      isUnauthorized: defaultIsUnauthorized,
+      token: null,
+      expiresAt: null,
+      isLoading: true,
+      isAuthenticated: false,
+    } as AuthStoreState,
+    { name: 'auth' as const, suppressWarnings: true }
+  );
 
 export type AuthStore = ReturnType<typeof useAuthStore>;
 
@@ -119,15 +102,15 @@ export const useAuth = () => {
     };
   }
 
-  // Token is ready to be used only after convex client auth is loaded
+  // Use Convex SDK's auth state directly
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const { isAuthenticated, isLoading } = useConvexAuth();
+  const { isLoading, isAuthenticated } = useConvexAuth();
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const token = useAuthValue('token');
 
   return {
     hasSession: !!token,
-    isAuthenticated: isAuthenticated && !!token,
+    isAuthenticated,
     isLoading,
   };
 };
@@ -145,11 +128,11 @@ export const useIsAuth = () => {
 };
 
 export const useAuthGuard = () => {
-  const isAuth = useIsAuth();
+  const { isAuthenticated } = useConvexAuth();
   const onMutationUnauthorized = useAuthValue('onMutationUnauthorized');
 
   return (callback?: () => Promise<void> | void) => {
-    if (!isAuth) {
+    if (!isAuthenticated) {
       onMutationUnauthorized();
 
       return true;

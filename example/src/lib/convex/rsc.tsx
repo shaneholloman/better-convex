@@ -2,6 +2,7 @@ import 'server-only';
 
 import { api } from '@convex/api';
 import { meta } from '@convex/meta';
+import type { Api } from '@convex/types';
 import type { FetchQueryOptions } from '@tanstack/react-query';
 import {
   dehydrate,
@@ -15,11 +16,10 @@ import {
 import { headers } from 'next/headers';
 import { cache } from 'react';
 
+import { env } from '@/env';
+
 import { hydrationConfig } from './query-client';
 import { createCaller, createContext } from './server';
-
-// App-specific CRPC proxy for RSC (uses server-compatible proxy)
-export const crpc = createServerCRPCProxy(api, meta);
 
 // RSC context factory - wraps createContext with cache() and next/headers
 const createRSCContext = cache(async () =>
@@ -36,6 +36,9 @@ const createRSCContext = cache(async () =>
  */
 export const caller = createCaller(createRSCContext);
 
+// App-specific CRPC proxy for RSC (uses server-compatible proxy)
+export const crpc = createServerCRPCProxy<Api>({ api, meta });
+
 /** Create server-side QueryClient with HTTP-based queryFn */
 function createServerQueryClient() {
   return new QueryClient({
@@ -43,6 +46,7 @@ function createServerQueryClient() {
       ...hydrationConfig,
       ...getServerQueryClientOptions({
         getToken: caller.getToken,
+        convexSiteUrl: env.NEXT_PUBLIC_CONVEX_SITE_URL,
       }),
     },
   });

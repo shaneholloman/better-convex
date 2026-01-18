@@ -41,6 +41,7 @@ import type {
 } from '../functions/_generated/server';
 import {
   action,
+  httpAction,
   internalAction,
   internalMutation,
   internalQuery,
@@ -132,6 +133,7 @@ const c = initCRPC
       }),
     action,
     internalAction,
+    httpAction,
   });
 
 // =============================================================================
@@ -323,3 +325,36 @@ export const internalMutationWithTriggers = customMutation(
     db: triggers.wrapDB(ctx).db,
   }))
 );
+
+// =============================================================================
+// HTTP Action Procedures
+// =============================================================================
+
+/** Public HTTP route - no auth required */
+export const publicRoute = c.httpAction;
+
+/** Auth HTTP route - verifies JWT via ctx.auth.getUserIdentity() */
+export const authRoute = c.httpAction.use(async ({ ctx, next }) => {
+  // Convex automatically validates JWT from Authorization header
+  const identity = await ctx.auth.getUserIdentity();
+
+  if (!identity) {
+    throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+  }
+
+  return next({
+    ctx: {
+      ...ctx,
+      userId: identity.subject as Id<'user'>,
+      user: {
+        id: identity.subject,
+        email: identity.email,
+        name: identity.name,
+        // tokenIdentifier available for additional info
+      },
+    },
+  });
+});
+
+/** HTTP router factory - create nested HTTP routers like tRPC */
+export const router = c.router;

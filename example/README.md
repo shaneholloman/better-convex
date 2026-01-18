@@ -89,7 +89,7 @@ bun sync
 
 6. **Open the app:**
 
-Navigate to [http://localhost:3000](http://localhost:3000)
+Navigate to [http://localhost:3005](http://localhost:3005)
 
 ### Database Management
 

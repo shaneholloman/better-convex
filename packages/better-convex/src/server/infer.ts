@@ -1,41 +1,86 @@
 import type { FunctionReference, FunctionReturnType } from 'convex/server';
 
+import type { InferHttpInput, InferHttpOutput } from '../crpc/http-types';
+import type { CRPCHttpRouter, HttpRouterRecord } from './http-router';
+import type { HttpProcedure } from './http-types';
+
 /**
- * Infer all output types from a Convex API.
+ * Combine a Convex API with an HTTP router for unified type inference.
+ *
+ * @example
+ * ```ts
+ * import type { WithHttpRouter } from 'better-convex/server';
+ *
+ * export type AppRouter = WithHttpRouter<typeof api, typeof appRouter>;
+ * export type ApiInputs = inferApiInputs<AppRouter>;
+ * // ApiInputs['http']['todos']['create'] works
+ * ```
+ */
+export type WithHttpRouter<TApi, TRouter> = TApi & { http?: TRouter };
+
+/** Helper to unwrap optional/nullable types for inference */
+type UnwrapOptional<T> = T extends undefined ? never : NonNullable<T>;
+
+/** Recursive output inference that handles optional properties */
+type InferOutputsRecursive<T> =
+  T extends FunctionReference<infer _T, 'public'>
+    ? FunctionReturnType<T>
+    : T extends HttpProcedure
+      ? InferHttpOutput<T>
+      : T extends CRPCHttpRouter<infer R>
+        ? inferApiOutputs<R>
+        : T extends HttpRouterRecord
+          ? inferApiOutputs<T>
+          : inferApiOutputs<T>;
+
+/**
+ * Infer all output types from a Convex API (including HTTP routes).
+ * Optional properties (like `http?`) are unwrapped for easier access.
  *
  * @example
  * ```ts
  * import { api } from '@convex/api';
  * import type { inferApiOutputs } from 'better-convex/server';
  *
- * type Api = typeof api;
- * type ApiOutputs = inferApiOutputs<Api>;
+ * type AppRouter = typeof api & { http?: typeof appRouter };
+ * type ApiOutputs = inferApiOutputs<AppRouter>;
  *
  * type LinkData = ApiOutputs['scraper']['scrapeLink'];
+ * type TodoList = ApiOutputs['http']['todos']['list'];
  * ```
  */
 export type inferApiOutputs<TApi> = {
-  [K in keyof TApi]: TApi[K] extends FunctionReference<infer _T, 'public'>
-    ? FunctionReturnType<TApi[K]>
-    : inferApiOutputs<TApi[K]>;
+  [K in keyof TApi]-?: InferOutputsRecursive<UnwrapOptional<TApi[K]>>;
 };
 
+/** Recursive input inference that handles optional properties */
+type InferInputsRecursive<T> =
+  T extends FunctionReference<infer _T, 'public'>
+    ? T['_args']
+    : T extends HttpProcedure
+      ? InferHttpInput<T>
+      : T extends CRPCHttpRouter<infer R>
+        ? inferApiInputs<R>
+        : T extends HttpRouterRecord
+          ? inferApiInputs<T>
+          : inferApiInputs<T>;
+
 /**
- * Infer all input types from a Convex API.
+ * Infer all input types from a Convex API (including HTTP routes).
+ * Optional properties (like `http?`) are unwrapped for easier access.
  *
  * @example
  * ```ts
  * import { api } from '@convex/api';
  * import type { inferApiInputs } from 'better-convex/server';
  *
- * type Api = typeof api;
- * type ApiInputs = inferApiInputs<Api>;
+ * type AppRouter = typeof api & { http?: typeof appRouter };
+ * type ApiInputs = inferApiInputs<AppRouter>;
  *
  * type ScrapeLinkInput = ApiInputs['scraper']['scrapeLink'];
+ * type CreateTodoInput = ApiInputs['http']['todos']['create'];
  * ```
  */
 export type inferApiInputs<TApi> = {
-  [K in keyof TApi]: TApi[K] extends FunctionReference<infer _T, 'public'>
-    ? TApi[K]['_args']
-    : inferApiInputs<TApi[K]>;
+  [K in keyof TApi]-?: InferInputsRecursive<UnwrapOptional<TApi[K]>>;
 };

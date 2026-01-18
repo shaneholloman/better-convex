@@ -3,26 +3,34 @@ import type { FunctionReference } from 'convex/server';
 
 import type { ConvexQueryMeta } from '../crpc/types';
 import { createHashFn } from '../internal/hash';
+import { fetchHttpRoute, type HttpQueryMeta } from './http-server';
 
 export type GetServerQueryClientOptionsParams = {
   /** Function to get auth token for authenticated queries. Use `caller.getToken` from your RSC setup. */
   getToken?: () => Promise<string | undefined>;
+  /** Base URL for HTTP routes (e.g., NEXT_PUBLIC_CONVEX_SITE_URL). Required for crpc.http.* queries. */
+  convexSiteUrl?: string;
 };
 
 /**
  * Get server QueryClient options for RSC prefetching.
+ * Handles both WebSocket queries (convexQuery/convexAction) and HTTP routes (httpQuery).
  *
  * @example
  * ```ts
  * const queryClient = new QueryClient({
  *   defaultOptions: {
- *     ...getServerQueryClientOptions({ getToken: caller.getToken }),
+ *     ...getServerQueryClientOptions({
+ *       getToken: caller.getToken,
+ *       convexSiteUrl: env.NEXT_PUBLIC_CONVEX_SITE_URL,
+ *     }),
  *   },
  * });
  * ```
  */
 export function getServerQueryClientOptions({
   getToken,
+  convexSiteUrl,
 }: GetServerQueryClientOptionsParams = {}) {
   return {
     queries: {
@@ -34,17 +42,37 @@ export function getServerQueryClientOptions({
         queryKey: readonly unknown[];
         meta?: Record<string, unknown>;
       }) => {
-        const [type, funcRef, args] = queryKey as [
-          'convexQuery' | 'convexAction',
+        const [type, ...rest] = queryKey;
+        const token = await getToken?.();
+
+        // Handle HTTP queries (crpc.http.*)
+        if (type === 'httpQuery') {
+          const [routeKey, args] = rest as [string, unknown];
+          const routeMeta = meta as HttpQueryMeta | undefined;
+
+          if (!convexSiteUrl) {
+            throw new Error(
+              'convexSiteUrl required for HTTP queries. Pass it to getServerQueryClientOptions().'
+            );
+          }
+          if (!routeMeta?.path) {
+            throw new Error(`HTTP route metadata missing for: ${routeKey}`);
+          }
+
+          return fetchHttpRoute(convexSiteUrl, routeMeta, args, token);
+        }
+
+        // Handle WebSocket queries (convexQuery/convexAction)
+        const [funcRef, args] = rest as [
           FunctionReference<'query' | 'action'>,
           Record<string, unknown>,
         ];
 
-        const token = await getToken?.();
-
-        // Only skip for skipUnauth queries when not authenticated
-        const skipUnauth = (meta as ConvexQueryMeta | undefined)?.skipUnauth;
-        if (skipUnauth && !token) {
+        // Auto-skip auth-required queries when not authenticated
+        const queryMeta = meta as ConvexQueryMeta | undefined;
+        const skipUnauth = queryMeta?.skipUnauth;
+        const authRequired = queryMeta?.authType === 'required';
+        if (!token && (skipUnauth || authRequired)) {
           return null;
         }
 

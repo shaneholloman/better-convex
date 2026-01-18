@@ -1,13 +1,28 @@
 ---
 title: Infinite Queries
-description: Paginated data with real-time subscriptions
+description: Paginated data with real-time subscriptions.
+links:
+  doc: https://tanstack.com/query/latest/docs/framework/react/guides/infinite-queries
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore infinite queries in cRPC. You'll learn to implement cursor-based pagination with real-time updates, prefetch first pages, handle loading states with placeholders, and set up infinite scroll.
 
 ## Overview
 
-`useInfiniteQuery` provides cursor-based pagination with real-time updates. It uses cRPC-style options from the proxy, enabling type-safe infinite queries and first-page prefetching.
+`useInfiniteQuery` provides cursor-based pagination with real-time updates:
 
-```tsx
+| Feature | Benefit |
+|---------|---------|
+| Cursor-based | Efficient pagination with stable cursors |
+| Real-time | Each page maintains WebSocket subscription |
+| Server-defined limits | Page size from `.paginated(limit)` |
+| Prefetching | First-page prefetch for instant navigation |
+
+Let's see how it works.
+
+```tsx showLineNumbers {1,7-9,14}
 import { useInfiniteQuery } from 'better-convex/react';
 import { useCRPC } from '@/lib/crpc';
 
@@ -36,7 +51,9 @@ function SessionList({ userId }: { userId: string }) {
 
 ## Signature
 
-```ts
+The `infiniteQueryOptions` method creates options for infinite queries:
+
+```ts showLineNumbers {2,5,8,11}
 // Get infinite query options from cRPC proxy
 // limit defaults to server's .paginated(limit) value
 const options = crpc.session.list.infiniteQueryOptions({ userId });
@@ -55,7 +72,7 @@ const limit = crpc.session.list.meta.limit;
 
 Prefetch the first page for instant navigation:
 
-```tsx
+```tsx showLineNumbers {4-6}
 // In route loader or parent component
 const crpc = useCRPC();
 const queryClient = useQueryClient();
@@ -66,6 +83,8 @@ await queryClient.prefetchQuery(
 ```
 
 ## Return Value
+
+Here's what `useInfiniteQuery` returns:
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -82,7 +101,7 @@ await queryClient.prefetchQuery(
 | `isFetching` | `boolean` | Any fetch in progress |
 | `isSuccess` | `boolean` | Query succeeded |
 
-Extends TanStack Query's `UseQueryResult`
+Extends TanStack Query's `UseQueryResult`.
 
 ## infiniteQueryOptions
 
@@ -99,7 +118,7 @@ Other TanStack Query options are also supported.
 
 Use `placeholderData` for skeleton UIs while loading:
 
-```tsx
+```tsx showLineNumbers {4-12,17}
 import type { Id } from '@convex/dataModel';
 
 const crpc = useCRPC();
@@ -133,7 +152,7 @@ return (
 
 Combine with an intersection observer for infinite scroll:
 
-```tsx
+```tsx showLineNumbers {4-7,9-12,17}
 function SessionFeed() {
   const crpc = useCRPC();
 
@@ -163,7 +182,7 @@ function SessionFeed() {
 
 Paginated queries use `.paginated({ limit, item })` to add pagination input automatically, set the max items per page, and auto-wrap the output:
 
-```ts title="convex/functions/session.ts"
+```ts title="convex/functions/session.ts" showLineNumbers {8,10-16}
 import { z } from 'zod';
 import { zid } from 'convex-helpers/server/zod4';
 import { publicQuery } from './lib/crpc';
@@ -199,15 +218,15 @@ The `.paginated({ limit, item })` method:
 | `cursor` | `string \| null` | Pagination cursor |
 | `limit` | `number` | Items to fetch (capped at server limit) |
 
-<Callout type="info">
-Always call `.paginated({ limit, item })` before `.query()`. The handler receives flat `input.cursor` and `input.limit` which you transform to Convex's `.paginate({ cursor, numItems })`.
+<Callout icon={<InfoIcon />}>
+**Important:** Always call `.paginated({ limit, item })` before `.query()`. The handler receives flat `input.cursor` and `input.limit` which you transform to Convex's `.paginate({ cursor, numItems })`.
 </Callout>
 
 ## Conditional Queries
 
 Use `enabled` to conditionally run queries:
 
-```tsx
+```tsx showLineNumbers {4-7}
 const crpc = useCRPC();
 const [userId, setUserId] = useState<string | null>(null);
 
@@ -228,7 +247,7 @@ Each page maintains its own WebSocket subscription. When data changes on the ser
 - Deleted items are removed
 - Page cursors are automatically recovered if invalidated
 
-```tsx
+```tsx showLineNumbers {4-6}
 const crpc = useCRPC();
 
 // This list updates in real-time when sessions are created/updated/deleted
@@ -238,6 +257,8 @@ const { data } = useInfiniteQuery(
 ```
 
 ## How It Works
+
+Let's understand how infinite queries work under the hood.
 
 ### Pagination State Persistence
 
@@ -284,6 +305,8 @@ Page 2 ──► WebSocket subscription ──► Real-time updates
 
 ### Automatic Error Recovery
 
+The system handles errors gracefully:
+
 ```
 InvalidCursor error ──► Reset pagination state
                         Start fresh from page 0
@@ -296,6 +319,8 @@ Page too large ──► splitCursor returned
 
 ## Migrate from Convex
 
+If you're coming from vanilla Convex, here's what changes.
+
 ### What stays the same
 
 - Cursor-based pagination model
@@ -304,7 +329,8 @@ Page too large ──► splitCursor returned
 ### What's new
 
 **Before (vanilla Convex):**
-```tsx
+
+```tsx showLineNumbers
 import { usePaginatedQuery } from 'convex/react';
 import { api } from '@convex/_generated/api';
 
@@ -322,7 +348,8 @@ if (status === 'LoadingFirstPage') return <Loading />;
 ```
 
 **After (cRPC):**
-```tsx
+
+```tsx showLineNumbers {1-2,5-7,10,13}
 import { useInfiniteQuery } from 'better-convex/react';
 import { useCRPC } from '@/lib/crpc';
 
@@ -341,15 +368,18 @@ if (isLoading) return <Loading />;
 ```
 
 **Key differences:**
-- Uses cRPC proxy for options: `crpc.session.list.infiniteQueryOptions()`
-- No need to import `api` - function reference is attached automatically
-- `limit` defined on server via `.paginated(20)` - no need to specify on client
-- Supports first-page prefetching via `queryClient.prefetchQuery()`
-- `results` → `data` (same flattened array)
-- `status === 'LoadingFirstPage'` → `isLoading`
-- `status === 'CanLoadMore'` → `hasNextPage`
-- `status === 'LoadingMore'` → `isFetchingNextPage`
-- `loadMore(n)` → `fetchNextPage(n)` (optional, uses server limit)
+
+| Before | After |
+|--------|-------|
+| `results` | `data` (same flattened array) |
+| `status === 'LoadingFirstPage'` | `isLoading` |
+| `status === 'CanLoadMore'` | `hasNextPage` |
+| `status === 'LoadingMore'` | `isFetchingNextPage` |
+| `loadMore(n)` | `fetchNextPage(n)` (optional, uses server limit) |
+| Manual limit | Server-defined via `.paginated(20)` |
+| No prefetching | `queryClient.prefetchQuery()` support |
+
+Additional benefits:
 - `placeholderData` option for skeleton UIs
 - `skipUnauth` option for auth-aware queries
 - Page splitting handled automatically

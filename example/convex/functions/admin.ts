@@ -105,7 +105,7 @@ const UserListItemSchema = z.object({
   email: z.string(),
   image: z.string().nullish(),
   role: z.string(),
-  isBanned: z.boolean().optional(),
+  isBanned: z.boolean().nullish(),
   banReason: z.string().nullish(),
   banExpiresAt: z.number().nullish(),
 });

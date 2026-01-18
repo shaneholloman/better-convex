@@ -134,6 +134,9 @@ const createAuthOptions = (ctx: GenericCtx) =>
       convex({
         authConfig,
         jwks: process.env.JWKS,
+        jwt: {
+          expirationSeconds: 70, // 15m expiry (60s leeway)
+        },
       }),
       polar({
         client: new Polar({

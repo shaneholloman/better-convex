@@ -46,7 +46,7 @@ export declare const api: {
           banReason?: string | null;
           email: string;
           image?: string | null;
-          isBanned?: boolean;
+          isBanned?: boolean | null;
           name?: string;
           role: string;
         } | null>;
@@ -1135,6 +1135,23 @@ export declare const internal: {
       { batchSize?: number; daysOld?: number },
       { archived: number; hasMore: boolean }
     >;
+    create: FunctionReference<
+      "mutation",
+      "internal",
+      {
+        description?: string;
+        priority?: "low" | "medium" | "high";
+        title: string;
+        userId: Id<"user">;
+      },
+      Id<"todos">
+    >;
+    deleteTodo: FunctionReference<
+      "mutation",
+      "internal",
+      { id: Id<"todos">; userId: Id<"user"> },
+      null
+    >;
     generateWeeklyReport: FunctionReference<
       "action",
       "internal",
@@ -1203,6 +1220,18 @@ export declare const internal: {
       "internal",
       { userId: Id<"user"> },
       { completedTodos: number; streak: number; totalTodos: number }
+    >;
+    update: FunctionReference<
+      "mutation",
+      "internal",
+      {
+        completed?: boolean;
+        description?: string;
+        id: Id<"todos">;
+        title?: string;
+        userId: Id<"user">;
+      },
+      null
     >;
     updateOverduePriorities: FunctionReference<
       "mutation",

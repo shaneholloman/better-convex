@@ -1,22 +1,34 @@
 ---
 title: Aggregates
-description: O(log n) counts and sums with TableAggregate
+description: O(log n) counts and sums with TableAggregate.
+links:
+  doc: https://www.convex.dev/components/aggregate
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore efficient aggregations in Convex. You'll learn to set up TableAggregate for O(log n) counts and sums, integrate with triggers for automatic maintenance, and implement common patterns like leaderboards, follower counts, and dashboard metrics.
 
 ## Overview
 
 [@convex-dev/aggregate](https://www.convex.dev/components/aggregate) provides efficient O(log n) aggregations instead of O(n) queries:
 
-- **Counts**: Total users, likes per post, followers per user
-- **Sums**: Total revenue, points per user
-- **Rankings**: Leaderboards, sorted lists, percentiles
-- **Random access**: Get document at specific index
+| Feature | Description |
+|---------|-------------|
+| Counts | Total users, likes per post, followers per user |
+| Sums | Total revenue, points per user |
+| Rankings | Leaderboards, sorted lists, percentiles |
+| Random access | Get document at specific index |
+
+Let's set it up.
 
 ## Always Use Triggers
 
-**NEVER manually update aggregates in mutations. ALWAYS use triggers for automatic maintenance.**
+<Callout icon={<InfoIcon />}>
+**Important:** NEVER manually update aggregates in mutations. ALWAYS use triggers for automatic maintenance.
+</Callout>
 
-```ts
+```ts showLineNumbers {2,4-5,7-9}
 // ✅ CORRECT: Register trigger once, aggregates stay in sync automatically
 triggers.register('scores', scoresAggregate.trigger());
 
@@ -30,13 +42,15 @@ await scoresAggregate.insert(ctx, doc); // Don't do this!
 
 ## Installation
 
+First, install the aggregate package:
+
 ```bash
 bun add @convex-dev/aggregate
 ```
 
-Add components to `convex/functions/convex.config.ts`:
+Then add components to `convex/functions/convex.config.ts`:
 
-```ts title="convex/functions/convex.config.ts"
+```ts title="convex/functions/convex.config.ts" showLineNumbers {1,5-8}
 import aggregate from '@convex-dev/aggregate/convex.config';
 import { defineApp } from 'convex/server';
 
@@ -52,9 +66,9 @@ export default app;
 
 ## Setup
 
-Create aggregates file:
+Now let's create an aggregates file. This is where you'll define all your aggregate configurations:
 
-```ts title="convex/functions/aggregates.ts"
+```ts title="convex/functions/aggregates.ts" showLineNumbers {1-2,5-11}
 import { TableAggregate } from '@convex-dev/aggregate';
 import { components } from './_generated/api';
 import type { DataModel } from './_generated/dataModel';
@@ -73,11 +87,13 @@ export const aggregatePostLikes = new TableAggregate<{
 
 ## Aggregate Types
 
+Let's explore the different types of aggregates you can create.
+
 ### Count by Namespace
 
 Count items grouped by a key:
 
-```ts
+```ts showLineNumbers {3-5,8-9,13-16}
 // Likes per post
 export const aggregatePostLikes = new TableAggregate<{
   DataModel: DataModel;
@@ -100,7 +116,7 @@ const likeCount = await aggregatePostLikes.count(ctx, {
 
 Count all rows in a table:
 
-```ts
+```ts showLineNumbers {3-5,8-9,13-16}
 // Total users
 export const aggregateTotalUsers = new TableAggregate<{
   DataModel: DataModel;
@@ -121,9 +137,9 @@ const totalUsers = await aggregateTotalUsers.count(ctx, {
 
 ### Multiple Aggregates on Same Table
 
-For bidirectional relationships:
+For bidirectional relationships like followers/following:
 
-```ts
+```ts showLineNumbers {3-5,8-9,13-15,18-19}
 // Followers (people following this user)
 export const aggregateFollowers = new TableAggregate<{
   DataModel: DataModel;
@@ -151,7 +167,7 @@ export const aggregateFollowing = new TableAggregate<{
 
 For rankings and top-N queries:
 
-```ts
+```ts showLineNumbers {3-5,8-12,15-18}
 // Scores sorted by value
 export const aggregateScoresByValue = new TableAggregate<{
   DataModel: DataModel;
@@ -175,9 +191,11 @@ const topScores = await aggregateScoresByValue.paginate(ctx, {
 
 ## Key Selection Patterns
 
+Choosing the right keys is critical for query performance.
+
 ### Simple Keys
 
-```ts
+```ts showLineNumbers {1-2,4-5,7-8,10-11}
 // By number (scores, rankings)
 sortKey: (doc) => doc.score
 
@@ -195,7 +213,7 @@ sortKey: () => null
 
 Group and query with prefixes:
 
-```ts
+```ts showLineNumbers {1-2,4-10}
 // Sort by game, then username, then score
 sortKey: (doc) => [doc.game, doc.username, doc.score]
 
@@ -210,17 +228,20 @@ const userGameCount = await aggregate.count(ctx, {
 
 ### Key Ordering
 
-**Sort order matters for composite keys:**
-
+<Callout icon={<InfoIcon />}>
+**Note:** Sort order matters for composite keys:
 - `[game, username, score]` - query by game OR game+username
 - `[game, score]` - find highest score per game
 - `[username, score]` - find user's highest score
+</Callout>
 
 ### Bounds for Null Keys
 
-**IMPORTANT**: When using `sortKey: () => null`, you must provide `bounds`:
+<Callout icon={<InfoIcon />}>
+**Important:** When using `sortKey: () => null`, you must provide `bounds`:
+</Callout>
 
-```ts
+```ts showLineNumbers {1-4,6-9}
 // ❌ WRONG: Missing bounds parameter
 const count = await aggregate.count(ctx, {
   namespace: itemId,
@@ -239,7 +260,7 @@ This also fixes the TypeScript "Type instantiation is excessively deep" error.
 
 Register aggregates with [triggers](/docs/db/triggers) for automatic maintenance:
 
-```ts title="convex/lib/triggers.ts"
+```ts title="convex/lib/triggers.ts" showLineNumbers {1-6,10-11,13-16}
 import { Triggers } from 'convex-helpers/server/triggers';
 import {
   aggregatePostLikes,
@@ -265,9 +286,11 @@ export const registerTriggers = () => {
 
 ## Usage
 
+Here's how to use aggregates in your queries and mutations.
+
 ### Get Count
 
-```ts
+```ts showLineNumbers {1-4}
 const likeCount = await aggregatePostLikes.count(ctx, {
   namespace: postId,
   bounds: {},
@@ -276,7 +299,7 @@ const likeCount = await aggregatePostLikes.count(ctx, {
 
 ### Get Sum
 
-```ts
+```ts showLineNumbers {1-4}
 // For aggregates with sumValue configured
 const totalPoints = await aggregatePoints.sum(ctx, {
   namespace: userId,
@@ -285,7 +308,7 @@ const totalPoints = await aggregatePoints.sum(ctx, {
 
 ### Statistical Operations
 
-```ts
+```ts showLineNumbers {1-4,6-8,10-11}
 // Average score
 const sum = await aggregate.sum(ctx, { namespace: gameId });
 const count = await aggregate.count(ctx, { namespace: gameId, bounds: {}});
@@ -304,7 +327,7 @@ const rank = await aggregate.indexOf(ctx, userScore, { namespace: gameId });
 
 Get a random document from a table:
 
-```ts
+```ts showLineNumbers {1-6,9-13}
 const randomAggregate = new TableAggregate<{
   Key: null;
   DataModel: DataModel;
@@ -324,7 +347,7 @@ const song = result ? await ctx.table('songs').get(result.doc._id) : null;
 
 ### Paginate
 
-```ts
+```ts showLineNumbers {1-5}
 const results = await aggregateSkillsByLevel.paginate(ctx, {
   namespace: characterId,
   limit: 10,
@@ -334,7 +357,7 @@ const results = await aggregateSkillsByLevel.paginate(ctx, {
 
 ### Bounded Queries
 
-```ts
+```ts showLineNumbers {1-8,10-12}
 // Count scores in range
 const highScoreCount = await aggregate.count(ctx, {
   namespace: gameId,
@@ -353,7 +376,7 @@ const lowestScore = await aggregate.min(ctx, { namespace: gameId });
 
 Reduce function call overhead with batch versions:
 
-```ts
+```ts showLineNumbers {1-6,8-13,15-20}
 // Instead of multiple individual calls
 const counts = await Promise.all([
   aggregate.count(ctx, { namespace: id1, bounds: {} }),
@@ -378,11 +401,13 @@ const items = await aggregate.atBatch(ctx, [0, 1, 2], { namespace: gameId });
 
 ## Backfill and Repair
 
+When adding aggregates to existing data, you'll need to backfill.
+
 ### Initial Backfill
 
 For existing data when adding a new aggregate:
 
-```ts
+```ts showLineNumbers {6-7,9-11,13-17}
 export const backfillAggregate = privateMutation
   .input(z.object({
     cursor: z.string().nullable(),
@@ -411,7 +436,7 @@ export const backfillAggregate = privateMutation
 
 If aggregate gets out of sync:
 
-```ts
+```ts showLineNumbers {2-4,6-8}
 export const repairAggregate = privateMutation
   .mutation(async ({ ctx }) => {
     // Clear and rebuild from source of truth
@@ -426,9 +451,11 @@ export const repairAggregate = privateMutation
 
 ## Common Use Cases
 
+Let's look at battle-tested patterns you can copy into your project.
+
 ### Star/Like Counts
 
-```ts
+```ts showLineNumbers {2-7,10-11,14-17}
 // Define aggregate
 export const aggregatePostLikes = new TableAggregate<{
   DataModel: DataModel;
@@ -452,7 +479,7 @@ const likeCount = await aggregatePostLikes.count(ctx, {
 
 ### Admin Dashboard Stats
 
-```ts
+```ts showLineNumbers {1-9}
 const stats = {
   totalUsers: await aggregateTotalUsers.count(ctx, {
     namespace: 'global',
@@ -467,7 +494,7 @@ const stats = {
 
 ### Follower/Following Counts
 
-```ts
+```ts showLineNumbers {1-8}
 const followerCount = await aggregateFollowers.count(ctx, {
   namespace: userId,
   bounds: {},
@@ -480,9 +507,11 @@ const followingCount = await aggregateFollowing.count(ctx, {
 
 ## Best Practices
 
+Here are key practices to follow when using aggregates.
+
 ### Always Use Triggers
 
-```ts
+```ts showLineNumbers {1-3,5-7}
 // ✅ BEST: Triggers handle everything
 triggers.register('scores', scoresAggregate.trigger());
 await ctx.table('scores').insert(data); // Done!
@@ -495,7 +524,7 @@ await aggregate.insert(ctx, doc!); // Easy to forget!
 
 ### Choose Keys for Query Patterns
 
-```ts
+```ts showLineNumbers {1-4,6-8}
 // ✅ GOOD: Keys match how you query
 sortKey: (doc) => [doc.category, doc.priority, doc.createdAt]
 // Allows: by category, category+priority, full ordering
@@ -507,7 +536,7 @@ sortKey: (doc) => doc.internalId
 
 ### Use Namespaces for Isolation
 
-```ts
+```ts showLineNumbers {1-4,6-8}
 // ✅ GOOD: Namespace prevents interference between tenants
 namespace: (doc) => doc.tenantId,
 sortKey: (doc) => doc.score
@@ -518,14 +547,14 @@ sortKey: (doc) => [doc.tenantId, doc.score]
 
 ### Handle Edge Cases
 
-```ts
+```ts showLineNumbers {1-2}
 // Always handle division by zero
 const average = count > 0 ? sum / count : 0;
 ```
 
 ### Bounded Queries Reduce Conflicts
 
-```ts
+```ts showLineNumbers {1-6,8-9}
 // ✅ GOOD: Bounded query has fewer dependencies
 const recentCount = await aggregate.count(ctx, {
   bounds: {
@@ -560,7 +589,7 @@ const allCount = await aggregate.count(ctx);
 
 Each aggregate needs a component in `convex.config.ts`:
 
-```ts title="convex/functions/convex.config.ts"
+```ts title="convex/functions/convex.config.ts" showLineNumbers {1,5-10}
 import aggregate from '@convex-dev/aggregate/convex.config';
 import { defineApp } from 'convex/server';
 
@@ -578,11 +607,13 @@ export default app;
 
 ## Advanced
 
+Let's explore advanced aggregate patterns for complex use cases.
+
 ### DirectAggregate
 
 For aggregating data not stored in tables (manual management):
 
-```ts
+```ts showLineNumbers {1,3-6,8-13,15-19}
 import { DirectAggregate } from '@convex-dev/aggregate';
 
 const aggregate = new DirectAggregate<{
@@ -609,7 +640,7 @@ await aggregate.replace(
 
 Define multiple aggregates for different access patterns on the same table:
 
-```ts
+```ts showLineNumbers {2-7,10-15,18-23}
 // By score for rankings
 const byScore = new TableAggregate<{
   Key: number;
@@ -642,7 +673,7 @@ const byActivity = new TableAggregate<{
 
 Multi-dimensional leaderboards with regional queries:
 
-```ts
+```ts showLineNumbers {1-9,12-15,17-20}
 const leaderboard = new TableAggregate<{
   Namespace: string; // game mode
   Key: [string, number, number]; // [region, score, timestamp]
@@ -670,7 +701,7 @@ const usWestCount = await leaderboard.count(ctx, {
 
 Aggregates update automatically when triggers handle cascade deletes:
 
-```ts
+```ts showLineNumbers {1-3,5-14}
 // Register aggregate triggers
 triggers.register('characterStars', aggregateCharacterStars.trigger());
 triggers.register('characters', aggregateCharacters.trigger());
@@ -694,7 +725,7 @@ triggers.register('user', async (ctx, change) => {
 
 Configure aggregation tree for different workloads:
 
-```ts
+```ts showLineNumbers {1-2,4-5}
 // High-write scenarios: larger nodes, lazy root
 await aggregate.clear(ctx, 32, true);
 
@@ -706,7 +737,7 @@ await aggregate.clear(ctx, 16, false);
 
 Bucket data by time periods:
 
-```ts
+```ts showLineNumbers {1-9,12-19}
 const activityByHour = new TableAggregate<{
   Key: [number, string]; // [hour, userId]
   DataModel: DataModel;
@@ -733,9 +764,9 @@ for (let i = 0; i < 24; i++) {
 
 ### Leaderboard with User Stats
 
-Complete real-world example:
+Here's a complete real-world example:
 
-```ts
+```ts showLineNumbers {6-10,12-14,18-24,26-29}
 export const getUserStats = authQuery
   .input(z.object({ gameId: zid('games') }))
   .output(z.object({
@@ -778,7 +809,7 @@ export const getUserStats = authQuery
 
 ### Testing Aggregates
 
-```ts
+```ts showLineNumbers {5-8,10-12,14-16}
 import { expect, test } from 'vitest';
 import { ConvexTestingHelper } from 'convex-test';
 
@@ -806,7 +837,7 @@ test('aggregate maintains consistency', async () => {
 
 Handle aggregate-specific errors gracefully:
 
-```ts
+```ts showLineNumbers {4-14}
 export const deleteScore = authMutation
   .input(z.object({ scoreId: zid('scores') }))
   .mutation(async ({ ctx, input }) => {

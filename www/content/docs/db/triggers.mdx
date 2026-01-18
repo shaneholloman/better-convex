@@ -1,18 +1,31 @@
 ---
 title: Triggers
-description: Database triggers for automatic side effects
+description: Database triggers for automatic side effects.
+links:
+  doc: https://github.com/get-convex/convex-helpers
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore database triggers in Convex. You'll learn to set up triggers that run automatically on insert/update/delete operations, wire them with cRPC, and implement common patterns like audit logging, cascade updates, and data synchronization.
 
 ## Overview
 
-[Convex Helpers Triggers](https://github.com/get-convex/convex-helpers) provide database-level hooks that run automatically on insert/update/delete operations:
+[Convex Helpers Triggers](https://github.com/get-convex/convex-helpers) provide database-level hooks that run automatically when data changes:
 
-- **Aggregate maintenance**: Auto-update counts when rows change
-- **Cascade updates**: Update related records automatically
-- **Activity tracking**: Log changes or update timestamps
-- **Data synchronization**: Keep denormalized data in sync
+| Feature | Description |
+|---------|-------------|
+| Aggregate maintenance | Auto-update counts when rows change |
+| Cascade updates | Update related records automatically |
+| Activity tracking | Log changes or update timestamps |
+| Data synchronization | Keep denormalized data in sync |
+| Data validation | Reject invalid mutations at the database level |
+
+Let's set them up.
 
 ## Installation
+
+First, install the convex-helpers package:
 
 ```bash
 bun add convex-helpers
@@ -20,9 +33,9 @@ bun add convex-helpers
 
 ## Setup
 
-Create a triggers registration file:
+Now let's create a triggers registration file. This is where you'll define all your database hooks:
 
-```ts title="convex/lib/triggers.ts"
+```ts title="convex/lib/triggers.ts" showLineNumbers {3-4,6-11}
 import { Triggers } from 'convex-helpers/server/triggers';
 import type { DataModel } from '../_generated/dataModel';
 
@@ -42,9 +55,9 @@ export const registerTriggers = () => {
 
 ## Wiring with cRPC
 
-Wrap mutations to apply triggers:
+Here's where triggers shine. Wrap mutations to apply triggers automatically:
 
-```ts title="convex/lib/crpc.ts"
+```ts title="convex/lib/crpc.ts" showLineNumbers {1,3,8-14,16-22}
 import { registerTriggers } from './triggers';
 
 const triggers = registerTriggers();
@@ -76,13 +89,15 @@ const c = initCRPC
   });
 ```
 
-> **Note:** The `any` types are required because the handler wrapper intercepts the internal cRPC types. This is safe as the types flow through correctly at runtime.
+<Callout icon={<InfoIcon />}>
+**Note:** The `any` types are required because the handler wrapper intercepts the internal cRPC types. This is safe as the types flow through correctly at runtime.
+</Callout>
 
 ## Trigger Types
 
-The `change` object contains operation info:
+The `change` object contains operation info. Let's explore what's available:
 
-```ts
+```ts title="convex/lib/triggers.ts" showLineNumbers {2-13,15-18}
 triggers.register('user', async (ctx, change) => {
   switch (change.operation) {
     case 'insert':
@@ -106,7 +121,9 @@ triggers.register('user', async (ctx, change) => {
 
 ### Change Object Type
 
-```ts
+Here's the full type definition for reference:
+
+```ts showLineNumbers {2-5}
 interface Change<TableName> {
   operation: 'insert' | 'update' | 'delete';
   id: Id<TableName>;
@@ -117,11 +134,13 @@ interface Change<TableName> {
 
 ## Common Patterns
 
+Now let's look at battle-tested trigger patterns you can copy into your project.
+
 ### Audit Logging
 
 Log all changes with user context:
 
-```ts
+```ts title="convex/lib/triggers.ts" showLineNumbers {3-12}
 triggers.register('teams', async (ctx, change) => {
   const user = await getAuthUserId(ctx);
 
@@ -141,7 +160,7 @@ triggers.register('teams', async (ctx, change) => {
 
 Enforce ownership at the database level:
 
-```ts
+```ts title="convex/lib/triggers.ts" showLineNumbers {4-7}
 triggers.register('messages', async (ctx, change) => {
   const userId = await getAuthUserId(ctx);
 
@@ -154,7 +173,9 @@ triggers.register('messages', async (ctx, change) => {
 
 ### Activity Tracking
 
-```ts
+Track user activity when posts are created or updated:
+
+```ts title="convex/lib/triggers.ts" showLineNumbers {2-6,12-13,15-21}
 triggers.register('post', async (ctx, change) => {
   if (
     change.operation === 'insert' ||
@@ -187,7 +208,9 @@ triggers.register('post', async (ctx, change) => {
 
 ### Cascade Updates
 
-```ts
+Clear references when related documents are deleted:
+
+```ts title="convex/lib/triggers.ts" showLineNumbers {2-4,8-11}
 // Clear reference when related document is deleted
 triggers.register('organization', async (ctx, change) => {
   if (change.operation === 'delete') {
@@ -208,7 +231,9 @@ triggers.register('organization', async (ctx, change) => {
 
 ### Denormalized Data Sync
 
-```ts
+Keep denormalized data in sync with source of truth:
+
+```ts title="convex/lib/triggers.ts" showLineNumbers {3-8,15-17,20-26}
 // Keep tags array in sync with postTags junction table
 triggers.register('postTag', async (ctx, change) => {
   if (
@@ -251,7 +276,7 @@ triggers.register('postTag', async (ctx, change) => {
 
 Throw errors to reject invalid mutations:
 
-```ts
+```ts title="convex/lib/triggers.ts" showLineNumbers {3-6}
 triggers.register('user', async (ctx, change) => {
   if (change.newDoc) {
     const email = change.newDoc.email;
@@ -266,7 +291,7 @@ triggers.register('user', async (ctx, change) => {
 
 Schedule heavy work to run after the mutation:
 
-```ts
+```ts title="convex/lib/triggers.ts" showLineNumbers {2-5}
 triggers.register('user', async (ctx, change) => {
   if (change.operation === 'insert') {
     // Schedule async processing
@@ -281,7 +306,7 @@ triggers.register('user', async (ctx, change) => {
 
 When a document changes multiple times in one mutation, only process the final state:
 
-```ts
+```ts title="convex/lib/triggers.ts" showLineNumbers {2,6-8,10-13}
 // Track scheduled function within mutation scope
 let scheduledSync: Id<'_scheduled_functions'> | null = null;
 
@@ -300,20 +325,20 @@ triggers.register('user', async (ctx, change) => {
 });
 ```
 
-Use when:
+Use this pattern when:
 - Processing has side effects (external API calls)
 - Document changes multiple times in one mutation
 - You only care about final state
 
 ## Component Integration
 
-Many Convex components provide trigger helpers for automatic maintenance.
+Many Convex components provide trigger helpers for automatic maintenance. Let's see how to use them.
 
 ### Aggregates
 
 Use with [Aggregates](/docs/db/aggregates) for efficient counts:
 
-```ts title="convex/lib/triggers.ts"
+```ts title="convex/lib/triggers.ts" showLineNumbers {1,6-7,9-12}
 import { aggregatePostLikes, aggregateTotalUsers } from '../aggregates';
 
 export const registerTriggers = () => {
@@ -337,7 +362,7 @@ export const registerTriggers = () => {
 
 Use with [@convex-dev/sharded-counter](https://www.convex.dev/components/sharded-counter) for distributed counters:
 
-```ts
+```ts showLineNumbers {1,3,5-6}
 import { ShardedCounter } from '@convex-dev/sharded-counter';
 
 const counter = new ShardedCounter(components.shardedCounter);
@@ -350,7 +375,7 @@ triggers.register('votes', counter.trigger('voteCount'));
 
 For auth operations to trigger side effects, pass the wrapped mutation:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {1-2,4,6-10,12-15}
 import { customCtx, customMutation } from 'convex-helpers/server/customFunctions';
 import { internalMutation } from './_generated/server';
 import { registerTriggers } from './lib/triggers';
@@ -378,11 +403,13 @@ export const { create, findOne, ... } = createApi(schema, createAuth, {
 
 ## Best Practices
 
+Here are key practices to follow when using triggers.
+
 ### Always Use Wrapped Mutations
 
 Triggers only run when using wrapped mutations:
 
-```ts
+```ts showLineNumbers {1-2,4-5}
 // ✅ CORRECT: Import from your functions file
 import { mutation } from './lib/crpc';
 
@@ -392,11 +419,13 @@ import { mutation } from './_generated/server';
 
 ### When Triggers DON'T Run
 
-Triggers will NOT execute when:
+<Callout icon={<InfoIcon />}>
+**Warning:** Triggers will NOT execute when:
 - Using unwrapped mutations (direct `_generated/server` imports)
 - Modifying data in the Convex dashboard
 - Using `npx convex import`
 - Using streaming import
+</Callout>
 
 ### Avoid Infinite Recursion
 
@@ -404,7 +433,7 @@ Always check if an update is needed before patching:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts
+    ```ts showLineNumbers {4-6}
     triggers.register('session', async (ctx, change) => {
       if (change.newDoc) {
         const isExpired = change.newDoc.expiresAt < Date.now();
@@ -418,7 +447,7 @@ Always check if an update is needed before patching:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts
+    ```ts showLineNumbers {4-7}
     triggers.register('session', async (ctx, change) => {
       if (change.newDoc) {
         const isExpired = change.newDoc.expiresAt < Date.now();
@@ -436,11 +465,13 @@ Always check if an update is needed before patching:
 
 ### Error Handling Warning
 
-**Caught errors don't roll back the mutation:**
+<Callout icon={<InfoIcon />}>
+**Important:** Caught errors don't roll back the mutation. Let trigger errors bubble up.
+</Callout>
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts
+    ```ts showLineNumbers {2-7,10-12}
     // ❌ BAD: Mutation succeeds even if trigger fails
     export const updateSession = authMutation
       .input(z.object({ id: zid('session'), token: z.string() }))
@@ -462,7 +493,7 @@ Always check if an update is needed before patching:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts
+    ```ts showLineNumbers {2-7,10-12}
     // ❌ BAD: Mutation succeeds even if trigger fails
     export const updateSession = authMutation
       .input(z.object({ id: zid('session'), token: z.string() }))
@@ -495,7 +526,7 @@ Consider explicit wrapper functions over implicit triggers to avoid "spooky acti
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts
+    ```ts showLineNumbers {1-5,7-11}
     // ✅ Explicit and discoverable
     async function createUser(ctx: MutationCtx, data: UserData) {
       const userId = await ctx.db.insert('user', data);
@@ -512,7 +543,7 @@ Consider explicit wrapper functions over implicit triggers to avoid "spooky acti
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts
+    ```ts showLineNumbers {1-5,7-11}
     // ✅ Explicit and discoverable
     async function createUser(ctx: MutationCtx, data: UserData) {
       const user = await ctx.table('user').insert(data).get();

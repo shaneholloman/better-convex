@@ -1,13 +1,28 @@
 ---
 title: Admin
-description: Role-based admin features with Better Auth and Convex
+description: Role-based admin features with Better Auth and Convex.
+links:
+  doc: https://www.better-auth.com/docs/plugins/admin
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore role-based admin features with better-convex. You'll learn to configure the admin plugin, set up role-based access control, and use admin APIs for user management, banning, and impersonation.
 
 ## Overview
 
-Role-based admin system with [Better Auth's admin plugin](https://www.better-auth.com/docs/plugins/admin). Provides user management, banning, session management, and impersonation.
+Admin features built on [Better Auth's admin plugin](https://www.better-auth.com/docs/plugins/admin):
 
-**Architecture:** Role field on user table + middleware checking
+| Feature | Description |
+|---------|-------------|
+| Role-based access | Admin/user roles with middleware checking |
+| User management | Create, update, delete users |
+| Banning | Ban/unban users with expiration |
+| Session management | List, revoke user sessions |
+| Impersonation | Admin can impersonate users |
+| Custom permissions | Granular access control beyond roles |
+
+Let's set up admin features step by step.
 
 ## Prerequisites
 
@@ -17,7 +32,7 @@ Ensure you have [Auth Server](/docs/auth/server) set up before adding admin feat
 
 Add the admin plugin to your auth options:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {5-12}
 import { admin } from 'better-auth/plugins';
 import type { GenericCtx } from '../lib/crpc';
 
@@ -41,13 +56,13 @@ const createAuthOptions = (ctx: GenericCtx) =>
 
 Configure admin emails in your environment:
 
-```bash title="convex/.env"
+```bash title="convex/.env" showLineNumbers
 ADMIN=admin@example.com,other@example.com
 ```
 
 Assign admin role on user creation:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {5-15}
 export const authClient = createClient<DataModel, typeof schema>({
   // ... config
   triggers: {
@@ -72,7 +87,7 @@ export const authClient = createClient<DataModel, typeof schema>({
 
 Add the admin client plugin:
 
-```ts title="src/lib/convex/auth-client.ts"
+```ts title="src/lib/convex/auth-client.ts" showLineNumbers {1,6}
 import { adminClient } from 'better-auth/client/plugins';
 
 export const authClient = createAuthClient({
@@ -90,7 +105,7 @@ Add admin fields to your user table:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts title="convex/functions/schema.ts"
+    ```ts title="convex/functions/schema.ts" showLineNumbers {7-11,14}
     import { defineSchema, defineTable } from 'convex/server';
     import { v } from 'convex/values';
 
@@ -113,7 +128,7 @@ Add admin fields to your user table:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts title="convex/functions/schema.ts"
+    ```ts title="convex/functions/schema.ts" showLineNumbers {6-11,14}
     import { v } from 'convex/values';
     import { defineEnt, defineEntSchema } from 'convex-ents';
 
@@ -141,9 +156,9 @@ Add admin fields to your user table:
 
 ### Role Middleware
 
-Add role middleware to your CRPC setup:
+Add role middleware to your cRPC setup:
 
-```ts title="convex/lib/crpc.ts"
+```ts title="convex/lib/crpc.ts" showLineNumbers {1-4,7-14,16-24}
 type Meta = {
   auth?: 'optional' | 'required';
   role?: 'admin';
@@ -178,7 +193,7 @@ export const authMutation = c.mutation
 
 ### Role Guard Helper
 
-```ts title="convex/lib/auth/role-guard.ts"
+```ts title="convex/lib/auth/role-guard.ts" showLineNumbers {4-7,8-12}
 import { CRPCError } from 'better-convex/server';
 
 export function roleGuard(
@@ -204,7 +219,7 @@ export function roleGuard(
 
 Define granular permissions beyond admin/user roles:
 
-```ts title="convex/shared/permissions.ts"
+```ts title="convex/shared/permissions.ts" showLineNumbers {1-2,4-7,9-13,15-17}
 import { createAccessControl } from 'better-auth/plugins/access';
 import { defaultStatements, adminAc } from 'better-auth/plugins/admin/access';
 
@@ -227,7 +242,7 @@ export const user = ac.newRole({
 
 Pass to plugins:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {2,5}
 // Server
 admin({ ac, roles: { admin, user } })
 
@@ -237,13 +252,13 @@ adminClient({ ac, roles: { admin, user } })
 
 ## Admin Functions
 
-<Callout type="info">
+<Callout icon={<InfoIcon />}>
 Function examples use `ctx.table` (Convex Ents). For `ctx.db`, replace edge traversal with manual joins. See [Ents](/docs/db/ents) for migration patterns.
 </Callout>
 
 ### Check Admin Status
 
-```ts title="convex/functions/admin.ts"
+```ts title="convex/functions/admin.ts" showLineNumbers {5,7-14}
 import { CRPCError } from 'better-convex/server';
 import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
@@ -265,7 +280,7 @@ export const checkUserAdminStatus = authQuery
 
 ### Update User Role
 
-```ts title="convex/functions/admin.ts"
+```ts title="convex/functions/admin.ts" showLineNumbers {1-2,6-10,12-16}
 export const updateUserRole = authMutation
   .meta({ role: 'admin' })
   .input(z.object({
@@ -297,7 +312,7 @@ export const updateUserRole = authMutation
 
 ### Grant Admin by Email
 
-```ts title="convex/functions/admin.ts"
+```ts title="convex/functions/admin.ts" showLineNumbers {1-2,6-10,12-14}
 export const grantAdminByEmail = authMutation
   .meta({ role: 'admin' })
   .input(z.object({
@@ -319,7 +334,7 @@ export const grantAdminByEmail = authMutation
 
 ### List All Users (Paginated)
 
-```ts title="convex/functions/admin.ts"
+```ts title="convex/functions/admin.ts" showLineNumbers {1-11,13-14,17-25}
 const UserListItemSchema = z.object({
   _id: zid('user'),
   _creationTime: z.number(),
@@ -359,7 +374,7 @@ export const getAllUsers = authQuery
 
 ### Dashboard Stats
 
-```ts title="convex/functions/admin.ts"
+```ts title="convex/functions/admin.ts" showLineNumbers {1-2,5-15,17-24}
 export const getDashboardStats = authQuery
   .meta({ role: 'admin' })
   .output(z.object({
@@ -402,7 +417,7 @@ export const getDashboardStats = authQuery
 
 ### React Hooks
 
-```tsx title="src/components/admin-check.tsx"
+```tsx title="src/components/admin-check.tsx" showLineNumbers {1,4-5,7-9}
 import { authClient } from '@/lib/convex/auth-client';
 
 function AdminPanel() {
@@ -423,7 +438,7 @@ function AdminPanel() {
 
 ### Ban/Unban Users
 
-```tsx
+```tsx showLineNumbers {2-6,9-11}
 // Ban user
 await authClient.admin.banUser({
   userId: 'user_123',
@@ -439,7 +454,7 @@ await authClient.admin.unbanUser({
 
 ### Session Management
 
-```tsx
+```tsx showLineNumbers {2-4,7-9,12-14}
 // List user sessions
 const { data: sessions } = await authClient.admin.listUserSessions({
   userId: 'user_123',
@@ -458,7 +473,7 @@ await authClient.admin.revokeUserSessions({
 
 ### Impersonation
 
-```tsx
+```tsx showLineNumbers {2-4,7}
 // Start impersonating user
 await authClient.admin.impersonateUser({
   userId: 'user_123',
@@ -470,7 +485,7 @@ await authClient.admin.stopImpersonating();
 
 ### User Management
 
-```tsx
+```tsx showLineNumbers {2-8,11-18,21,24,27,30}
 // Create user
 await authClient.admin.createUser({
   email: 'user@example.com',
@@ -504,7 +519,7 @@ await authClient.admin.removeUser({ userId });
 
 ### Permission Checking
 
-```tsx
+```tsx showLineNumbers {2-4,7-10}
 // Check if current user has permission (server call)
 const { success } = await authClient.admin.hasPermission({
   permissions: { project: ['create', 'update'] },
@@ -537,7 +552,7 @@ const canDelete = authClient.admin.checkRolePermission({
 | Check permission | `authClient.admin.hasPermission` | No |
 | Check role permission | `authClient.admin.checkRolePermission` | No |
 
-<Callout type="info">
+<Callout icon={<InfoIcon />}>
 Use Convex functions for custom admin operations. Use Better Auth client API for standard operations like user management, banning, and session management.
 </Callout>
 

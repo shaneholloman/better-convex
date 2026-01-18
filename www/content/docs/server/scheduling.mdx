@@ -1,18 +1,28 @@
 ---
 title: Scheduling
-description: Cron jobs and scheduled functions
+description: Cron jobs and scheduled functions for background processing.
+links:
+  doc: https://docs.convex.dev/scheduling/cron-jobs
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore scheduling in Convex. You'll learn to set up cron jobs for recurring tasks, schedule one-time delayed execution, cancel scheduled functions, and check job status.
 
 ## Overview
 
 Convex provides two ways to run [functions](/docs/server/procedures) in the future:
 
-- **Cron jobs**: Recurring tasks on a fixed schedule
-- **Scheduled functions**: One-time delayed execution
+| Type | Use For |
+|------|---------|
+| Cron jobs | Recurring tasks on a fixed schedule |
+| Scheduled functions | One-time delayed execution |
 
 View scheduled jobs in the [Dashboard](https://dashboard.convex.dev) under the **Schedules** tab.
 
 ## When to Use Scheduling
+
+Here's a quick reference for choosing the right approach:
 
 | Scenario | Cron Jobs | Scheduled Functions |
 |----------|-----------|---------------------|
@@ -24,17 +34,21 @@ View scheduled jobs in the [Dashboard](https://dashboard.convex.dev) under the *
 | Database maintenance | ✅ Off-peak hours | ❌ |
 | Order processing delay | ❌ | ✅ `runAfter(5000)` |
 
-<Callout type="info">
-Use `runAfter(0)` to trigger [actions](/docs/server/procedures#actions) immediately after a mutation commits - perfect for sending emails, webhooks, or other side effects.
+<Callout icon={<InfoIcon />}>
+**Tip:** Use `runAfter(0)` to trigger [actions](/docs/server/procedures#actions) immediately after a mutation commits - perfect for sending emails, webhooks, or other side effects.
 </Callout>
+
+Let's explore both approaches.
 
 ## Cron Jobs
 
+Cron jobs run on a fixed schedule - hourly, daily, or using cron expressions.
+
 ### Setup
 
-Create `convex/functions/crons.ts`:
+Create `convex/functions/crons.ts` to define recurring jobs:
 
-```ts title="convex/functions/crons.ts"
+```ts title="convex/functions/crons.ts" showLineNumbers {4,7-11,14-19}
 import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
 
@@ -59,11 +73,13 @@ crons.cron(
 export default crons;
 ```
 
-<Callout type="info">
-Always import `internal` from `./_generated/api`, even for functions in the same file.
+<Callout icon={<InfoIcon />}>
+**Note:** Always import `internal` from `./_generated/api`, even for functions in the same file.
 </Callout>
 
 ### Cron Expressions
+
+Here are common cron patterns:
 
 | Pattern | Description |
 |---------|-------------|
@@ -77,13 +93,15 @@ Always import `internal` from `./_generated/api`, even for functions in the same
 
 Format: `minute hour day-of-month month day-of-week`
 
-<Callout>
-Cron jobs run in **UTC timezone**. Minimum interval is 1 minute.
+<Callout icon={<InfoIcon />}>
+**Note:** Cron jobs run in **UTC timezone**. Minimum interval is 1 minute.
 </Callout>
 
 ### Handler Implementation
 
-```ts title="convex/functions/crons.ts"
+Now let's define the handler functions that cron jobs call:
+
+```ts title="convex/functions/crons.ts" showLineNumbers {5-13,15-25}
 import { z } from 'zod';
 import { privateMutation, privateAction } from '../lib/crpc';
 import { internal } from './_generated/api';
@@ -122,7 +140,7 @@ export const generateDailyReport = privateAction
 
 ## Scheduled Functions
 
-Schedule functions to run once at a specific time or after a delay.
+Scheduled functions run once at a specific time or after a delay. Let's explore the key concepts.
 
 ### Key Concepts
 
@@ -134,15 +152,15 @@ Schedule functions to run once at a specific time or after a delay.
 | **Auth not propagated** | Pass user info as arguments if needed |
 | **Results retention** | Available for 7 days after completion |
 
-<Callout type="warning">
-Auth context is NOT available in scheduled functions. Pass `userId` or other auth data as arguments when scheduling.
+<Callout icon={<InfoIcon />}>
+**Warning:** Auth context is NOT available in scheduled functions. Pass `userId` or other auth data as arguments when scheduling.
 </Callout>
 
 ### scheduler.runAfter
 
-Schedule a function to run after a delay (in milliseconds):
+Use `runAfter` to schedule a function to run after a delay (in milliseconds):
 
-```ts
+```ts title="convex/functions/orders.ts" showLineNumbers {10-13}
 import { z } from 'zod';
 import { zid } from 'convex-helpers/server/zod4';
 import { authMutation } from '../lib/crpc';
@@ -163,9 +181,11 @@ export const processOrder = authMutation
   });
 ```
 
-**Immediate execution** with `runAfter(0)` - useful for triggering actions after mutation success:
+### Immediate Execution
 
-```ts
+Here's a powerful pattern: use `runAfter(0)` to trigger actions immediately after a mutation commits:
+
+```ts title="convex/functions/items.ts" showLineNumbers {6-9}
 export const createItem = authMutation
   .input(z.object({ name: z.string() }))
   .output(zid('items'))
@@ -181,11 +201,13 @@ export const createItem = authMutation
   });
 ```
 
+This is perfect for sending emails, webhooks, or other side effects that shouldn't block the mutation.
+
 ### scheduler.runAt
 
-Schedule a function to run at a specific Unix timestamp:
+Use `runAt` to schedule a function to run at a specific Unix timestamp:
 
-```ts
+```ts title="convex/functions/reminders.ts" showLineNumbers {8-13,15-17}
 import { CRPCError } from 'better-convex/server';
 
 export const scheduleReminder = authMutation
@@ -212,9 +234,9 @@ export const scheduleReminder = authMutation
 
 ### Canceling Scheduled Functions
 
-Store the job ID to cancel later:
+Store the job ID to cancel later. Here's the pattern:
 
-```ts
+```ts title="convex/functions/subscriptions.ts" showLineNumbers {5-9,12-16}
 export const createSubscription = authMutation
   .input(z.object({ planId: zid('plans') }))
   .output(zid('subscriptions'))
@@ -233,7 +255,11 @@ export const createSubscription = authMutation
       expirationJobId,
     });
   });
+```
 
+Then cancel using `ctx.scheduler.cancel()`:
+
+```ts title="convex/functions/subscriptions.ts" showLineNumbers {11-14}
 export const cancelSubscription = authMutation
   .input(z.object({ subscriptionId: zid('subscriptions') }))
   .output(z.null())
@@ -241,10 +267,7 @@ export const cancelSubscription = authMutation
     const subscription = await ctx.table('subscriptions').get(input.subscriptionId);
 
     if (!subscription) {
-      throw new CRPCError({
-        code: 'NOT_FOUND',
-        message: 'Subscription not found',
-      });
+      throw new CRPCError({ code: 'NOT_FOUND', message: 'Subscription not found' });
     }
 
     // Cancel the scheduled expiration
@@ -260,9 +283,9 @@ export const cancelSubscription = authMutation
 
 ## Checking Status
 
-Query the `_scheduled_functions` system table:
+You can query the `_scheduled_functions` system table to check job status:
 
-```ts
+```ts title="convex/functions/jobs.ts" showLineNumbers {3-12}
 import { publicQuery } from '../lib/crpc';
 
 export const getJobStatus = publicQuery
@@ -278,7 +301,11 @@ export const getJobStatus = publicQuery
   .query(async ({ ctx, input }) => {
     return await ctx.table.system('_scheduled_functions').get(input.jobId);
   });
+```
 
+List all pending jobs:
+
+```ts title="convex/functions/jobs.ts" showLineNumbers {3-12}
 export const listPendingJobs = publicQuery
   .input(z.object({}))
   .output(z.array(z.object({
@@ -315,7 +342,6 @@ Understanding how scheduled functions handle errors is critical for reliable sys
 
 ### Mutations
 
-
 | Behavior | Description |
 |----------|-------------|
 | **Automatic retry** | Internal Convex errors are automatically retried |
@@ -330,11 +356,13 @@ Understanding how scheduled functions handle errors is critical for reliable sys
 | **At most once** | Actions execute at most once |
 | **Manual retry** | Implement retry logic if needed |
 
-<Callout type="warning">
-For critical actions that must succeed, implement manual retry with exponential backoff. See [Error Handling](/docs/server/error-handling) for patterns.
+<Callout icon={<InfoIcon />}>
+**Warning:** For critical actions that must succeed, implement manual retry with exponential backoff. See [Error Handling](/docs/server/error-handling) for patterns.
 </Callout>
 
 ## Best Practices
+
+Here are key practices to follow when using scheduling:
 
 1. **Use internal functions** - Prevent external access to scheduled work
 2. **Store job IDs** - When you need to cancel scheduled functions

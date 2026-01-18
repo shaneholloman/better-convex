@@ -88,6 +88,14 @@ export const meta = {
     getSessionUser: { auth: 'optional', type: 'query' },
     updateSettings: { auth: 'required', type: 'mutation' },
   },
+  _http: {
+    health: { path: '/api/health', method: 'GET' },
+    'todos.create': { path: '/api/todos', method: 'POST' },
+    'todos.delete': { path: '/api/todos/:id', method: 'DELETE' },
+    'todos.get': { path: '/api/todos/:id', method: 'GET' },
+    'todos.list': { path: '/api/todos', method: 'GET' },
+    'todos.update': { path: '/api/todos/:id', method: 'PATCH' },
+  },
 } as const;
 
 export type Meta = typeof meta;

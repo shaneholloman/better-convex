@@ -1,19 +1,31 @@
 ---
 title: Ents
-description: Ergonomic database access with relationships
+description: Ergonomic database access with relationships.
+links:
+  doc: https://labs.convex.dev/convex-ents
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore Convex Ents - an ergonomic layer over Convex's database. You'll learn to define schemas with relationships, traverse edges between tables, handle cascading deletes, and integrate with cRPC.
 
 ## Overview
 
-[Convex Ents](https://labs.convex.dev/convex-ents) provides an ergonomic layer over Convex's database with:
+[Convex Ents](https://labs.convex.dev/convex-ents) provides a fluent API for database operations:
 
-- **Relationships**: Define edges between tables with type-safe traversal
-- **Fluent API**: `ctx.table('user').get(id)` instead of `ctx.db.get(id)`
-- **Field helpers**: Default values, indexed fields, unique constraints
-- **Rules**: Collocate authorization logic with schema definitions
-- **Cascading deletes**: Soft and scheduled deletion with propagation
+| Feature | Benefit |
+|---------|---------|
+| Relationships | Define edges between tables with type-safe traversal |
+| Fluent API | `ctx.table('user').get(id)` instead of `ctx.db.get(id)` |
+| Field helpers | Default values, indexed fields, unique constraints |
+| Rules | Collocate authorization logic with schema definitions |
+| Cascading deletes | Soft and scheduled deletion with propagation |
+
+Let's set it up.
 
 ## Installation
+
+First, install Convex Ents:
 
 ```bash
 bun add convex-ents
@@ -21,9 +33,9 @@ bun add convex-ents
 
 ## Setup
 
-Create the ents helper:
+Create the ents helper to enable `ctx.table`:
 
-```ts title="convex/lib/ents.ts"
+```ts title="convex/lib/ents.ts" showLineNumbers {6,12-14,16-19}
 import type { GenericEnt, GenericEntWriter } from 'convex-ents';
 import { entsTableFactory, getEntDefinitions } from 'convex-ents';
 import type { TableNames } from '../functions/_generated/dataModel';
@@ -51,9 +63,9 @@ export const getCtxWithTable = <Ctx extends MutationCtx | QueryCtx>(ctx: Ctx) =>
 });
 ```
 
-Integrate with cRPC:
+Now integrate with cRPC:
 
-```ts title="convex/lib/crpc.ts"
+```ts title="convex/lib/crpc.ts" showLineNumbers {1,5-8}
 import { getCtxWithTable } from './ents';
 
 const c = initCRPC
@@ -65,11 +77,13 @@ const c = initCRPC
   .create({ ... });
 ```
 
+Now all your procedures have `ctx.table` available.
+
 ## Schema Definition
 
 Use `defineEntSchema` and `defineEnt` instead of Convex's `defineSchema` and `defineTable`:
 
-```ts title="convex/functions/schema.ts"
+```ts title="convex/functions/schema.ts" showLineNumbers {5-12,14-18,20-25}
 import { v } from 'convex/values';
 import { defineEnt, defineEntSchema, getEntDefinitions } from 'convex-ents';
 
@@ -105,11 +119,13 @@ export const entDefinitions = getEntDefinitions(schema);
 
 ## Field Options
 
+Ents provides helpful field options for common patterns.
+
 ### Indexed Fields
 
 Creates an index for efficient lookups:
 
-```ts
+```ts showLineNumbers {1}
 defineEnt({}).field('email', v.string(), { index: true })
 // Equivalent to: .index('email', ['email'])
 ```
@@ -118,7 +134,7 @@ defineEnt({}).field('email', v.string(), { index: true })
 
 Enforces uniqueness and creates an index:
 
-```ts
+```ts showLineNumbers {1}
 defineEnt({}).field('username', v.string(), { unique: true })
 ```
 
@@ -126,18 +142,26 @@ defineEnt({}).field('username', v.string(), { unique: true })
 
 Simplify schema evolution without migrations:
 
-```ts
+```ts showLineNumbers {1-3}
 defineEnt({}).field('contentType', v.union(v.literal('text'), v.literal('video')), {
   default: 'text',
 })
 // Field is required in TypeScript, but defaults if missing in DB
 ```
 
+<Callout icon={<InfoIcon />}>
+**Tip:** Default values let you add required fields to existing tables without running migrations.
+</Callout>
+
 ## Relationships
+
+Ents makes defining relationships between tables intuitive.
 
 ### 1:1 Edges
 
-```ts
+Define one-to-one relationships:
+
+```ts showLineNumbers {2,5}
 user: defineEnt({})
   .edge('profile', { ref: true }), // profile stores userId
 
@@ -147,14 +171,16 @@ profile: defineEnt({})
 
 Optional 1:1 edge:
 
-```ts
+```ts showLineNumbers {2}
 profile: defineEnt({})
   .edge('user', { field: 'userId', optional: true }),
 ```
 
 ### 1:many Edges
 
-```ts
+Define one-to-many relationships:
+
+```ts showLineNumbers {2,5}
 user: defineEnt({})
   .edges('sessions', { to: 'session', ref: 'userId' }),
 
@@ -164,7 +190,9 @@ session: defineEnt({})
 
 ### many:many Edges
 
-```ts
+Define many-to-many relationships with a join table:
+
+```ts showLineNumbers {2,5}
 posts: defineEnt({})
   .edges('tags', { to: 'tags', table: 'postTags' }),
 
@@ -178,13 +206,12 @@ The `field` option defaults to edge name + `Id` (e.g., `tagsId` for `posts.edges
 
 **Auto-generated join tables** (pure many:many edges) do NOT support custom fields, indexes, or edges. Only use for simple relationships:
 
-```ts
+```ts showLineNumbers {2,5-8}
 // Auto-generated join table - no custom fields possible
 posts: defineEnt({})
   .edges('tags', { to: 'tags', table: 'postTags' }),
 
 // If you need TypeScript types or aggregates, define the table explicitly:
-// (Use intuitive field names that describe what ID is stored)
 postTags: defineEnt({})
   .field('postId', v.id('posts'), { index: true })
   .field('tagId', v.id('tags'), { index: true })
@@ -193,7 +220,7 @@ postTags: defineEnt({})
 
 **Join tables with extended fields** require two 1:many edges instead:
 
-```ts
+```ts showLineNumbers {2-6,9,12}
 // Join table WITH custom fields, indexes, edges
 messageVotes: defineEnt({})
   .field('isDownvoted', v.optional(v.boolean()))  // Custom field
@@ -213,7 +240,7 @@ user: defineEnt({})
 
 Asymmetrical (followers/following):
 
-```ts
+```ts showLineNumbers {2-8}
 user: defineEnt({})
   .edges('following', {
     to: 'user',
@@ -226,12 +253,14 @@ user: defineEnt({})
 
 Symmetrical (friends):
 
-```ts
+```ts showLineNumbers {2}
 user: defineEnt({})
   .edges('friends', { to: 'user' }), // No inverse = symmetrical
 ```
 
 ## Cascading Deletes
+
+Ents handles related document cleanup automatically.
 
 ### Default Behavior
 
@@ -242,7 +271,7 @@ user: defineEnt({})
 
 Adds `deletionTime` field instead of removing:
 
-```ts
+```ts showLineNumbers {2-3}
 user: defineEnt({})
   .deletion('soft')
   .edges('sessions', { to: 'session', ref: 'userId', deletion: 'soft' }),
@@ -250,14 +279,14 @@ user: defineEnt({})
 
 Filter soft-deleted ents:
 
-```ts
+```ts showLineNumbers {1-2}
 const activeUsers = await ctx.table('user')
   .filter((q) => q.eq(q.field('deletionTime'), undefined));
 ```
 
 Undelete:
 
-```ts
+```ts showLineNumbers
 await ctx.table('user').getX(userId).patch({ deletionTime: undefined });
 ```
 
@@ -265,23 +294,25 @@ await ctx.table('user').getX(userId).patch({ deletionTime: undefined });
 
 Soft delete immediately, hard delete after delay:
 
-```ts
+```ts showLineNumbers {2}
 user: defineEnt({})
   .deletion('scheduled', { delayMs: 24 * 60 * 60 * 1000 }), // 24 hours
 ```
 
 Requires setup in functions file:
 
-```ts title="convex/lib/functions.ts"
+```ts title="convex/lib/functions.ts" showLineNumbers {1-2}
 import { scheduledDeleteFactory } from 'convex-ents';
 export const scheduledDelete = scheduledDeleteFactory(entDefinitions);
 ```
 
 ## Reading Ents
 
+Let's explore how to read data with Ents.
+
 ### By ID
 
-```ts
+```ts showLineNumbers {2,5,8-9}
 // Returns null if not found
 const user = await ctx.table('user').get(userId);
 
@@ -295,7 +326,7 @@ const users = await ctx.table('user').getManyX([id1, id2]); // Throws if any mis
 
 ### By Index
 
-```ts
+```ts showLineNumbers {2-3,6}
 // Single field index
 const user = await ctx.table('user').get('email', email);
 const user = await ctx.table('user').getX('email', email);
@@ -306,7 +337,7 @@ const user = await ctx.table('user').get('nameAndRank', 'Steve', 10);
 
 ### Listing
 
-```ts
+```ts showLineNumbers {2,5,8-9,12,15,18-21,24,27-28}
 // All ents
 const users = await ctx.table('user');
 
@@ -341,30 +372,34 @@ const users = await ctx.table('user')
 
 Return plain documents without ent methods:
 
-```ts
+```ts showLineNumbers {1-2}
 const messages = await ctx.table('messages').docs();
 const profile = await user.edgeX('profile').doc();
 ```
 
 ### System Tables
 
-```ts
+Access Convex system tables:
+
+```ts showLineNumbers {1-2}
 const files = await ctx.table.system('_storage');
 const scheduled = await ctx.table.system('_scheduled_functions');
 ```
 
 Edge to scheduled functions with auto-cancel:
 
-```ts
+```ts showLineNumbers {2}
 answers: defineEnt({})
   .edge('action', { to: '_scheduled_functions', deletion: 'hard' }),
 ```
 
 ## Traversing Edges
 
+Here's where Ents really shines - navigating relationships.
+
 ### 1:1 and 1:many
 
-```ts
+```ts showLineNumbers {2-3,6-7}
 // 1:1 - returns single ent or null
 const profile = await ctx.table('user').getX(userId).edge('profile');
 const profile = await ctx.table('user').getX(userId).edgeX('profile'); // Throws
@@ -376,7 +411,7 @@ const recentSessions = await user.edge('sessions').order('desc').take(5);
 
 ### many:many
 
-```ts
+```ts showLineNumbers {1-2,5}
 const tags = await post.edge('tags');
 const posts = await tag.edge('posts');
 
@@ -386,7 +421,9 @@ const hasTag = await post.edge('tags').has(tagId);
 
 ### Map with Edges (Nested Reads)
 
-```ts
+Include related ents in your response:
+
+```ts showLineNumbers {2-5,8-14,17-22}
 // Include related ents in response
 const usersWithSessions = await ctx.table('user').map(async (user) => ({
   name: user.name,
@@ -414,9 +451,11 @@ const usersWithProfileAndSessions = await ctx.table('user').map(async (user) => 
 
 ## Writing Ents
 
+Now let's look at write operations.
+
 ### Insert
 
-```ts
+```ts showLineNumbers {1,4,7-10}
 const userId = await ctx.table('user').insert({ name: 'Alice', email: 'alice@example.com' });
 
 // Insert and get the ent
@@ -431,7 +470,7 @@ const ids = await ctx.table('session').insertMany([
 
 ### Update
 
-```ts
+```ts showLineNumbers {2,5-9,12}
 // Patch (merge)
 await ctx.table('user').getX(userId).patch({ name: 'New Name' });
 
@@ -448,13 +487,15 @@ await ctx.table('user').getX(userId).edgeX('profile').patch({ bio: 'Updated' });
 
 ### Delete
 
-```ts
+```ts showLineNumbers
 await ctx.table('session').getX(sessionId).delete();
 ```
 
 ### Edge Mutations (many:many)
 
-```ts
+Manage many:many relationships:
+
+```ts showLineNumbers {2,5,8,11-13}
 // Add edges
 await post.patch({ tags: { add: [tagId] } });
 
@@ -474,7 +515,7 @@ await post.edge('tags').replace([tag1Id, tag2Id]);
 
 When using [triggers](/docs/db/triggers), wrap the db before creating ents:
 
-```ts title="convex/lib/crpc.ts"
+```ts title="convex/lib/crpc.ts" showLineNumbers {5}
 const c = initCRPC
   .dataModel<DataModel>()
   .context({
@@ -485,6 +526,8 @@ const c = initCRPC
 ```
 
 ## Common Gotchas
+
+Here are common issues and their solutions:
 
 | Issue | Solution |
 |-------|----------|
@@ -498,6 +541,8 @@ const c = initCRPC
 
 ## ctx.db vs ctx.table
 
+Here's when to use each:
+
 | ctx.db | ctx.table |
 |--------|-----------|
 | Returns plain documents | Returns ents with methods |
@@ -505,6 +550,46 @@ const c = initCRPC
 | Generic errors | Typed errors with `getX`, `firstX` |
 | Manual cascade deletes | Auto cascade based on schema |
 | No table name validation | Table names type-checked |
+
+<Callout icon={<InfoIcon />}>
+**Tip:** Use `ctx.table` by default. Only use `ctx.db` for `stream()` calls or when you need raw documents for performance reasons.
+</Callout>
+
+## Migrate from Convex
+
+If you're coming from vanilla Convex, here's what changes.
+
+### What stays the same
+
+- Same underlying database operations
+- Same validators with `v`
+- Same indexes and queries
+
+### What's new
+
+**Before (vanilla Convex):**
+
+```ts showLineNumbers
+const user = await ctx.db.get(userId);
+const sessions = await ctx.db
+  .query('session')
+  .withIndex('userId', (q) => q.eq('userId', userId))
+  .collect();
+```
+
+**After (Ents):**
+
+```ts showLineNumbers {1,2}
+const user = await ctx.table('user').getX(userId);
+const sessions = await user.edge('sessions');
+```
+
+Key differences:
+- `ctx.table` instead of `ctx.db.query`
+- `.getX()` throws instead of returning null
+- Edge traversal instead of manual joins
+- Cascading deletes handled automatically
+- Schema defines relationships, not just tables
 
 ## Next Steps
 

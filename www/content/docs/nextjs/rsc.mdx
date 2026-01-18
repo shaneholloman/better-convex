@@ -1,11 +1,17 @@
 ---
 title: Server Components
-description: Use cRPC in RSCs with prefetching and hydration
+description: Use cRPC in RSCs with prefetching and hydration.
+links:
+  doc: https://tanstack.com/query/latest/docs/framework/react/guides/advanced-ssr
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore using cRPC in React Server Components. You'll learn non-blocking prefetch patterns, direct server calls with `caller`, awaited preloads for metadata, and how hydration bridges server and client.
 
 ## Overview
 
-cRPC provides a server-compatible proxy for RSCs with **non-blocking prefetch** - a pattern not available in vanilla Convex.
+cRPC provides a server-compatible proxy for RSCs with **non-blocking prefetch** - a pattern not available in vanilla Convex:
 
 | | Vanilla Convex | better-convex |
 |-|----------------|---------------|
@@ -16,15 +22,20 @@ cRPC provides a server-compatible proxy for RSCs with **non-blocking prefetch** 
 | Client hooks | `usePreloadedQuery(preloaded)` | Standard `useQuery()` |
 
 better-convex provides three patterns:
-- **`prefetch`** - Fire-and-forget, non-blocking, hydrated to client
-- **`caller`** - Direct server calls, **not cached/hydrated** (like tRPC)
-- **`preloadQuery`** - Awaited, returns data + hydrates to client
+
+| Pattern | Description |
+|---------|-------------|
+| `prefetch` | Fire-and-forget, non-blocking, hydrated to client |
+| `caller` | Direct server calls, **not cached/hydrated** (like tRPC) |
+| `preloadQuery` | Awaited, returns data + hydrates to client |
+
+Let's explore each one.
 
 ## Basic Usage
 
 Prefetch queries in Server Components and wrap client components with `HydrateClient`:
 
-```tsx title="app/posts/page.tsx"
+```tsx title="app/posts/page.tsx" showLineNumbers {4,6-8}
 import { crpc, HydrateClient, prefetch } from '@/lib/convex/rsc';
 import { PostList } from './post-list';
 
@@ -40,7 +51,7 @@ export default async function PostsPage() {
 }
 ```
 
-```tsx title="app/posts/post-list.tsx"
+```tsx title="app/posts/post-list.tsx" showLineNumbers {5,8}
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
@@ -64,7 +75,7 @@ export function PostList() {
 
 Use `skipUnauth` to prefetch queries that require authentication without blocking:
 
-```tsx title="app/layout.tsx"
+```tsx title="app/layout.tsx" showLineNumbers {7}
 import { crpc, HydrateClient, prefetch } from '@/lib/convex/rsc';
 
 export default async function AppLayout({
@@ -83,7 +94,7 @@ export default async function AppLayout({
 
 Prefetch multiple queries in parallel:
 
-```tsx title="app/dashboard/page.tsx"
+```tsx title="app/dashboard/page.tsx" showLineNumbers {5-7}
 import { crpc, HydrateClient, prefetch } from '@/lib/convex/rsc';
 
 export default async function DashboardPage() {
@@ -104,7 +115,7 @@ export default async function DashboardPage() {
 
 Direct server calls - **detached from query client, not cached, not hydrated to client**. Like tRPC's `createCaller`, use when you only need server-side access.
 
-```tsx title="app/admin/page.tsx"
+```tsx title="app/admin/page.tsx" showLineNumbers {4,6-8}
 import { caller } from '@/lib/convex/rsc';
 
 export default async function AdminPage() {
@@ -122,9 +133,11 @@ export default async function AdminPage() {
 
 ### When to use caller
 
-- Server-side conditionals (redirects, auth checks) where data isn't needed on client
-- API routes and middleware
-- Data that shouldn't be exposed to client
+| Use Case | Description |
+|----------|-------------|
+| Server-side conditionals | Redirects, auth checks where data isn't needed on client |
+| API routes and middleware | Server-only logic |
+| Sensitive data | Data that shouldn't be exposed to client |
 
 See [Server Side Calls](/docs/server/server-side-calls) for setup.
 
@@ -132,7 +145,7 @@ See [Server Side Calls](/docs/server/server-side-calls) for setup.
 
 **Equivalent to Convex's `preloadQuery`** - awaited fetch that returns data on the server. Use when you need server-side access to the data:
 
-```tsx title="app/posts/[id]/page.tsx"
+```tsx title="app/posts/[id]/page.tsx" showLineNumbers {7,9-11}
 import { crpc, HydrateClient, preloadQuery } from '@/lib/convex/rsc';
 
 export default async function PostPage({
@@ -160,13 +173,15 @@ export default async function PostPage({
 
 ### When to use preloadQuery
 
-- Need server-side conditionals (404, redirects)
-- Generate metadata from the data
-- Render data directly in Server Components
+| Use Case | Description |
+|----------|-------------|
+| Server-side conditionals | 404 checks, redirects |
+| Metadata generation | Generate page metadata from the data |
+| Server rendering | Render data directly in Server Components |
 
 ### Metadata Generation
 
-```tsx title="app/posts/[id]/page.tsx"
+```tsx title="app/posts/[id]/page.tsx" showLineNumbers {6,8-12}
 import { crpc, preloadQuery } from '@/lib/convex/rsc';
 
 export async function generateMetadata({
@@ -186,11 +201,13 @@ export async function generateMetadata({
 
 ## Data Ownership and Revalidation
 
-> **Important:** From the TanStack Query perspective, treat Server Components as a place to prefetch data, nothing more.
+<Callout icon={<InfoIcon />}>
+**Important:** From the TanStack Query perspective, treat Server Components as a place to prefetch data, nothing more.
+</Callout>
 
 When using `preloadQuery` (fetchQuery), be aware of data ownership:
 
-```tsx
+```tsx showLineNumbers {2,6,8}
 // AVOID: Rendering fetched data in both Server and Client components
 export default async function PostsPage() {
   const posts = await preloadQuery(crpc.posts.list.queryOptions({}));
@@ -210,10 +227,12 @@ The problem: When React Query revalidates on the client, the `PostList` componen
 
 **Best practices:**
 
-1. **Prefer `prefetch`** - Let client components own the data
-2. **Use `preloadQuery` only when needed** - For metadata, 404 checks, redirects
-3. **Don't render fetched data in Server Components** if client components also use it
-4. **If you must use both**, understand they can get out of sync after revalidation
+| Practice | Reason |
+|----------|--------|
+| Prefer `prefetch` | Let client components own the data |
+| Use `preloadQuery` only when needed | For metadata, 404 checks, redirects |
+| Don't render fetched data in Server Components | If client components also use it |
+| If you must use both | Understand they can get out of sync after revalidation |
 
 See [TanStack Query Advanced SSR Guide](https://tanstack.com/query/latest/docs/framework/react/guides/advanced-ssr#data-ownership-and-revalidation) for more details.
 
@@ -230,6 +249,8 @@ See [TanStack Query Advanced SSR Guide](https://tanstack.com/query/latest/docs/f
 
 ## How It Works
 
+Let's understand how hydration bridges server and client.
+
 `HydrateClient` dehydrates the prefetched queries so client components receive data instantly:
 
 1. Server prefetches queries into the QueryClient
@@ -241,7 +262,7 @@ See [TanStack Query Advanced SSR Guide](https://tanstack.com/query/latest/docs/f
 
 The server and client proxies generate identical query keys, ensuring prefetched data is found:
 
-```ts
+```ts showLineNumbers {2,6}
 // Server (RSC)
 crpc.posts.list.queryOptions({ limit: 10 });
 // queryKey: ['convexQuery', funcRef, { limit: 10 }]
@@ -257,7 +278,7 @@ crpc.posts.list.queryOptions({ limit: 10 });
 
 `HydrateClient` must wrap all client components that use prefetched queries:
 
-```tsx
+```tsx showLineNumbers {2-6}
 // Correct - HydrateClient wraps client component
 prefetch(crpc.posts.list.queryOptions({}));
 return (
@@ -265,7 +286,9 @@ return (
     <PostList />
   </HydrateClient>
 );
+```
 
+```tsx showLineNumbers {2-8}
 // Wrong - PostList renders before hydration
 return (
   <>
@@ -279,6 +302,8 @@ return (
 
 ## Migrate from Convex
 
+If you're coming from vanilla Convex, here's what changes.
+
 ### What stays the same
 
 - Server-side data fetching
@@ -287,7 +312,8 @@ return (
 ### What's new
 
 **Before (vanilla Convex):**
-```tsx
+
+```tsx showLineNumbers {1-3,6-7,12-13}
 import { preloadQuery } from 'convex/nextjs';
 import { api } from '@convex/_generated/api';
 import { Preloaded, usePreloadedQuery } from 'convex/react';
@@ -306,7 +332,8 @@ function PostList({ preloadedPosts }: { preloadedPosts: Preloaded<typeof api.pos
 ```
 
 **After (cRPC):**
-```tsx
+
+```tsx showLineNumbers {1,4-5,7-9,14-15}
 import { crpc, HydrateClient, prefetch } from '@/lib/convex/rsc';
 
 // Server Component
@@ -326,17 +353,21 @@ function PostList() {
 }
 ```
 
-Key differences:
-- No prop drilling of preloaded data
-- Client components use standard `useQuery` hooks
-- `prefetch` is non-blocking (fire-and-forget)
-- Same query options as client-side code
-- Automatic hydration via `HydrateClient`
-- Auth token configured once via `getToken` in QueryClient options
+**Key differences:**
+
+| Feature | Description |
+|---------|-------------|
+| No prop drilling | Preloaded data doesn't need to be passed as props |
+| Standard hooks | Client components use standard `useQuery` hooks |
+| Non-blocking | `prefetch` is fire-and-forget |
+| Same options | Same query options as client-side code |
+| Automatic hydration | Via `HydrateClient` |
+| Auth configured once | Via `getToken` in QueryClient options |
 
 ## Next Steps
 
 <Cards>
   <Card title="Setup" href="/docs/nextjs/setup" />
+  <Card title="HTTP Router" href="/docs/server/http" />
   <Card title="Auth Server" href="/docs/auth/server" />
 </Cards>

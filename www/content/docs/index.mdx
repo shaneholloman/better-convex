@@ -1,8 +1,12 @@
 ---
 title: Introduction
 hide_title: true
-description: A complete framework for building type-safe, real-time applications with Convex
+description: A complete framework for building type-safe, real-time applications with Convex.
+links:
+  doc: https://docs.convex.dev
 ---
+
+import { InfoIcon } from "lucide-react"
 
 ## Introduction
 
@@ -36,7 +40,7 @@ Instead of assembling these yourself with custom glue code, you get:
 
 ## Quick Look
 
-```tsx
+```tsx showLineNumbers {2-5,8}
 // Server: Define a procedure
 export const list = authQuery
   .input(z.object({ limit: z.number().optional() }))
@@ -64,7 +68,7 @@ const { data: posts } = useQuery(crpc.posts.list.queryOptions({ limit: 10 }));
 - TanStack Query 5+
 - React 18+
 
-## Next steps
+## Next Steps
 
 <Cards>
   <Card title="Quickstart" href="/docs/quickstart" />

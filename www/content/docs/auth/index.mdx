@@ -1,16 +1,26 @@
 ---
 title: Overview
-description: Better Auth integration with Convex for type-safe authentication
+description: Better Auth integration with Convex for type-safe authentication.
+links:
+  doc: https://www.better-auth.com/docs
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore better-convex's integration with Better Auth. You'll learn the key concepts, understand the architecture, and see what components are available for both server and client.
 
 ## Overview
 
-better-convex provides a seamless integration between [Better Auth](https://better-auth.com) and Convex, giving you:
+better-convex provides a seamless integration between [Better Auth](https://better-auth.com) and Convex:
 
-- **Convex as database adapter** - Store auth data in Convex tables
-- **Type-safe triggers** - Hooks for user/session lifecycle events
-- **React hooks** - `useAuth`, `useAuthGuard`, and conditional rendering
-- **Next.js integration** - Server-side caller with JWT caching
+| Feature | Description |
+|---------|-------------|
+| Convex as database adapter | Store auth data in Convex tables |
+| Type-safe triggers | Hooks for user/session lifecycle events |
+| React hooks | `useAuth`, `useAuthGuard`, and conditional rendering |
+| Next.js integration | Server-side caller with JWT caching |
+
+Let's understand the key concepts.
 
 ## Key Concepts
 
@@ -33,7 +43,7 @@ better-convex uses the **local approach**:
 | `adapter` via `getAuth(ctx)` | Queries, mutations | Direct DB access |
 | `httpAdapter` via `createAuth(ctx)` | HTTP routes, actions | HTTP context |
 
-```ts
+```ts showLineNumbers {2,5}
 // Queries/mutations: direct DB access
 const auth = getAuth(ctx);
 
@@ -42,6 +52,8 @@ const auth = createAuth(ctx);
 ```
 
 ## Architecture
+
+Here's how the components fit together:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -63,16 +75,20 @@ const auth = createAuth(ctx);
 
 ### Server
 
-- **`createClient`** - Create auth client with Convex adapter and triggers
-- **`createApi`** - Generate Convex functions for Better Auth CRUD operations
-- **`convexBetterAuth`** - Next.js integration with caller factory
+| Component | Description |
+|-----------|-------------|
+| `createClient` | Create auth client with Convex adapter and triggers |
+| `createApi` | Generate Convex functions for Better Auth CRUD operations |
+| `convexBetterAuth` | Next.js integration with caller factory |
 
 ### Client
 
-- **`ConvexAuthProvider`** - Combined provider for auth state
-- **`useAuth`** - Get auth loading/authenticated state
-- **`useAuthGuard`** - Guard mutations requiring auth
-- **`Authenticated`** / **`Unauthenticated`** - Conditional rendering
+| Component | Description |
+|-----------|-------------|
+| `ConvexAuthProvider` | Combined provider for auth state |
+| `useAuth` | Get auth loading/authenticated state |
+| `useAuthGuard` | Guard mutations requiring auth |
+| `Authenticated` / `Unauthenticated` | Conditional rendering |
 
 ## Next Steps
 

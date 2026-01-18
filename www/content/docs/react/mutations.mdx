@@ -1,13 +1,28 @@
 ---
 title: Mutations
-description: Execute mutations with TanStack Query
+description: Execute mutations with TanStack Query.
+links:
+  doc: https://tanstack.com/query/latest/docs/framework/react/reference/useMutation
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore cRPC mutations. You'll learn to execute mutations with TanStack Query, handle success and error states, implement common patterns like toast notifications, and migrate from vanilla Convex.
 
 ## Overview
 
-cRPC mutations provide a tRPC-like interface for executing mutations with TanStack Query. The `mutationOptions` factory returns options compatible with `useMutation`.
+cRPC mutations provide a tRPC-like interface for executing mutations with TanStack Query:
 
-```tsx
+| Feature | Benefit |
+|---------|---------|
+| Familiar API | `useMutation` from TanStack Query |
+| Rich state | `isPending`, `isError`, `isSuccess`, `data`, `error` |
+| Built-in callbacks | `onSuccess`, `onError`, `onMutate`, `onSettled` |
+| Retry support | Automatic retry configuration |
+
+Let's see how it works.
+
+```tsx showLineNumbers {3,5-6,10-11}
 import { useMutation } from '@tanstack/react-query';
 import { useCRPC } from '@/lib/convex/crpc';
 
@@ -28,9 +43,9 @@ function CreateUser() {
 
 ## mutationOptions
 
-The `mutationOptions` method creates options for TanStack Query's `useMutation` hook.
+The `mutationOptions` method creates options for TanStack Query's `useMutation` hook. Here's the basic usage:
 
-```tsx
+```tsx showLineNumbers {4,7-15}
 const crpc = useCRPC();
 
 // Basic usage
@@ -51,7 +66,7 @@ const updateUser = useMutation(
 
 ### Signature
 
-```ts
+```ts showLineNumbers
 crpc.path.to.mutation.mutationOptions(
   options?   // TanStack Query mutation options (except mutationFn)
 )
@@ -73,7 +88,7 @@ All standard [TanStack Query mutation options](https://tanstack.com/query/latest
 
 Get type-safe mutation keys for cache operations:
 
-```tsx
+```tsx showLineNumbers {4-5}
 const crpc = useCRPC();
 
 // Get mutation key
@@ -83,11 +98,13 @@ const mutationKey = crpc.user.create.mutationKey();
 
 ## Common Patterns
 
+Now let's look at battle-tested patterns you can copy into your project.
+
 ### Toast Promise
 
 Use `toast.promise` for loading/success/error states:
 
-```tsx
+```tsx showLineNumbers {1,4-8}
 const createProject = useMutation(crpc.project.create.mutationOptions());
 
 const onSubmit = (data: FormData) => {
@@ -103,7 +120,7 @@ const onSubmit = (data: FormData) => {
 
 Handle form submission with cleanup:
 
-```tsx
+```tsx showLineNumbers {1-10,13}
 const updateUser = useMutation(
   crpc.user.update.mutationOptions({
     onSuccess: () => {
@@ -126,7 +143,7 @@ const onSubmit = (data: FormData) => {
 
 Pass callbacks directly to `mutate`:
 
-```tsx
+```tsx showLineNumbers {1,3-8}
 const deleteSession = useMutation(crpc.session.delete.mutationOptions());
 
 deleteSession.mutate(
@@ -142,7 +159,7 @@ deleteSession.mutate(
 
 Convex actions can be used as mutations for external API calls:
 
-```tsx
+```tsx showLineNumbers {2,4-7,10-11}
 // Actions work with mutationOptions
 const scrapeLink = useMutation(crpc.scraper.scrapeLink.mutationOptions());
 
@@ -157,11 +174,13 @@ if (scrapeLink.isPending) return <Spinner />;
 if (scrapeLink.data) return <LinkPreview data={scrapeLink.data} />;
 ```
 
-<Callout type="info">
-Actions don't have real-time subscriptions. Use `mutationOptions` for one-shot calls to external APIs, or `queryOptions` if you need query caching.
+<Callout icon={<InfoIcon />}>
+**Note:** Actions don't have real-time subscriptions. Use `mutationOptions` for one-shot calls to external APIs, or `queryOptions` if you need query caching.
 </Callout>
 
 ## Migrate from Convex
+
+If you're coming from vanilla Convex, here's what changes.
 
 ### What stays the same
 
@@ -172,7 +191,8 @@ Actions don't have real-time subscriptions. Use `mutationOptions` for one-shot c
 ### What's new
 
 **Before (vanilla Convex):**
-```tsx
+
+```tsx showLineNumbers
 import { useMutation } from 'convex/react';
 import { api } from '@convex/_generated/api';
 
@@ -183,7 +203,8 @@ await createUser({ name: 'John', email: 'john@example.com' });
 ```
 
 **After (cRPC):**
-```tsx
+
+```tsx showLineNumbers {1-2,4-5,8}
 import { useMutation } from '@tanstack/react-query';
 import { useCRPC } from '@/lib/convex/crpc';
 
@@ -195,10 +216,13 @@ await createUser.mutateAsync({ name: 'John', email: 'john@example.com' });
 ```
 
 **Key differences:**
-- TanStack Query state (`isPending`, `isError`, `isSuccess`, `data`, `error`)
-- Built-in callbacks (`onSuccess`, `onError`, `onMutate`, `onSettled`)
-- Retry configuration
-- Mutation keys for cache operations
+
+| Feature | Description |
+|---------|-------------|
+| TanStack Query state | `isPending`, `isError`, `isSuccess`, `data`, `error` |
+| Built-in callbacks | `onSuccess`, `onError`, `onMutate`, `onSettled` |
+| Retry configuration | Automatic retry support |
+| Mutation keys | `mutationKey()` for cache operations |
 
 ## Next Steps
 

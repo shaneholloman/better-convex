@@ -60,7 +60,7 @@ export function BreadcrumbNav() {
     })
   );
 
-  const { data: projectsData, isPlaceholderData } = useQuery(
+  const { data: projectsData } = useQuery(
     crpc.projects.list.queryOptions(
       { limit: 1, cursor: null },
       {
@@ -132,8 +132,8 @@ export function BreadcrumbNav() {
           <div className="flex items-center gap-3">
             {isAuth ? (
               <>
-                {!user.isPlaceholderData && <OrganizationSwitcher />}
-                {!isPlaceholderData && !hasData && (
+                <OrganizationSwitcher />
+                {!hasData && (
                   <Button
                     className="gap-2"
                     disabled={generateSamplesAction.isPending}

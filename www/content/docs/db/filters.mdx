@@ -1,18 +1,30 @@
 ---
 title: Filters
-description: Full-text search and complex query patterns
+description: Full-text search and complex query patterns.
+links:
+  doc: https://docs.convex.dev/text-search
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore advanced querying in Convex. You'll learn to implement full-text search with relevance scoring, use streams for complex filtering with consistent pagination, and combine multiple queries with UNION and JOIN patterns.
 
 ## Overview
 
 Convex provides powerful querying capabilities beyond basic filtering:
 
-- **Full-text search**: Search string fields with relevance scoring and fast filtering
-- **Streams**: Complex filtering with consistent pagination from [convex-helpers](https://github.com/get-convex/convex-helpers)
-- **SQL-like patterns**: UNION, JOINs, and DISTINCT operations
+| Feature | Description |
+|---------|-------------|
+| Full-text search | Search string fields with relevance scoring |
+| Streams | Complex filtering with consistent pagination |
+| UNION patterns | Combine multiple queries into one paginated result |
+| JOIN patterns | Paginate through related documents |
+| DISTINCT | Get unique values efficiently |
 
-<Callout type="warning">
-Streams do NOT support `withSearchIndex()`. You cannot combine streams with full-text search - choose one approach based on your needs.
+Let's explore each one.
+
+<Callout icon={<InfoIcon />}>
+**Warning:** Streams do NOT support `withSearchIndex()`. You cannot combine streams with full-text search - choose one approach based on your needs.
 </Callout>
 
 ## Full-Text Search
@@ -21,9 +33,9 @@ Full-text search enables searching string fields with relevance scoring. Each se
 
 ### Schema Definition
 
-Add search indexes to your schema using the naming pattern `search_<searchField>`:
+Let's start by adding search indexes to your schema. Use the naming pattern `search_<searchField>`:
 
-```ts title="convex/functions/schema.ts"
+```ts title="convex/functions/schema.ts" showLineNumbers {8-12,14-16}
 import { v } from 'convex/values';
 import { defineEnt, defineEntSchema } from 'convex-ents';
 
@@ -46,15 +58,15 @@ const schema = defineEntSchema({
 });
 ```
 
-<Callout type="info">
-Each search index can only search ONE field. Add `filterFields` for fast equality filtering before text search.
+<Callout icon={<InfoIcon />}>
+**Note:** Each search index can only search ONE field. Add `filterFields` for fast equality filtering before text search.
 </Callout>
 
 ### Basic Search
 
-Search a field and limit results:
+Now let's implement a basic search query:
 
-```ts title="convex/functions/articles.ts"
+```ts title="convex/functions/articles.ts" showLineNumbers {8-10,12-15}
 import { z } from 'zod';
 import { zid } from 'convex-helpers/server/zod4';
 import { publicQuery } from '../lib/crpc';
@@ -77,15 +89,15 @@ export const search = publicQuery
   });
 ```
 
-<Callout>
-Always use `.take()` or `.paginate()` with search queries to limit results.
+<Callout icon={<InfoIcon />}>
+**Important:** Always use `.take()` or `.paginate()` with search queries to limit results.
 </Callout>
 
 ### Search with Filters
 
 Filter fields enable fast pre-filtering before text search. Only equality filters are supported:
 
-```ts title="convex/functions/articles.ts"
+```ts title="convex/functions/articles.ts" showLineNumbers {8-13,15-21}
 export const searchByCategory = publicQuery
   .input(z.object({
     query: z.string(),
@@ -116,7 +128,7 @@ export const searchByCategory = publicQuery
 
 Use `.paginate()` with the [paginated builder](/docs/server/procedures#paginated-queries) for cursor-based pagination:
 
-```ts title="convex/functions/articles.ts"
+```ts title="convex/functions/articles.ts" showLineNumbers {3,10-11,14-21}
 const ArticleSchema = z.object({
   _id: zid('articles'),
   _score: z.number().optional(),
@@ -145,8 +157,8 @@ export const searchPaginated = publicQuery
   });
 ```
 
-<Callout type="info">
-Search results include a `_score` field for relevance ranking. Results are automatically sorted by relevance.
+<Callout icon={<InfoIcon />}>
+**Tip:** Search results include a `_score` field for relevance ranking. Results are automatically sorted by relevance.
 </Callout>
 
 ## Streams
@@ -155,26 +167,30 @@ Streams from [convex-helpers](https://github.com/get-convex/convex-helpers) enab
 
 ### Installation
 
+First, install convex-helpers:
+
 ```bash
 bun add convex-helpers
 ```
 
 ### Setup
 
-```ts
+Import the stream utilities:
+
+```ts showLineNumbers {1-2}
 import { stream, mergedStream } from 'convex-helpers/server/stream';
 import schema from '../functions/schema';
 ```
 
-<Callout type="warning">
-Stream initialization requires `ctx.db` as the first parameter (exception to the [ctx.table rule](/docs/db/ents)). However, you SHOULD use `ctx.table()` inside stream callbacks for lookups.
+<Callout icon={<InfoIcon />}>
+**Note:** Stream initialization requires `ctx.db` as the first parameter (exception to the [ctx.table rule](/docs/db/ents)). However, you SHOULD use `ctx.table()` inside stream callbacks for lookups.
 </Callout>
 
 ### filterWith - Consistent Page Sizes
 
-The built-in `.filter()` causes variable page sizes with pagination because it filters AFTER fetching. Use `filterWith` to filter BEFORE pagination for consistent pages:
+Here's where streams shine. The built-in `.filter()` causes variable page sizes with pagination because it filters AFTER fetching. Use `filterWith` to filter BEFORE pagination for consistent pages:
 
-```ts title="convex/functions/characters.ts"
+```ts title="convex/functions/characters.ts" showLineNumbers {1-2,11,14-15,18-22}
 import { stream } from 'convex-helpers/server/stream';
 import schema from './schema';
 
@@ -212,15 +228,15 @@ export const searchCharacters = publicQuery
   });
 ```
 
-<Callout>
-`filterWith` supports any TypeScript logic including async lookups, array methods, and complex conditions that aren't possible with Convex's built-in filter expressions.
+<Callout icon={<InfoIcon />}>
+**Tip:** `filterWith` supports any TypeScript logic including async lookups, array methods, and complex conditions that aren't possible with Convex's built-in filter expressions.
 </Callout>
 
 ### mergedStream - UNION Queries
 
 Combine multiple queries into a single paginated stream. This is useful when you need results from different index ranges:
 
-```ts title="convex/functions/messages.ts"
+```ts title="convex/functions/messages.ts" showLineNumbers {1,11-13,15-17,19-23}
 import { stream, mergedStream } from 'convex-helpers/server/stream';
 
 const MessageSchema = z.object({
@@ -258,15 +274,15 @@ export const conversation = publicQuery
   });
 ```
 
-<Callout type="info">
-All streams being merged MUST be ordered by the same fields specified in the merge. The second parameter `['_creationTime']` tells the merger how to interleave results.
+<Callout icon={<InfoIcon />}>
+**Note:** All streams being merged MUST be ordered by the same fields specified in the merge. The second parameter `['_creationTime']` tells the merger how to interleave results.
 </Callout>
 
 ### flatMap - JOINs with Pagination
 
 Join tables and paginate through the combined results:
 
-```ts title="convex/functions/messages.ts"
+```ts title="convex/functions/messages.ts" showLineNumbers {8-10,13-15,17-26}
 const MessageWithFriendSchema = z.object({
   _id: zid('messages'),
   text: z.string(),
@@ -307,7 +323,7 @@ export const messagesFromFriends = authQuery
 
 Get unique values efficiently without loading all documents:
 
-```ts title="convex/functions/messages.ts"
+```ts title="convex/functions/messages.ts" showLineNumbers {8-10,13-19}
 const UserSchema = z.object({
   _id: zid('user'),
   name: z.string(),
@@ -335,7 +351,7 @@ export const messageRecipients = authQuery
 
 ## Search vs Streams
 
-Understanding when to use each approach:
+Understanding when to use each approach is critical. Here's a comparison:
 
 | Feature | Search | Streams |
 |---------|--------|---------|
@@ -357,13 +373,13 @@ Understanding when to use each approach:
 
 ### Combining Search and Complex Filters
 
-Since streams don't support search, you have three options:
+Since streams don't support search, you have three options.
 
 **Option 1: Add more filterFields** (recommended)
 
 Add equality filters to your search index:
 
-```ts
+```ts showLineNumbers {2-3}
 .searchIndex('search_content', {
   searchField: 'content',
   filterFields: ['category', 'author', 'status', 'dateGroup'],
@@ -374,7 +390,7 @@ Add equality filters to your search index:
 
 Use search when text is provided, streams otherwise:
 
-```ts
+```ts showLineNumbers {7-8,10-19,21-30}
 export const searchOrFilter = publicQuery
   .input(z.object({
     query: z.string().optional(),
@@ -412,7 +428,7 @@ export const searchOrFilter = publicQuery
 
 **Option 3: Post-process search results** (small datasets only)
 
-```ts
+```ts showLineNumbers {2-4,6-8}
 // Only viable for small result sets
 const searchResults = await ctx
   .table('articles')
@@ -426,6 +442,8 @@ const filtered = searchResults.filter((article) =>
 
 ## Performance Considerations
 
+Understanding performance is critical for production apps.
+
 ### Search Performance
 
 - Search indexes have overhead - don't over-index
@@ -436,7 +454,7 @@ const filtered = searchResults.filter((article) =>
 
 Streams scan documents until the page is full. For expensive filters, limit scanning:
 
-```ts
+```ts showLineNumbers {4-7}
 const results = await stream(ctx.db, schema)
   .query('posts')
   .filterWith(async (post) => expensiveCheck(post))
@@ -447,15 +465,15 @@ const results = await stream(ctx.db, schema)
   });
 ```
 
-<Callout type="warning">
-Without `maximumRowsRead`, a filter that matches few documents could scan the entire table. Set a reasonable limit to fail fast instead of timing out.
+<Callout icon={<InfoIcon />}>
+**Warning:** Without `maximumRowsRead`, a filter that matches few documents could scan the entire table. Set a reasonable limit to fail fast instead of timing out.
 </Callout>
 
 ### Stream Cursor Fragility
 
 Stream cursors only work with identical stream construction:
 
-```ts
+```ts showLineNumbers {2-4,6-9}
 // These cursors are NOT compatible
 const stream1 = stream(ctx.db, schema)
   .query('messages')
@@ -476,6 +494,8 @@ Streams are lazy - documents are fetched on-demand:
 - Use `.collect()` sparingly (loads all matching documents)
 
 ## Best Practices
+
+Here are key practices to follow when using filters and search.
 
 1. **Create appropriate indexes** - Each search field needs its own search index
 2. **Limit results** - Always use `.take()` or `.paginate()`

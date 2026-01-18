@@ -1,13 +1,28 @@
 ---
 title: Queries
-description: Fetch and subscribe to real-time data with TanStack Query
+description: Fetch and subscribe to real-time data with TanStack Query.
+links:
+  doc: https://tanstack.com/query/latest/docs/framework/react/reference/useQuery
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore cRPC queries. You'll learn to fetch data with TanStack Query, subscribe to real-time updates, handle conditional queries, and migrate from vanilla Convex hooks.
 
 ## Overview
 
-cRPC queries provide a tRPC-like interface for fetching data with TanStack Query. Unlike traditional REST APIs that require polling, cRPC queries subscribe to real-time updates via Convex's WebSocket connection by default.
+cRPC queries provide a tRPC-like interface for fetching data with TanStack Query:
 
-```tsx
+| Feature | Benefit |
+|---------|---------|
+| Real-time by default | WebSocket subscriptions update automatically |
+| TanStack Query API | `isPending`, `isError`, `refetch`, devtools |
+| Auth-aware | Skips queries when not authenticated |
+| Type-safe keys | `queryKey()` and `queryFilter()` for cache control |
+
+Let's see how it works.
+
+```tsx showLineNumbers {3,5-7}
 import { useQuery } from '@tanstack/react-query';
 import { useCRPC } from '@/lib/convex/crpc';
 
@@ -24,9 +39,9 @@ function UserProfile({ id }: { id: string }) {
 
 ## queryOptions
 
-The `queryOptions` method creates options for TanStack Query's `useQuery` hook.
+The `queryOptions` method creates options for TanStack Query's `useQuery` hook. Here's the basic usage:
 
-```tsx
+```tsx showLineNumbers {3,6,9-14}
 const crpc = useCRPC();
 
 // Basic usage
@@ -49,7 +64,7 @@ const { data } = useQuery(
 
 ### Signature
 
-```ts
+```ts showLineNumbers
 crpc.path.to.query.queryOptions(
   args,      // Function arguments (or {} for no args)
   options?   // TanStack Query options + cRPC options
@@ -69,9 +84,9 @@ Plus all standard [TanStack Query options](https://tanstack.com/query/latest/doc
 
 ## Real-time Updates
 
-By default, cRPC queries subscribe to Convex's WebSocket connection and automatically update when data changes on the server. This is the key difference from traditional REST APIs.
+By default, cRPC queries subscribe to Convex's WebSocket connection and automatically update when data changes on the server. This is the key difference from traditional REST APIs:
 
-```tsx
+```tsx showLineNumbers {2,5}
 // This query receives real-time updates automatically
 const { data } = useQuery(crpc.messages.list.queryOptions({ chatId }));
 
@@ -83,7 +98,7 @@ const { mutate } = useMutation(crpc.messages.create.mutationOptions());
 
 For data that doesn't need real-time updates, disable subscriptions to reduce WebSocket traffic:
 
-```tsx
+```tsx showLineNumbers {4,8}
 // One-time fetch, no subscription
 const { data } = useQuery(
   crpc.analytics.getReport.queryOptions(
@@ -97,17 +112,19 @@ const queryClient = useQueryClient();
 queryClient.invalidateQueries(crpc.analytics.getReport.queryFilter());
 ```
 
-<Callout type="info">
-With `subscribe: false`, the query behaves like a standard TanStack Query fetch. Use `invalidateQueries` to manually refresh the data when needed.
+<Callout icon={<InfoIcon />}>
+**Note:** With `subscribe: false`, the query behaves like a standard TanStack Query fetch. Use `invalidateQueries` to manually refresh the data when needed.
 </Callout>
 
 ## Conditional Queries
+
+Sometimes you need to conditionally run queries. Let's explore the options.
 
 ### With enabled
 
 Use `enabled` to conditionally run queries:
 
-```tsx
+```tsx showLineNumbers {1,4-7}
 const { data: user } = useQuery(crpc.user.get.queryOptions({ id: userId }));
 
 // Only fetch settings after user is loaded
@@ -123,7 +140,7 @@ const { data: settings } = useQuery(
 
 For type-safe conditional queries, pass `skipToken` directly to `queryOptions`:
 
-```tsx
+```tsx showLineNumbers {1,3-4}
 import { skipToken } from '@tanstack/react-query';
 
 const { data } = useQuery(
@@ -133,11 +150,13 @@ const { data } = useQuery(
 
 ## Auth-aware Queries
 
+cRPC provides two ways to handle authentication in queries.
+
 ### skipUnauth
 
 For queries that require authentication but shouldn't error when logged out:
 
-```tsx
+```tsx showLineNumbers {3-5}
 // Returns undefined instead of throwing when not authenticated
 const { data } = useQuery(
   crpc.user.getCurrentUser.queryOptions(
@@ -154,11 +173,11 @@ This is useful for:
 
 ### Auth metadata
 
-Procedures with `.meta({ auth: 'required' })` automatically skip when the user isn't authenticated, without needing `skipUnauth`.
+Procedures with `.meta({ auth: 'required' })` automatically skip when the user isn't authenticated, without needing `skipUnauth`:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```tsx
+    ```tsx showLineNumbers {4,12}
     // Server-side (convex/functions/user.ts)
     export const getSettings = c
       .query()
@@ -172,7 +191,7 @@ Procedures with `.meta({ auth: 'required' })` automatically skip when the user i
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```tsx
+    ```tsx showLineNumbers {4,12}
     // Server-side (convex/functions/user.ts)
     export const getSettings = c
       .query()
@@ -191,7 +210,7 @@ Procedures with `.meta({ auth: 'required' })` automatically skip when the user i
 
 Use `placeholderData` for skeleton UIs:
 
-```tsx
+```tsx showLineNumbers {2-9,13}
 const { data, isPlaceholderData } = useQuery(
   crpc.user.list.queryOptions(
     {},
@@ -217,15 +236,15 @@ return (
 );
 ```
 
-<Callout type="warning">
-Use static, predictable mock data in `placeholderData`. Random values cause hydration errors in SSR.
+<Callout icon={<InfoIcon />}>
+**Warning:** Use static, predictable mock data in `placeholderData`. Random values cause hydration errors in SSR.
 </Callout>
 
 ## Query Keys
 
 Get type-safe query keys for cache manipulation:
 
-```tsx
+```tsx showLineNumbers {4-5,8-9}
 const crpc = useCRPC();
 const queryClient = useQueryClient();
 
@@ -238,15 +257,15 @@ const data = queryClient.getQueryData(queryKey);
 queryClient.setQueryData(queryKey, newData);
 ```
 
-<Callout type="info">
-With real-time subscriptions (default), `invalidateQueries` is rarely needed since data updates automatically via WebSocket. Use it with `subscribe: false` queries for manual cache control.
+<Callout icon={<InfoIcon />}>
+**Tip:** With real-time subscriptions (default), `invalidateQueries` is rarely needed since data updates automatically via WebSocket. Use it with `subscribe: false` queries for manual cache control.
 </Callout>
 
 ### Query Filters
 
 For advanced cache operations:
 
-```tsx
+```tsx showLineNumbers {2-4,7}
 // Create a filter with additional options
 const filter = crpc.user.list.queryFilter(
   {},
@@ -261,12 +280,14 @@ queryClient.invalidateQueries(filter);
 
 Convex actions (which can call external APIs) can be used as one-shot queries. They don't support real-time subscriptions:
 
-```tsx
+```tsx showLineNumbers {2}
 // Actions are automatically detected and don't subscribe
 const { data } = useQuery(crpc.ai.analyze.queryOptions({ documentId }));
 ```
 
 ## Migrate from Convex
+
+If you're coming from vanilla Convex, here's what changes.
 
 ### What stays the same
 
@@ -277,7 +298,8 @@ const { data } = useQuery(crpc.ai.analyze.queryOptions({ documentId }));
 ### What's new
 
 **Before (vanilla Convex):**
-```tsx
+
+```tsx showLineNumbers
 import { useQuery } from 'convex/react';
 import { api } from '@convex/_generated/api';
 import type { FunctionReturnType } from 'convex/server';
@@ -288,7 +310,8 @@ type User = FunctionReturnType<typeof api.user.get>;
 ```
 
 **After (cRPC):**
-```tsx
+
+```tsx showLineNumbers {1-2,5-6,8}
 import { useQuery } from '@tanstack/react-query';
 import { useCRPC } from '@/lib/convex/crpc';
 import type { ApiOutputs } from '@convex/types';
@@ -300,17 +323,21 @@ type User = ApiOutputs['user']['get'];
 ```
 
 **Key differences:**
-- TanStack Query's full API (`isPending`, `isError`, `refetch`, etc.)
-- Query key management with `queryKey()` and `queryFilter()`
-- DevTools integration via React Query DevTools
-- `subscribe: false` option for one-time fetches
+
+| Feature | Description |
+|---------|-------------|
+| TanStack Query API | `isPending`, `isError`, `refetch`, etc. |
+| Query key management | `queryKey()` and `queryFilter()` |
+| DevTools integration | React Query DevTools |
+| One-time fetches | `subscribe: false` option |
 
 ### One-time fetch
 
 For imperative queries (e.g., in useEffect or event handlers):
 
 **Before:**
-```tsx
+
+```tsx showLineNumbers {3}
 import { useConvex } from 'convex/react';
 
 const convex = useConvex();
@@ -318,7 +345,8 @@ const result = await convex.query(api.user.get, { id });
 ```
 
 **After:**
-```tsx
+
+```tsx showLineNumbers {3}
 import { useQueryClient } from '@tanstack/react-query';
 
 const queryClient = useQueryClient();
@@ -330,6 +358,6 @@ const result = await queryClient.fetchQuery(crpc.user.get.queryOptions({ id }));
 <Cards>
   <Card title="Mutations" href="/docs/react/mutations" />
   <Card title="Infinite Queries" href="/docs/react/infinite-queries" />
+  <Card title="HTTP Router" href="/docs/server/http" />
   <Card title="Type Inference" href="/docs/react/infer-types" />
-  <Card title="Error Handling" href="/docs/react/error-handling" />
 </Cards>

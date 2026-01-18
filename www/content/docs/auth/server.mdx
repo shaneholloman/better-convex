@@ -1,11 +1,27 @@
 ---
 title: Server
-description: Set up Better Auth with Convex database adapter
+description: Set up Better Auth with Convex database adapter.
+links:
+  doc: https://www.better-auth.com/docs/installation
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll set up Better Auth with Convex as the database adapter. You'll configure the auth client, define the schema, register HTTP routes, and sync environment variables.
 
 ## Overview
 
-This guide covers setting up Better Auth with Convex as the database adapter using the local installation approach.
+The server setup involves these components:
+
+| Component | Description |
+|-----------|-------------|
+| Auth config | JWT provider configuration |
+| Auth client | Convex adapter with triggers |
+| Schema | Auth tables in your app schema |
+| HTTP routes | Better Auth endpoints |
+| Environment | Secrets and provider credentials |
+
+Let's set it up step by step.
 
 ## Prerequisites
 
@@ -15,7 +31,7 @@ Install the required packages:
 bun add better-auth@1.4.9 @convex-dev/better-auth better-convex
 ```
 
-<Callout>
+<Callout icon={<InfoIcon />}>
 Pin `better-auth` to avoid breaking changes. Check [Better Auth releases](https://github.com/better-auth/better-auth/releases) for updates.
 </Callout>
 
@@ -23,7 +39,7 @@ Pin `better-auth` to avoid breaking changes. Check [Better Auth releases](https:
 
 Create the auth configuration file for Convex:
 
-```ts title="convex/functions/auth.config.ts"
+```ts title="convex/functions/auth.config.ts" showLineNumbers {4-6}
 import { getAuthConfigProvider } from '@convex-dev/better-auth/auth-config';
 import type { AuthConfig } from 'convex/server';
 
@@ -36,7 +52,7 @@ export default {
 
 Create the auth client with Convex adapter and triggers:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {8,11,14-15,23-27,43-47,52-55,60-67,70-82}
 import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { convex } from '@convex-dev/better-auth/plugins';
 import { admin } from 'better-auth/plugins';
@@ -66,7 +82,6 @@ export const authClient = createClient<DataModel, typeof schema>({
 
         return { ...data, username };
       },
-      // highlight-next-line
       // ctx.db version - for ctx.table, see Triggers documentation
       onCreate: async (ctx, user) => {
         // Create related records after signup
@@ -147,7 +162,7 @@ export const {
 export const auth = betterAuth(createAuthOptions({} as any));
 ```
 
-<Callout type="info">
+<Callout icon={<InfoIcon />}>
 Run `npx convex dev` first to generate `internal.auth` types.
 </Callout>
 
@@ -163,7 +178,7 @@ Run `npx convex dev` first to generate `internal.auth` types.
 
     Then import in your schema:
 
-    ```ts title="convex/schema.ts"
+    ```ts title="convex/schema.ts" showLineNumbers {2,5}
     import { defineSchema } from 'convex/server';
     import { authSchema } from './authSchema';
 
@@ -178,7 +193,7 @@ Run `npx convex dev` first to generate `internal.auth` types.
 
     <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
       <Tab value="ctx.db">
-        ```ts title="convex/schema.ts"
+        ```ts title="convex/schema.ts" showLineNumbers {6-20,22-33,35-47,49-55,57-61}
         import { defineSchema, defineTable } from 'convex/server';
         import { v } from 'convex/values';
 
@@ -249,7 +264,7 @@ Run `npx convex dev` first to generate `internal.auth` types.
         ```
       </Tab>
       <Tab value="ctx.table">
-        ```ts title="convex/schema.ts"
+        ```ts title="convex/schema.ts" showLineNumbers {5-18,20-28,30-42,44-50,52-56}
         import { v } from 'convex/values';
         import { defineEnt, defineEntSchema, getEntDefinitions } from 'convex-ents';
 
@@ -328,7 +343,7 @@ Run `npx convex dev` first to generate `internal.auth` types.
 
 Add custom indexes as needed:
 
-```ts title="convex/schema.ts"
+```ts title="convex/schema.ts" showLineNumbers
 // Override with custom indexes
 user: authSchema.user.index('username', ['username']),
 ```
@@ -337,7 +352,7 @@ user: authSchema.user.index('username', ['username']),
 
 Register Better Auth HTTP routes in Convex:
 
-```ts title="convex/functions/http.ts"
+```ts title="convex/functions/http.ts" showLineNumbers {2-3,7}
 import { httpRouter } from 'convex/server';
 import { registerRoutes } from 'better-convex/auth';
 import { createAuth } from './auth';
@@ -355,7 +370,7 @@ Add custom endpoints alongside auth routes - see [HTTP Endpoints](/docs/server/h
 
 Create `convex/.env` with your environment variables:
 
-```bash title="convex/.env"
+```bash title="convex/.env" showLineNumbers
 SITE_URL=http://localhost:3000
 GOOGLE_CLIENT_ID=your-google-client-id
 GOOGLE_CLIENT_SECRET=your-google-client-secret
@@ -390,7 +405,7 @@ After completing the Convex backend setup above, set up your client provider:
 
 The auth client provides two adapters for different contexts:
 
-```ts
+```ts showLineNumbers {2-4,8-10}
 // ✅ In queries/mutations: Use getAuth (direct DB access)
 export const someQuery = publicQuery
   .query(async ({ ctx }) => {
@@ -413,7 +428,7 @@ export const someAction = publicAction
 | `adapter` | `getAuth` | Queries/mutations | Direct DB access, no overhead |
 | `httpAdapter` | `createAuth` | HTTP routes/actions | Uses `ctx.run*` internally |
 
-<Callout type="warn">
+<Callout icon={<InfoIcon />}>
 **Performance:** The `httpAdapter` uses `ctx.runQuery`/`ctx.runMutation` internally, which adds **>50ms latency** per call (increasing with app size). Always use `getAuth` with direct DB access in queries and mutations.
 </Callout>
 
@@ -421,13 +436,15 @@ export const someAction = publicAction
 
 The `internalMutation` option lets you wrap auth mutations with custom logic. This is useful for:
 
-- **User aggregation**: Maintain counts when users are created/deleted
-- **Custom trigger systems**: Projects using convex-helpers triggers
-- **Middleware**: Add logging, validation, or other cross-cutting concerns
+| Use Case | Description |
+|----------|-------------|
+| User aggregation | Maintain counts when users are created/deleted |
+| Custom trigger systems | Projects using convex-helpers triggers |
+| Middleware | Add logging, validation, or other cross-cutting concerns |
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts title="convex/lib/triggers.ts"
+    ```ts title="convex/lib/triggers.ts" showLineNumbers {6-17,19-22}
     import { Triggers } from 'convex-helpers/server/triggers';
     import { DataModel } from '../functions/_generated/dataModel';
 
@@ -456,7 +473,7 @@ The `internalMutation` option lets you wrap auth mutations with custom logic. Th
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts title="convex/lib/triggers.ts"
+    ```ts title="convex/lib/triggers.ts" showLineNumbers {6-17,19-22}
     import { Triggers } from 'convex-helpers/server/triggers';
     import { DataModel } from '../functions/_generated/dataModel';
 
@@ -486,7 +503,7 @@ The `internalMutation` option lets you wrap auth mutations with custom logic. Th
   </Tab>
 </Tabs>
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {1,4,8}
 import { internalMutationWithTriggers } from './lib/triggers';
 
 export const authClient = createClient({
@@ -528,7 +545,7 @@ Server helpers extract user identity and session data from Convex context. Use t
 
 Get the full user identity from context:
 
-```ts
+```ts showLineNumbers {1,3,5-8}
 import { getAuthUserIdentity } from 'better-convex/auth';
 
 const identity = await getAuthUserIdentity(ctx);
@@ -546,7 +563,7 @@ Get just the user ID:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts
+    ```ts showLineNumbers {1,3,5-7,10}
     import { getAuthUserId } from 'better-convex/auth';
 
     const userId = await getAuthUserId(ctx);
@@ -560,7 +577,7 @@ Get just the user ID:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts
+    ```ts showLineNumbers {1,3,5-7,10}
     import { getAuthUserId } from 'better-convex/auth';
 
     const userId = await getAuthUserId(ctx);
@@ -579,7 +596,7 @@ Get just the user ID:
 
 Get the current session document:
 
-```ts
+```ts showLineNumbers {1,3,5-10}
 import { getSession } from 'better-convex/auth';
 
 const session = await getSession(ctx);
@@ -596,7 +613,7 @@ if (session) {
 
 Build headers from session for external API calls:
 
-```ts
+```ts showLineNumbers {1,3-4,7-9}
 import { getHeaders } from 'better-convex/auth';
 
 const headers = await getHeaders(ctx);

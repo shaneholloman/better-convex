@@ -56,8 +56,10 @@ export type FnMeta = {
 /** Metadata for paginated functions (limit is required) */
 export type PaginatedFnMeta = Omit<FnMeta, 'limit'> & { limit: number };
 
-/** Metadata for all Convex functions by namespace.fnName */
-export type Meta = Record<string, Record<string, FnMeta>>;
+/** Metadata for all Convex functions by namespace.fnName, with _http for HTTP routes */
+export type Meta = Record<string, Record<string, FnMeta>> & {
+  _http?: Record<string, { path: string; method: string }>;
+};
 
 // ============================================================================
 // Query Types

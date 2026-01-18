@@ -1,19 +1,35 @@
 ---
 title: Context
-description: Access database, auth, and custom data in your procedures
+description: Access database, auth, and custom data in your procedures.
+links:
+  doc: https://docs.convex.dev/functions/query-functions
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore the context object - the gateway to everything your procedures need. You'll learn about base context properties, how to extend context with middleware, and how actions differ from queries and mutations.
 
 ## Overview
 
-Context (`ctx`) is the first argument passed to every procedure handler. It provides access to Convex features and any data added by middleware.
+Context (`ctx`) is passed to every procedure handler. It provides access to Convex features and any data added by middleware.
+
+| Property | Available In | Purpose |
+|----------|--------------|---------|
+| `ctx.db` / `ctx.table` | Queries, Mutations | Database access |
+| `ctx.auth` | All | Authentication info |
+| `ctx.storage` | All | File storage |
+| `ctx.scheduler` | Mutations | Schedule functions |
+| `ctx.runQuery` / `ctx.runMutation` | Actions | Call other procedures |
+
+Let's explore each one.
 
 ## Base Context
 
-Every procedure receives the base Convex context:
+Every procedure receives the base Convex context. Here's what you get out of the box:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts
+    ```ts showLineNumbers {2-5}
     export const list = publicQuery
       .query(async ({ ctx }) => {
         // ctx.db - Database access
@@ -24,7 +40,7 @@ Every procedure receives the base Convex context:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts
+    ```ts showLineNumbers {2-5}
     export const list = publicQuery
       .query(async ({ ctx }) => {
         // ctx.table - Database access (Convex Ents)
@@ -38,11 +54,11 @@ Every procedure receives the base Convex context:
 
 ### Database (`ctx.db` / `ctx.table`)
 
-Read and write to your Convex database:
+The database is your primary way to read and write data. In queries, you can only read. In mutations, you can read and write.
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts
+    ```ts showLineNumbers
     // Read
     const user = await ctx.db.get(id);
     const users = await ctx.db.query('user').collect();
@@ -54,7 +70,7 @@ Read and write to your Convex database:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts
+    ```ts showLineNumbers
     // Read
     const user = await ctx.table('user').get(id);
     const users = await ctx.table('user');
@@ -69,25 +85,31 @@ Read and write to your Convex database:
 
 ### Authentication (`ctx.auth`)
 
-Access the authenticated user's identity:
+Access the authenticated user's identity. This is the raw identity from your auth provider - use middleware to transform it into your app's user object.
 
-```ts
+```ts showLineNumbers {1-4}
 const identity = await ctx.auth.getUserIdentity();
 if (!identity) {
   throw new CRPCError({ code: 'UNAUTHORIZED' });
 }
-// identity.subject - User ID
+// identity.subject - User ID from auth provider
 // identity.email - Email (if available)
 // identity.name - Name (if available)
 ```
 
+<Callout icon={<InfoIcon />}>
+  **Tip:** Rather than calling `getUserIdentity()` in every procedure, create an `authQuery` middleware that adds `ctx.user` automatically. See the next section.
+</Callout>
+
 ## Extending Context with Middleware
 
-Use middleware to add custom data to context. Call `next()` with the new context:
+Here's where cRPC shines. Use middleware to add custom data to context - the authenticated user, feature flags, rate limit info, anything your procedures need.
+
+The pattern is simple: fetch what you need, then call `next()` with the extended context.
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts title="convex/lib/crpc.ts"
+    ```ts title="convex/lib/crpc.ts" showLineNumbers {3-7,9-11}
     import { getSession } from 'better-convex/auth';
 
     export const authQuery = c.query.use(async ({ ctx, next }) => {
@@ -110,7 +132,7 @@ Use middleware to add custom data to context. Call `next()` with the new context
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts title="convex/lib/crpc.ts"
+    ```ts title="convex/lib/crpc.ts" showLineNumbers {3-7,9-11}
     import { getSession } from 'better-convex/auth';
 
     export const authQuery = c.query.use(async ({ ctx, next }) => {
@@ -134,15 +156,15 @@ Use middleware to add custom data to context. Call `next()` with the new context
   </Tab>
 </Tabs>
 
-Use the extended procedure in your functions:
+Now when you use `authQuery` or `authMutation`, `ctx.user` and `ctx.userId` are guaranteed to exist:
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts title="convex/functions/session.ts"
+    ```ts title="convex/functions/session.ts" showLineNumbers {4-5}
     export const create = authMutation
       .input(z.object({ token: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        // ctx.user and ctx.userId are now available
+        // ctx.user and ctx.userId are now available and typed!
         return ctx.db.insert('session', {
           ...input,
           userId: ctx.userId,
@@ -152,11 +174,11 @@ Use the extended procedure in your functions:
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts title="convex/functions/session.ts"
+    ```ts title="convex/functions/session.ts" showLineNumbers {4-5}
     export const create = authMutation
       .input(z.object({ token: z.string() }))
       .mutation(async ({ ctx, input }) => {
-        // ctx.user and ctx.userId are now available
+        // ctx.user and ctx.userId are now available and typed!
         return ctx.table('session').insert({
           ...input,
           userId: ctx.userId,
@@ -169,15 +191,15 @@ Use the extended procedure in your functions:
 
 ## Context in Actions
 
-Actions have a different context with `runQuery` and `runMutation`:
+Actions have a different context. Instead of direct database access, they use `runQuery` and `runMutation` to call other procedures.
 
-```ts
+```ts showLineNumbers {8-10}
 import { internal } from './_generated/api';
 
 export const processAndSave = publicAction
   .input(z.object({ data: z.string() }))
   .action(async ({ ctx, input }) => {
-    // External API call
+    // External API call (only possible in actions)
     const result = await fetch('https://api.example.com/process', {
       method: 'POST',
       body: JSON.stringify({ data: input.data }),
@@ -190,7 +212,13 @@ export const processAndSave = publicAction
   });
 ```
 
+<Callout icon={<InfoIcon />}>
+  **Note:** Actions can't access `ctx.db` directly. Use `ctx.runQuery` to read data and `ctx.runMutation` to write data. This ensures all database operations are transactional.
+</Callout>
+
 ## Migrate from Convex
+
+If you're coming from vanilla Convex or convex-helpers, here's what changes.
 
 ### What stays the same
 
@@ -204,8 +232,9 @@ Base context properties work identically:
 
 cRPC's `.use()` middleware replaces convex-helpers' `customQuery`/`customMutation`:
 
-```ts
-// convex-helpers (before)
+**Before (convex-helpers):**
+
+```ts showLineNumbers
 import { customQuery, customCtx } from 'convex-helpers/server/customFunctions';
 
 const userQuery = customQuery(query,
@@ -217,8 +246,9 @@ const userQuery = customQuery(query,
 );
 ```
 
-```ts
-// cRPC (after)
+**After (cRPC):**
+
+```ts showLineNumbers {2-5}
 const userQuery = c.query.use(async ({ ctx, next }) => {
   const user = await getUser(ctx);
   if (!user) throw new CRPCError({ code: 'UNAUTHORIZED' });
@@ -231,9 +261,10 @@ Key differences:
 - Use `CRPCError` for typed errors
 - Chain multiple `.use()` calls for composable middleware
 
-## Next steps
+## Next Steps
 
 <Cards>
   <Card title="Middleware" href="/docs/server/middlewares" />
   <Card title="Error Handling" href="/docs/server/error-handling" />
+  <Card title="HTTP Endpoints" href="/docs/server/http" />
 </Cards>

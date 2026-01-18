@@ -1,277 +1,708 @@
 ---
 title: HTTP Endpoints
-description: REST APIs, webhooks, CORS, and HTTP actions
+description: Build typed REST APIs with cRPC HTTP router, webhooks, and external integrations.
+links:
+  doc: https://docs.convex.dev/functions/http-actions
 ---
 
-## Overview
+import { InfoIcon } from "lucide-react"
 
-HTTP endpoints handle requests from external services that can't use the Convex client:
+This guide explores how to build HTTP endpoints using cRPC HTTP router. You'll learn to create typed REST APIs with the fluent builder API, implement schema validation with Zod, handle CORS, and integrate with TanStack Query on the client.
 
-- **Webhooks**: Stripe, GitHub, Discord, payment providers
-- **REST APIs**: Third-party integrations
-- **File operations**: Downloads, uploads from non-browser clients
-- **Server-to-server**: Backend services calling your API
+## Demo
 
-<Callout type="info">
-For browser clients, prefer [queries and mutations](/docs/server/procedures) - they're reactive, type-safe, and handle caching automatically.
+We'll build a todo API with full CRUD operations. The API has typed endpoints for listing, creating, updating, and deleting todos. On the client, we use TanStack Query for data fetching and cache invalidation.
+
+<Callout icon={<InfoIcon />}>
+  **Note:** For real-time subscriptions, use [queries and mutations](/docs/server/procedures) instead - they're reactive and handle caching automatically via WebSocket. HTTP endpoints are best for REST APIs consumed by external clients, or when you need standard HTTP semantics.
 </Callout>
 
-## When to Use HTTP Endpoints
+```tsx title="components/todo-list.tsx"
+'use client';
 
-| Scenario | Use HTTP | Use Queries/Mutations |
-|----------|----------|----------------------|
-| Webhooks (Stripe, GitHub) | ✅ External service callback | ❌ |
-| Browser JavaScript | ❌ | ✅ Reactive, cached |
-| Next.js RSC | ✅ `ConvexHttpClient` | ✅ With [prefetching](/docs/nextjs/rsc) |
-| Mobile apps | ❌ | ✅ Native client |
-| Third-party integrations | ✅ REST API | ❌ |
-| File downloads | ✅ Direct response | ❌ |
-| Real-time updates | ❌ | ✅ Subscriptions |
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useCRPC } from '@/lib/convex/crpc';
+
+export function TodoList() {
+  const crpc = useCRPC();
+  const queryClient = useQueryClient();
+
+  // GET /api/todos → useSuspenseQuery
+  const { data: todos } = useSuspenseQuery(
+    crpc.http.todos.list.queryOptions({ limit: 10 })
+  );
+
+  // POST /api/todos → useMutation
+  const createTodo = useMutation(
+    crpc.http.todos.create.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries(crpc.http.todos.list.queryFilter());
+      },
+    })
+  );
+
+  return (
+    <div>
+      {todos.map(todo => (
+        <div key={todo._id}>{todo.title}</div>
+      ))}
+      <button onClick={() => createTodo.mutate({ title: 'New Todo' })}>
+        Add
+      </button>
+    </div>
+  );
+}
+```
+
+## Approach
+
+The cRPC HTTP router provides a **tRPC-style fluent API** for building typed HTTP endpoints. This approach gives you:
+
+- **End-to-end type safety** from server to client via TypeScript inference.
+- **Zod validation** for request body, path params, and search params.
+- **Automatic OpenAPI-style routing** with path parameters (`:id`).
+- **TanStack Query integration** via `queryOptions` and `mutationOptions`.
+- **RSC prefetching** with `prefetch()` and `preloadQuery()`.
+
+| Use Case | Approach |
+|----------|----------|
+| REST APIs (typed) | cRPC HTTP Router ✅ |
+| Browser/React | cRPC HTTP + TanStack Query ✅ |
+| Next.js RSC | cRPC HTTP + prefetch ✅ |
+| Webhooks (Stripe, GitHub) | Traditional HTTP |
+| External integrations | Traditional HTTP |
+
+## Anatomy
+
+Here's a basic example of an HTTP endpoint using cRPC with the fluent builder API.
+
+```ts title="convex/routers/health.ts" showLineNumbers {1-7}
+import { z } from 'zod';
+import { publicRoute } from '../lib/crpc';
+
+export const health = publicRoute
+  .get('/api/health')                                    // HTTP method + path
+  .output(z.object({ status: z.string(), timestamp: z.number() }))  // Response schema
+  .query(async () => ({                                  // Handler
+    status: 'ok',
+    timestamp: Date.now(),
+  }));
+```
+
+The fluent API chains methods to build the endpoint:
+
+1. **Route builder** (`publicRoute` or `authRoute`) - determines authentication requirements
+2. **HTTP method** (`.get()`, `.post()`, `.patch()`, `.delete()`) - sets the method and path
+3. **Validation** (`.input()`, `.params()`, `.searchParams()`, `.output()`) - Zod schemas
+4. **Handler** (`.query()` or `.mutation()`) - the function that processes the request
 
 ## Setup
 
-Create `convex/functions/http.ts` with an `httpRouter`:
+### Create Route Builders
 
-```ts title="convex/functions/http.ts"
+Export HTTP route builders from your cRPC setup. These determine whether endpoints require authentication.
+
+```ts title="convex/lib/crpc.ts" showLineNumbers
+import { CRPCError, initCRPC } from 'better-convex/server';
+import type { Id } from '../_generated/dataModel';
+import type { DataModel } from './_generated/dataModel';
+import { httpAction } from '../_generated/server';
+
+const c = initCRPC
+  .dataModel<DataModel>()
+  .context({ /* your context setup */ })
+  .create({ /* your options */, httpAction });
+
+// Public HTTP route - no auth required
+export const publicRoute = c.httpAction;
+
+// Auth HTTP route - verifies JWT and adds userId to context
+export const authRoute = c.httpAction.use(async ({ ctx, next }) => {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new CRPCError({ code: 'UNAUTHORIZED' });
+  }
+  return next({
+    ctx: { ...ctx, userId: identity.subject as Id<'user'> },
+  });
+});
+
+// Router factory for grouping endpoints
+export const router = c.router;
+```
+
+### Route Builder Options
+
+| Builder | Authentication | Use Case |
+|---------|---------------|----------|
+| `publicRoute` | None | Public APIs, health checks |
+| `authRoute` | Required | User-specific operations |
+| Custom middleware | Conditional | Role-based access, API keys |
+
+## Defining Routes
+
+### GET Endpoints
+
+Use `.get()` with `.query()` for read operations. GET endpoints cannot have a request body.
+
+```ts title="convex/routers/health.ts" showLineNumbers
+import { z } from 'zod';
+import { publicRoute } from '../lib/crpc';
+
+export const health = publicRoute
+  .get('/api/health')
+  .output(z.object({
+    status: z.string(),
+    timestamp: z.number(),
+  }))
+  .query(async () => ({
+    status: 'ok',
+    timestamp: Date.now(),
+  }));
+```
+
+### Search Parameters
+
+Use `.searchParams()` for query string validation. Values come as strings, so use `z.coerce` for type conversion.
+
+```ts title="convex/routers/todos.ts" showLineNumbers {5-8,11}
+import { z } from 'zod';
+import { publicRoute } from '../lib/crpc';
+
+export const list = publicRoute
+  .get('/api/todos')
+  .searchParams(z.object({
+    limit: z.coerce.number().optional().default(10),
+    offset: z.coerce.number().optional().default(0),
+  }))
+  .output(z.array(todoSchema))
+  .query(async ({ ctx, query }) => {
+    // query.limit and query.offset are typed as numbers
+    return ctx.runQuery(api.todos.list, {
+      limit: query.limit,
+      offset: query.offset,
+    });
+  });
+```
+
+<Callout icon={<InfoIcon />}>
+  **Note:** Use `z.coerce.number()` instead of `z.number()` for search params since URL query strings are always strings. The coerce transformer handles the conversion.
+</Callout>
+
+### Path Parameters
+
+Use `.params()` for URL path parameters. Define placeholders with `:paramName` in the path.
+
+```ts title="convex/routers/todos.ts" showLineNumbers {5-6,9}
+import { z } from 'zod';
+import { zid } from 'convex-helpers/server/zod4';
+import { publicRoute } from '../lib/crpc';
+
+export const get = publicRoute
+  .get('/api/todos/:id')
+  .params(z.object({ id: zid('todos') }))
+  .output(todoSchema.nullable())
+  .query(async ({ ctx, params }) => {
+    // params.id is typed as Id<'todos'>
+    return ctx.runQuery(api.todos.get, { id: params.id });
+  });
+```
+
+### POST Endpoints
+
+Use `.post()` with `.input()` and `.mutation()` for create operations.
+
+```ts title="convex/routers/todos.ts" showLineNumbers {5-9,12-16}
+import { z } from 'zod';
+import { zid } from 'convex-helpers/server/zod4';
+import { authRoute } from '../lib/crpc';
+
+export const create = authRoute
+  .post('/api/todos')
+  .input(z.object({
+    title: z.string().min(1, 'Title is required'),
+    description: z.string().optional(),
+  }))
+  .output(z.object({ id: zid('todos') }))
+  .mutation(async ({ ctx, input }) => {
+    // input.title and input.description are validated
+    const id = await ctx.runMutation(internal.todos.create, {
+      userId: ctx.userId,  // From auth middleware
+      ...input,
+    });
+    return { id };
+  });
+```
+
+### PATCH Endpoints
+
+Use `.patch()` for partial updates. Combine `.params()` for the resource ID and `.input()` for the update data.
+
+```ts title="convex/routers/todos.ts" showLineNumbers {5-11,14-18}
+import { z } from 'zod';
+import { zid } from 'convex-helpers/server/zod4';
+import { authRoute } from '../lib/crpc';
+
+export const update = authRoute
+  .patch('/api/todos/:id')
+  .params(z.object({ id: zid('todos') }))
+  .input(z.object({
+    title: z.string().optional(),
+    completed: z.boolean().optional(),
+  }))
+  .output(z.object({ success: z.boolean() }))
+  .mutation(async ({ ctx, params, input }) => {
+    // params.id is the resource, input contains update fields
+    await ctx.runMutation(internal.todos.update, {
+      id: params.id,
+      ...input,
+    });
+    return { success: true };
+  });
+```
+
+### DELETE Endpoints
+
+Use `.delete()` for resource deletion. Typically only needs `.params()` for the resource ID.
+
+```ts title="convex/routers/todos.ts" showLineNumbers {5-8,11-13}
+import { z } from 'zod';
+import { zid } from 'convex-helpers/server/zod4';
+import { authRoute } from '../lib/crpc';
+
+export const deleteTodo = authRoute
+  .delete('/api/todos/:id')
+  .params(z.object({ id: zid('todos') }))
+  .output(z.object({ success: z.boolean() }))
+  .mutation(async ({ ctx, params }) => {
+    await ctx.runMutation(internal.todos.delete, { id: params.id });
+    return { success: true };
+  });
+```
+
+### HTTP Method Summary
+
+| Method | Builder | Use Case | Has Body |
+|--------|---------|----------|----------|
+| GET | `.get().query()` | Read operations | No |
+| POST | `.post().mutation()` | Create operations | Yes |
+| PATCH | `.patch().mutation()` | Partial updates | Yes |
+| DELETE | `.delete().mutation()` | Delete operations | No |
+
+## Routers
+
+Group related endpoints into routers for better organization and code splitting.
+
+### Creating a Router
+
+```ts title="convex/routers/todos.ts" showLineNumbers {18-24}
+import { z } from 'zod';
+import { zid } from 'convex-helpers/server/zod4';
+import { router, publicRoute, authRoute } from '../lib/crpc';
+
+const todoSchema = z.object({
+  _id: zid('todos'),
+  title: z.string(),
+  completed: z.boolean(),
+  description: z.string().optional(),
+});
+
+const list = publicRoute.get('/api/todos')/* ... */;
+const get = publicRoute.get('/api/todos/:id')/* ... */;
+const create = authRoute.post('/api/todos')/* ... */;
+const update = authRoute.patch('/api/todos/:id')/* ... */;
+const deleteTodo = authRoute.delete('/api/todos/:id')/* ... */;
+
+export const todosRouter = router({
+  list,
+  get,
+  create,
+  update,
+  delete: deleteTodo,
+});
+```
+
+### Combining Routers
+
+Compose routers into a single app router for registration.
+
+```ts title="convex/functions/http.ts" showLineNumbers {10-13}
+import { router } from '../lib/crpc';
+import { health } from '../routers/health';
+import { todosRouter } from '../routers/todos';
+import { usersRouter } from '../routers/users';
+
+// Combine all routes into app router
+export const appRouter = router({
+  health,
+  todos: todosRouter,
+  users: usersRouter,
+});
+```
+
+## Registration
+
+Register your router with Convex's `httpRouter` to make endpoints accessible.
+
+```ts title="convex/functions/http.ts" showLineNumbers {1-4,16-24}
+import { registerCRPCRoutes } from 'better-convex/server';
 import { httpRouter } from 'convex/server';
+import { router } from '../lib/crpc';
 import { httpAction } from './_generated/server';
+
+import { health } from '../routers/health';
+import { todosRouter } from '../routers/todos';
 
 const http = httpRouter();
 
-// Health check endpoint
-http.route({
-  path: '/api/health',
-  method: 'GET',
-  handler: httpAction(async () => {
-    return new Response('OK', { status: 200 });
-  }),
+export const appRouter = router({
+  health,
+  todos: todosRouter,
+});
+
+// Register cRPC routes with Convex
+registerCRPCRoutes(http, appRouter, {
+  httpAction,
+  cors: {
+    allowedOrigins: [process.env.SITE_URL!],
+    allowCredentials: true,
+  },
 });
 
 export default http;
 ```
 
-HTTP endpoints use the standard [Fetch API](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API) - `Request` and `Response` objects.
+### Registration Options
 
-<Callout type="info">
-For Better Auth routes, use `registerRoutes(http, createAuth)` - see [Auth HTTP Routes](/docs/auth/server#4-http-routes).
-</Callout>
-
-## Request Handling
-
-### JSON Body
-
-```ts
-http.route({
-  path: '/api/users',
-  method: 'POST',
-  handler: httpAction(async (ctx, req) => {
-    const data = await req.json();
-
-    // Validate with Zod
-    const parsed = z.object({
-      name: z.string(),
-      email: z.string().email(),
-    }).parse(data);
-
-    const userId = await ctx.runMutation(internal.users.create, parsed);
-
-    return Response.json({ userId }, { status: 201 });
-  }),
-});
-```
-
-### Form Data / File Upload
-
-```ts
-http.route({
-  path: '/api/upload',
-  method: 'POST',
-  handler: httpAction(async (ctx, req) => {
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
-
-    if (!file) {
-      return new Response('No file provided', { status: 400 });
-    }
-
-    const blob = new Blob([await file.arrayBuffer()]);
-    const storageId = await ctx.storage.store(blob);
-
-    return Response.json({ storageId });
-  }),
-});
-```
-
-### Query Parameters
-
-```ts
-http.route({
-  path: '/api/search',
-  method: 'GET',
-  handler: httpAction(async (ctx, req) => {
-    const url = new URL(req.url);
-    const query = url.searchParams.get('q') ?? '';
-    const limit = parseInt(url.searchParams.get('limit') ?? '10');
-
-    const results = await ctx.runQuery(internal.search.find, { query, limit });
-
-    return Response.json(results);
-  }),
-});
-```
-
-### Path Parameters
-
-Extract from URL pathname:
-
-```ts
-http.route({
-  path: '/api/files/:fileId',
-  method: 'GET',
-  handler: httpAction(async (ctx, req) => {
-    const url = new URL(req.url);
-    const fileId = url.pathname.split('/').pop() as Id<'files'>;
-
-    const file = await ctx.runQuery(internal.files.get, { fileId });
-    if (!file) {
-      return new Response('Not found', { status: 404 });
-    }
-
-    return Response.json(file);
-  }),
-});
-```
-
-### Authentication with Better Auth
-
-HTTP endpoints are **not** automatically protected. Verify the session manually:
-
-```ts
-import { createAuth } from './auth';
-
-http.route({
-  path: '/api/protected',
-  method: 'GET',
-  handler: httpAction(async (ctx, req) => {
-    const auth = createAuth(ctx);
-    const session = await auth.api.getSession({ headers: req.headers });
-
-    if (!session) {
-      return new Response('Unauthorized', { status: 401 });
-    }
-
-    const data = await ctx.runQuery(internal.data.getProtected, {
-      userId: session.user.id,
-    });
-    return Response.json(data);
-  }),
-});
-```
-
-<Callout type="info">
-For queries/mutations, use the [auth middleware](/docs/server/middlewares) instead - it's more efficient than HTTP session verification.
-</Callout>
-
-## Response Patterns
-
-### JSON Response
-
-```ts
-return Response.json({ success: true, data });
-return Response.json({ error: 'Bad request' }, { status: 400 });
-```
-
-### File Download
-
-```ts
-http.route({
-  path: '/api/download/:fileId',
-  method: 'GET',
-  handler: httpAction(async (ctx, req) => {
-    const url = new URL(req.url);
-    const fileId = url.pathname.split('/').pop() as Id<'files'>;
-
-    const file = await ctx.runQuery(internal.files.get, { fileId });
-    if (!file) return new Response('Not found', { status: 404 });
-
-    const blob = await ctx.storage.get(file.storageId);
-    if (!blob) return new Response('File data not found', { status: 404 });
-
-    return new Response(blob, {
-      headers: {
-        'Content-Type': file.mimeType ?? 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${file.name}"`,
-      },
-    });
-  }),
-});
-```
+| Option | Type | Description |
+|--------|------|-------------|
+| `httpAction` | Function | The httpAction from Convex's generated server |
+| `cors` | Object | CORS configuration (see below) |
 
 ## CORS
 
-CORS (Cross-Origin Resource Sharing) is required when browser JavaScript calls your HTTP endpoints from a different domain.
+Configure Cross-Origin Resource Sharing (CORS) globally or per-endpoint.
 
-### Helper Function
+### Global CORS
 
-```ts title="convex/functions/http.ts"
-function corsHeaders(origin?: string | null) {
-  return {
-    'Access-Control-Allow-Origin': origin ?? '*',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Max-Age': '86400',
-  };
+Set default CORS headers for all endpoints in `registerCRPCRoutes`.
+
+```ts title="convex/functions/http.ts" showLineNumbers {3-8}
+registerCRPCRoutes(http, appRouter, {
+  httpAction,
+  cors: {
+    allowedOrigins: ['https://myapp.com', 'http://localhost:3000'],
+    allowedMethods: ['GET', 'POST', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowCredentials: true,
+  },
+});
+```
+
+### Per-Endpoint CORS
+
+Override global CORS for specific endpoints using `.cors()`.
+
+```ts title="convex/routers/public.ts" showLineNumbers {4}
+// Public endpoint with permissive CORS
+export const publicData = publicRoute
+  .get('/api/public')
+  .cors({ allowedOrigins: ['*'] })
+  .output(z.object({ message: z.string() }))
+  .query(async () => ({ message: 'Hello, world!' }));
+```
+
+### CORS Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `allowedOrigins` | `string[]` | `[]` | Allowed origin URLs or `['*']` for any |
+| `allowedMethods` | `string[]` | `['GET', 'POST', 'PATCH', 'DELETE']` | Allowed HTTP methods |
+| `allowedHeaders` | `string[]` | `['Content-Type', 'Authorization']` | Allowed request headers |
+| `allowCredentials` | `boolean` | `false` | Allow cookies and auth headers |
+
+## Error Handling
+
+Throw `CRPCError` to return appropriate HTTP status codes. The error code maps to standard HTTP status codes.
+
+```ts title="convex/routers/todos.ts" showLineNumbers {10-14}
+import { CRPCError } from 'better-convex/server';
+
+export const get = publicRoute
+  .get('/api/todos/:id')
+  .params(z.object({ id: zid('todos') }))
+  .output(todoSchema)
+  .query(async ({ ctx, params }) => {
+    const todo = await ctx.runQuery(api.todos.get, { id: params.id });
+
+    if (!todo) {
+      throw new CRPCError({
+        code: 'NOT_FOUND',
+        message: 'Todo not found',
+      });
+    }
+
+    return todo;
+  });
+```
+
+### Error Code Reference
+
+| Code | HTTP Status | Use Case |
+|------|-------------|----------|
+| `BAD_REQUEST` | 400 | Invalid request format |
+| `UNAUTHORIZED` | 401 | Missing or invalid authentication |
+| `FORBIDDEN` | 403 | Authenticated but not authorized |
+| `NOT_FOUND` | 404 | Resource doesn't exist |
+| `CONFLICT` | 409 | Resource conflict (e.g., duplicate) |
+| `UNPROCESSABLE_CONTENT` | 422 | Validation failed |
+| `TOO_MANY_REQUESTS` | 429 | Rate limit exceeded |
+| `INTERNAL_SERVER_ERROR` | 500 | Unexpected server error |
+
+### Validation Errors
+
+Zod validation failures automatically return `400 Bad Request` with error details.
+
+```json
+{
+  "error": {
+    "code": "BAD_REQUEST",
+    "message": "Validation failed",
+    "details": [
+      { "path": ["title"], "message": "String must contain at least 1 character(s)" }
+    ]
+  }
 }
 ```
 
-### Preflight Handler
+## React Client
 
-Browsers send OPTIONS requests before actual requests:
+Access HTTP endpoints on the client via `crpc.http.*`. The proxy provides `queryOptions` for GET requests and `mutationOptions` for POST/PATCH/DELETE.
 
-```ts
-http.route({
-  path: '/api/*',
-  method: 'OPTIONS',
-  handler: httpAction(async (ctx, req) => {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders(req.headers.get('Origin')),
-    });
-  }),
-});
+### Setup
+
+The HTTP proxy is automatically available when you set up cRPC.
+
+```tsx title="lib/convex/crpc.tsx"
+'use client';
+
+import type { Api } from '@convex/types';
+import { createCRPCReact } from 'better-convex/react';
+
+export const { CRPCProvider, useCRPC } = createCRPCReact<Api>();
 ```
 
-### Add to Responses
+### GET Requests
 
-```ts
-http.route({
-  path: '/api/data',
-  method: 'GET',
-  handler: httpAction(async (ctx, req) => {
-    const data = await ctx.runQuery(internal.data.getPublic, {});
+Use `queryOptions` with TanStack Query's `useQuery` or `useSuspenseQuery`.
 
-    return Response.json(data, {
-      headers: corsHeaders(req.headers.get('Origin')),
-    });
-  }),
-});
+```tsx title="components/todo-list.tsx" showLineNumbers {8-10}
+import { useSuspenseQuery } from '@tanstack/react-query';
+import { useCRPC } from '@/lib/convex/crpc';
+
+export function TodoList() {
+  const crpc = useCRPC();
+
+  // GET /api/todos?limit=10
+  const { data: todos } = useSuspenseQuery(
+    crpc.http.todos.list.queryOptions({ limit: 10 })
+  );
+
+  return (
+    <ul>
+      {todos.map(todo => (
+        <li key={todo._id}>{todo.title}</li>
+      ))}
+    </ul>
+  );
+}
 ```
 
-## Webhooks
+### POST/PATCH/DELETE Requests
 
-Webhooks receive HTTP callbacks from external services. Always verify signatures before processing.
+Use `mutationOptions` with TanStack Query's `useMutation`.
 
-<Callout type="warning">
-For high-volume webhooks, consider [rate limiting](/docs/server/rate-limiting) to prevent abuse.
+```tsx title="components/create-todo.tsx" showLineNumbers {9-16,21}
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useCRPC } from '@/lib/convex/crpc';
+
+export function CreateTodo() {
+  const crpc = useCRPC();
+  const queryClient = useQueryClient();
+  const [title, setTitle] = useState('');
+
+  // POST /api/todos
+  const createTodo = useMutation(
+    crpc.http.todos.create.mutationOptions({
+      onSuccess: () => {
+        // Invalidate the list cache to refetch
+        queryClient.invalidateQueries(crpc.http.todos.list.queryFilter());
+        setTitle('');
+      },
+    })
+  );
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    createTodo.mutate({ title });
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Enter todo title"
+      />
+      <button type="submit" disabled={createTodo.isPending}>
+        {createTodo.isPending ? 'Creating...' : 'Add Todo'}
+      </button>
+    </form>
+  );
+}
+```
+
+### Cache Invalidation
+
+Use `queryFilter()` to invalidate related queries after mutations.
+
+```tsx showLineNumbers {6-8,15-17}
+const crpc = useCRPC();
+const queryClient = useQueryClient();
+
+const deleteTodo = useMutation(
+  crpc.http.todos.delete.mutationOptions({
+    onSuccess: () => {
+      // Invalidate all todo list queries
+      queryClient.invalidateQueries(crpc.http.todos.list.queryFilter());
+    },
+  })
+);
+
+const updateTodo = useMutation(
+  crpc.http.todos.update.mutationOptions({
+    onSuccess: (_, { id }) => {
+      // Invalidate both list and specific item
+      queryClient.invalidateQueries(crpc.http.todos.list.queryFilter());
+      queryClient.invalidateQueries(crpc.http.todos.get.queryFilter({ id }));
+    },
+  })
+);
+```
+
+### Client API Reference
+
+| Method | Description |
+|--------|-------------|
+| `queryOptions(params)` | Options for `useQuery`/`useSuspenseQuery` |
+| `mutationOptions(options?)` | Options for `useMutation` |
+| `queryKey(params)` | Get the query key for cache operations |
+| `queryFilter(params?)` | Filter for `invalidateQueries`, `cancelQueries`, etc. |
+
+<Callout icon={<InfoIcon />}>
+  **Note:** For more React patterns including loading states, error handling, and conditional queries, see [Queries](/docs/react/queries) and [Mutations](/docs/react/mutations).
 </Callout>
 
-### Stripe
+## RSC Prefetching
 
-```ts
+Prefetch HTTP endpoints in Server Components for instant client hydration.
+
+### Basic Prefetch
+
+Use `prefetch()` for fire-and-forget data loading.
+
+```tsx title="app/todos/page.tsx" showLineNumbers {6-7,10}
+import { crpc, HydrateClient, prefetch } from '@/lib/convex/rsc';
+import { TodoList } from './todo-list';
+
+export default async function TodosPage() {
+  // Fire-and-forget prefetch - doesn't block rendering
+  prefetch(crpc.http.health.queryOptions({}));
+  prefetch(crpc.http.todos.list.queryOptions({ limit: 10 }));
+
+  return (
+    <HydrateClient>
+      <TodoList />
+    </HydrateClient>
+  );
+}
+```
+
+### Awaited Prefetch
+
+Use `preloadQuery()` when you need the data on the server (e.g., for conditionals or metadata).
+
+```tsx title="app/todos/[id]/page.tsx" showLineNumbers {9-11,13-15}
+import { crpc, HydrateClient, preloadQuery } from '@/lib/convex/rsc';
+import { notFound } from 'next/navigation';
+import { TodoDetail } from './todo-detail';
+
+export default async function TodoPage({
+  params,
+}: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  // Await the data - available on server
+  const todo = await preloadQuery(
+    crpc.http.todos.get.queryOptions({ id })
+  );
+
+  if (!todo) {
+    notFound();
+  }
+
+  return (
+    <HydrateClient>
+      <TodoDetail />
+    </HydrateClient>
+  );
+}
+```
+
+### Auth-Aware Prefetch
+
+Use `skipUnauth` to skip auth-required queries without errors when not logged in.
+
+```tsx title="app/layout.tsx" showLineNumbers {7}
+import { crpc, HydrateClient, prefetch } from '@/lib/convex/rsc';
+
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  // Skip if not authenticated - returns null instead of erroring
+  prefetch(
+    crpc.http.user.me.queryOptions({}, { skipUnauth: true })
+  );
+
+  return <HydrateClient>{children}</HydrateClient>;
+}
+```
+
+### RSC Pattern Comparison
+
+| Pattern | Blocking | Server Access | Client Hydration |
+|---------|----------|---------------|------------------|
+| `prefetch()` | No | No | Yes |
+| `preloadQuery()` | Yes | Yes | Yes |
+
+<Callout icon={<InfoIcon />}>
+  **Note:** For complete RSC setup including QueryClient configuration and HydrateClient, see [Next.js RSC](/docs/nextjs/rsc).
+</Callout>
+
+## Traditional HTTP
+
+For webhooks and external integrations that don't use the cRPC pattern.
+
+### Webhooks
+
+Handle external service callbacks like Stripe or GitHub. Always verify signatures before processing.
+
+```ts title="convex/functions/http.ts" showLineNumbers {4-7,12-18,20-28}
+import { httpAction } from './_generated/server';
+
 http.route({
   path: '/webhooks/stripe',
   method: 'POST',
   handler: httpAction(async (ctx, req) => {
+    // 1. Check signature header
     const signature = req.headers.get('stripe-signature');
     if (!signature) {
       return new Response('No signature', { status: 400 });
@@ -279,8 +710,8 @@ http.route({
 
     const body = await req.text();
 
-    // Verify webhook signature
-    const isValid = await ctx.runAction(internal.stripe.verifyWebhook, {
+    // 2. Verify signature (requires access to secrets)
+    const isValid = await ctx.runAction(internal.stripe.verify, {
       body,
       signature,
     });
@@ -289,6 +720,7 @@ http.route({
       return new Response('Invalid signature', { status: 400 });
     }
 
+    // 3. Process the webhook
     const event = JSON.parse(body);
 
     switch (event.type) {
@@ -309,127 +741,35 @@ http.route({
 });
 ```
 
-### GitHub
+### ConvexHttpClient
 
-```ts
-http.route({
-  path: '/webhooks/github',
-  method: 'POST',
-  handler: httpAction(async (ctx, req) => {
-    const event = req.headers.get('X-GitHub-Event');
-    const signature = req.headers.get('X-Hub-Signature-256');
+For server-to-server calls outside of React (API routes, cron jobs, scripts).
 
-    if (!event || !signature) {
-      return new Response('Missing headers', { status: 400 });
-    }
-
-    const body = await req.json();
-
-    if (event === 'push') {
-      await ctx.runMutation(internal.github.processPush, {
-        repository: body.repository.full_name,
-        commits: body.commits,
-      });
-    } else if (event === 'pull_request') {
-      await ctx.runMutation(internal.github.processPR, {
-        action: body.action,
-        pr: body.pull_request,
-      });
-    }
-
-    return new Response('OK', { status: 200 });
-  }),
-});
-```
-
-## ConvexHttpClient
-
-For server-side code that can't use the reactive Convex client (Next.js RSC, scripts, backend services):
-
-```ts
+```ts title="scripts/sync.ts" showLineNumbers
 import { ConvexHttpClient } from 'convex/browser';
+import { api } from '@convex/_generated/api';
 
-const client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+const client = new ConvexHttpClient(process.env.CONVEX_URL!);
 
-// Query
-const data = await client.query(api.users.list, {});
+// Public query
+const users = await client.query(api.users.list, {});
+
+// Authenticated query
+client.setAuth(token);
+const me = await client.query(api.users.me, {});
 
 // Mutation
-const id = await client.mutation(api.users.create, { name: 'Alice' });
-
-// Action
-const result = await client.action(api.ai.generate, { prompt: 'Hello' });
-```
-
-### Local Development
-
-For localhost with self-signed certificates:
-
-```ts
-const client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!, {
-  skipConvexDeploymentUrlCheck: true,
+await client.mutation(api.users.update, {
+  id: userId,
+  name: 'New Name',
 });
 ```
-
-### With Authentication
-
-```ts
-client.setAuth(token);
-const protectedData = await client.query(api.users.me, {});
-```
-
-## Error Handling
-
-```ts
-http.route({
-  path: '/api/process',
-  method: 'POST',
-  handler: httpAction(async (ctx, req) => {
-    try {
-      const data = await req.json();
-
-      const parsed = z.object({
-        action: z.enum(['create', 'update', 'delete']),
-        id: z.string(),
-      }).safeParse(data);
-
-      if (!parsed.success) {
-        return Response.json(
-          { error: 'Invalid input', details: parsed.error.flatten() },
-          { status: 400 }
-        );
-      }
-
-      const result = await ctx.runMutation(internal.api.process, parsed.data);
-      return Response.json(result);
-    } catch (error) {
-      console.error('API error:', error);
-
-      if (error instanceof ConvexError) {
-        return Response.json({ error: error.data.message }, { status: 400 });
-      }
-
-      return Response.json({ error: 'Internal server error' }, { status: 500 });
-    }
-  }),
-});
-```
-
-## Best Practices
-
-1. **Validate input** - Use Zod for request body validation
-2. **Use status codes** - 200 OK, 201 Created, 400 Bad Request, 401 Unauthorized, 404 Not Found, 429 Too Many Requests, 500 Internal Server Error
-3. **Verify webhooks** - Always check signatures before processing
-4. **Handle errors** - Return meaningful error messages
-5. **Add CORS** - When endpoints are called from browsers
-6. **Use internal functions** - Keep business logic in mutations/actions, not HTTP handlers
-7. **Return consistent formats** - Always use JSON for API responses
 
 ## Next Steps
 
 <Cards>
-  <Card title="Auth HTTP Routes" href="/docs/auth/server#4-http-routes" />
-  <Card title="Rate Limiting" href="/docs/server/rate-limiting" />
-  <Card title="Scheduling" href="/docs/server/scheduling" />
+  <Card title="Procedures" href="/docs/server/procedures" />
+  <Card title="React Queries" href="/docs/react/queries" />
+  <Card title="Next.js RSC" href="/docs/nextjs/rsc" />
   <Card title="Error Handling" href="/docs/server/error-handling" />
 </Cards>

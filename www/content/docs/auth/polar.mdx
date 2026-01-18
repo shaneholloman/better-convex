@@ -1,13 +1,27 @@
 ---
 title: Polar
-description: Payments and subscriptions with Polar and Better Auth
+description: Payments and subscriptions with Polar and Better Auth.
+links:
+  doc: https://www.better-auth.com/docs/plugins/polar
 ---
+
+import { InfoIcon } from "lucide-react"
+
+In this guide, we'll explore payments and subscriptions with better-convex and Polar. You'll learn to configure the Polar plugin, handle checkout flows, manage subscriptions, and process webhooks for billing events.
 
 ## Overview
 
-Payment and subscription system with [Better Auth's Polar plugin](https://polar.sh/docs/integrate/sdk/adapters/better-auth). Provides checkout flows, subscription management, usage-based billing, and customer portals.
+Payment and subscription system with [Better Auth's Polar plugin](https://www.better-auth.com/docs/plugins/polar):
 
-**Architecture:** Better Auth Polar plugin → Webhooks → Convex mutations → Database
+| Feature | Description |
+|---------|-------------|
+| Checkout | Seamless payment flows |
+| Subscriptions | Recurring billing management |
+| Portal | Customer self-service |
+| Usage billing | Event-based metering |
+| Webhooks | Real-time billing events |
+
+Let's set up Polar integration step by step.
 
 ## Prerequisites
 
@@ -17,7 +31,7 @@ Payment and subscription system with [Better Auth's Polar plugin](https://polar.
 
 ## 1. Install Dependencies
 
-```bash
+```bash showLineNumbers
 bun add @polar-sh/better-auth @polar-sh/sdk buffer
 ```
 
@@ -27,7 +41,7 @@ bun add @polar-sh/better-auth @polar-sh/sdk buffer
 
 Convex environment requires Buffer polyfill for Polar SDK:
 
-```ts title="convex/lib/polar-polyfills.ts"
+```ts title="convex/lib/polar-polyfills.ts" showLineNumbers {1,3}
 import { Buffer as BufferPolyfill } from 'buffer';
 
 globalThis.Buffer = BufferPolyfill;
@@ -35,7 +49,7 @@ globalThis.Buffer = BufferPolyfill;
 
 ### Polar Client Helper
 
-```ts title="convex/lib/polar-client.ts"
+```ts title="convex/lib/polar-client.ts" showLineNumbers {1,3-8}
 import { Polar } from '@polar-sh/sdk';
 
 export const getPolarClient = () =>
@@ -48,7 +62,7 @@ export const getPolarClient = () =>
 
 ### Better Auth with Polar Plugin
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {2,5-6,11-53}
 // IMPORTANT: Import polyfills FIRST
 import '../lib/polar-polyfills';
 
@@ -118,7 +132,7 @@ const createAuthOptions = (ctx: GenericCtx) =>
 
 Create Polar customer asynchronously when user signs up:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {5-11}
 export const authClient = createClient<DataModel, typeof schema>({
   // ... config
   triggers: {
@@ -138,7 +152,7 @@ export const authClient = createClient<DataModel, typeof schema>({
 
 ## 3. Client Configuration
 
-```ts title="src/lib/convex/auth-client.ts"
+```ts title="src/lib/convex/auth-client.ts" showLineNumbers {2,6}
 import { createAuthClient } from 'better-auth/react';
 import { polarClient } from '@polar-sh/better-auth';
 
@@ -151,7 +165,7 @@ export const authClient = createAuthClient({
 
 <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
   <Tab value="ctx.db">
-    ```ts title="convex/functions/schema.ts"
+    ```ts title="convex/functions/schema.ts" showLineNumbers {6-8,11-30}
     import { defineSchema, defineTable } from 'convex/server';
     import { v } from 'convex/values';
 
@@ -192,7 +206,7 @@ export const authClient = createAuthClient({
     ```
   </Tab>
   <Tab value="ctx.table">
-    ```ts title="convex/functions/schema.ts"
+    ```ts title="convex/functions/schema.ts" showLineNumbers {6-10,13-15,18-37}
     import { v } from 'convex/values';
     import { defineEnt, defineEntSchema } from 'convex-ents';
 
@@ -242,7 +256,7 @@ export const authClient = createAuthClient({
 
 ### Subscription Conversion Helper
 
-```ts title="convex/lib/polar-helpers.ts"
+```ts title="convex/lib/polar-helpers.ts" showLineNumbers {1-3,5-13,15-36}
 import type { Subscription } from '@polar-sh/sdk/models/components/subscription';
 import type { WithoutSystemFields } from 'convex/server';
 import type { Doc, Id } from '../functions/_generated/dataModel';
@@ -289,7 +303,7 @@ export const convertToDatabaseSubscription = (
 
 Enable seamless checkout integration:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {1-9}
 checkout({
   products: [
     { productId: 'uuid-from-polar', slug: 'pro' },
@@ -304,7 +318,7 @@ checkout({
 
 ### Client Checkout
 
-```tsx
+```tsx showLineNumbers {2-5,8-11}
 // Using product slug
 await authClient.checkout({
   slug: 'pro',
@@ -320,7 +334,7 @@ await authClient.checkout({
 
 ### Organization-Based Checkout
 
-```tsx title="src/components/checkout-button.tsx"
+```tsx title="src/components/checkout-button.tsx" showLineNumbers {1-6,9-20}
 const handleSubscribe = async () => {
   const activeOrganizationId = user.activeOrganization?.id;
 
@@ -353,13 +367,13 @@ Customer self-service portal for managing subscriptions:
 
 ### Open Portal
 
-```tsx
+```tsx showLineNumbers
 await authClient.customer.portal();
 ```
 
 ### Customer State
 
-```tsx
+```tsx showLineNumbers {1,3-7}
 const { data: customerState } = await authClient.customer.state();
 
 // Contains:
@@ -371,7 +385,7 @@ const { data: customerState } = await authClient.customer.state();
 
 ### List Benefits
 
-```tsx
+```tsx showLineNumbers {1-3}
 const { data: benefits } = await authClient.customer.benefits.list({
   query: { page: 1, limit: 10 },
 });
@@ -379,7 +393,7 @@ const { data: benefits } = await authClient.customer.benefits.list({
 
 ### List Orders
 
-```tsx
+```tsx showLineNumbers {1-5}
 const { data: orders } = await authClient.customer.orders.list({
   query: {
     page: 1,
@@ -391,7 +405,7 @@ const { data: orders } = await authClient.customer.orders.list({
 
 ### List Subscriptions
 
-```tsx
+```tsx showLineNumbers {1-6}
 const { data: subscriptions } = await authClient.customer.subscriptions.list({
   query: {
     page: 1,
@@ -403,7 +417,7 @@ const { data: subscriptions } = await authClient.customer.subscriptions.list({
 
 ### Organization Subscriptions
 
-```tsx
+```tsx showLineNumbers {1,3-10,12-14}
 const organizationId = (await authClient.organization.list())?.data?.[0]?.id;
 
 const { data: subscriptions } = await authClient.customer.orders.list({
@@ -426,7 +440,7 @@ Usage-based billing with event ingestion:
 
 ### Event Ingestion
 
-```tsx
+```tsx showLineNumbers {1-6}
 const { data: ingested } = await authClient.usage.ingestion({
   event: 'file-uploads',
   metadata: {
@@ -438,7 +452,7 @@ const { data: ingested } = await authClient.usage.ingestion({
 
 ### Customer Meters
 
-```tsx
+```tsx showLineNumbers {1-3,5-8}
 const { data: customerMeters } = await authClient.usage.meters.list({
   query: { page: 1, limit: 10 },
 });
@@ -453,7 +467,7 @@ const { data: customerMeters } = await authClient.usage.meters.list({
 
 Handle all Polar webhook events:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {1-2,5-12,15-21,24-35,38-42}
 webhooks({
   secret: process.env.POLAR_WEBHOOK_SECRET!,
 
@@ -502,13 +516,13 @@ webhooks({
 
 ## Convex Functions
 
-<Callout type="info">
+<Callout icon={<InfoIcon />}>
 Function examples use `ctx.table` (Convex Ents). For `ctx.db`, replace edge traversal with manual joins. See [Ents](/docs/db/ents) for migration patterns.
 </Callout>
 
 ### Customer Management
 
-```ts title="convex/functions/polarCustomer.ts"
+```ts title="convex/functions/polarCustomer.ts" showLineNumbers {1,3-8,11-18,20-31,34-37,39-52}
 import '../lib/polar-polyfills';
 
 import { CRPCError } from 'better-convex/server';
@@ -574,7 +588,7 @@ export const updateUserPolarCustomerId = privateMutation
 
 ### Subscription Management
 
-```ts title="convex/functions/polarSubscription.ts"
+```ts title="convex/functions/polarSubscription.ts" showLineNumbers {1,3-8,11-22,25-35,38-48,51-70,73-92}
 import '../lib/polar-polyfills';
 
 import { CRPCError } from 'better-convex/server';
@@ -694,7 +708,7 @@ export const resumeSubscription = authAction
 
 Sync user deletion with Polar:
 
-```ts title="convex/functions/auth.ts"
+```ts title="convex/functions/auth.ts" showLineNumbers {3-10}
 const createAuthOptions = (ctx: GenericCtx) =>
   ({
     user: {
@@ -713,7 +727,7 @@ const createAuthOptions = (ctx: GenericCtx) =>
 
 ## Environment Variables
 
-```bash title="convex/.env"
+```bash title="convex/.env" showLineNumbers {2-4,7}
 # Polar API Configuration
 POLAR_SERVER="sandbox"                 # 'production' | 'sandbox'
 POLAR_ACCESS_TOKEN="polar_at_..."      # Organization access token
@@ -733,7 +747,7 @@ Polar webhooks require a public URL. Use ngrok to expose your local server:
 2. Reserve a free static domain in the [ngrok dashboard](https://dashboard.ngrok.com/domains)
 3. Add scripts to `package.json`:
 
-```json title="package.json"
+```json title="package.json" showLineNumbers {3-4}
 {
   "scripts": {
     "dev": "concurrently 'next dev' 'bun ngrok'",
@@ -752,7 +766,7 @@ https://your-domain.ngrok-free.app/api/auth/polar/webhook
 
 ### Check Organization Subscription
 
-```ts
+```ts showLineNumbers {1-5,7}
 const subscription = await ctx
   .table('subscriptions', 'organizationId_status', (q) =>
     q.eq('organizationId', organizationId).eq('status', 'active')
@@ -764,7 +778,7 @@ const isActive = subscription?.status === 'active';
 
 ### Check User Subscription
 
-```ts
+```ts showLineNumbers {1-5,7}
 const subscription = await ctx
   .table('subscriptions')
   .filter((q) => q.eq(q.field('userId'), userId))
@@ -793,7 +807,7 @@ const isPremium = !!subscription;
 | Cancel subscription | Convex action | User action |
 | Resume subscription | Convex action | User action |
 
-<Callout type="info">
+<Callout icon={<InfoIcon />}>
 Use Better Auth client API for checkout and portal operations. Use internal Convex functions for webhook handlers. Use user actions for subscription management.
 </Callout>
 

@@ -1,6 +1,8 @@
+import { CRPCError } from 'better-convex/server';
 import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
 import { privateAction, privateMutation, privateQuery } from '../lib/crpc';
+import type { EntWriter } from '../lib/ents';
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { aggregateTodosByStatus, aggregateTodosByUser } from './aggregates';
@@ -624,4 +626,86 @@ export const getUserWeeklyActivity = privateQuery
       completed,
       all: allTodos.map((t) => t.doc()),
     };
+  });
+
+// =============================================================================
+// Internal mutations for HTTP actions (userId passed as trusted parameter)
+// =============================================================================
+
+/** Create - called by HTTP actions after auth is verified */
+export const create = privateMutation
+  .input(
+    z.object({
+      userId: zid('user'),
+      title: z.string().min(1).max(200),
+      description: z.string().max(1000).optional(),
+      priority: z.enum(['low', 'medium', 'high']).optional(),
+    })
+  )
+  .output(zid('todos'))
+  .mutation(async ({ ctx, input }) => {
+    const todoId = await ctx.table('todos').insert({
+      title: input.title,
+      description: input.description,
+      completed: false,
+      priority: input.priority,
+      userId: input.userId,
+      tags: [],
+    });
+    return todoId;
+  });
+
+/** Update - called by HTTP actions after auth is verified */
+export const update = privateMutation
+  .input(
+    z.object({
+      userId: zid('user'),
+      id: zid('todos'),
+      title: z.string().min(1).max(200).optional(),
+      completed: z.boolean().optional(),
+      description: z.string().max(1000).optional(),
+    })
+  )
+  .output(z.null())
+  .mutation(async ({ ctx, input }) => {
+    const todo = await ctx.table('todos').getX(input.id);
+
+    if (todo.userId !== input.userId) {
+      throw new CRPCError({
+        code: 'NOT_FOUND',
+        message: 'Todo not found',
+      });
+    }
+
+    const updates: Partial<EntWriter<'todos'>> = {};
+    if (input.title !== undefined) updates.title = input.title;
+    if (input.completed !== undefined) updates.completed = input.completed;
+    if (input.description !== undefined)
+      updates.description = input.description;
+
+    await todo.patch(updates);
+    return null;
+  });
+
+/** Delete - called by HTTP actions after auth is verified */
+export const deleteTodo = privateMutation
+  .input(
+    z.object({
+      userId: zid('user'),
+      id: zid('todos'),
+    })
+  )
+  .output(z.null())
+  .mutation(async ({ ctx, input }) => {
+    const todo = await ctx.table('todos').getX(input.id);
+
+    if (todo.userId !== input.userId) {
+      throw new CRPCError({
+        code: 'NOT_FOUND',
+        message: 'Todo not found',
+      });
+    }
+
+    await todo.delete();
+    return null;
   });

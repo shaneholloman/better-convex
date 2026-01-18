@@ -31,11 +31,11 @@ const waitForTokenClear = async (
   }
 };
 
-/** Poll until authenticated (token set + Convex verified) (max 5s) */
+/** Poll until JWT token exists (auth complete) (max 5s) */
 const waitForAuth = async (store: AuthStore, timeout = 5000): Promise<void> => {
   const start = Date.now();
   while (Date.now() - start < timeout) {
-    if (store.get('isAuthenticated')) return;
+    if (store.get('token')) return;
     await new Promise((r) => setTimeout(r, 50));
   }
 };
