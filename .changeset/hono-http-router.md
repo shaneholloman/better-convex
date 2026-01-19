@@ -1,5 +1,5 @@
 ---
-"better-convex": major
+"better-convex": minor
 ---
 
 ### HTTP Router: Hono Integration
@@ -85,34 +85,37 @@ cRPC handlers now receive `c` (Hono Context) for custom responses:
 ```ts
 // File download with custom headers
 export const download = authRoute
-  .get('/api/todos/export/:format')
-  .params(z.object({ format: z.enum(['json', 'csv']) }))
+  .get("/api/todos/export/:format")
+  .params(z.object({ format: z.enum(["json", "csv"]) }))
   .query(async ({ ctx, params, c }) => {
     const todos = await ctx.runQuery(api.todos.list, {});
 
-    c.header('Content-Disposition', `attachment; filename="todos.${params.format}"`);
+    c.header(
+      "Content-Disposition",
+      `attachment; filename="todos.${params.format}"`
+    );
 
-    if (params.format === 'csv') {
-      return c.text(todos.map(t => `${t.id},${t.title}`).join('\n'));
+    if (params.format === "csv") {
+      return c.text(todos.map((t) => `${t.id},${t.title}`).join("\n"));
     }
     return c.json({ todos });
   });
 
 // Webhook with signature verification
 export const webhook = publicRoute
-  .post('/webhooks/stripe')
+  .post("/webhooks/stripe")
   .mutation(async ({ ctx, c }) => {
-    const signature = c.req.header('stripe-signature');
-    if (!signature) throw new CRPCError({ code: 'BAD_REQUEST' });
+    const signature = c.req.header("stripe-signature");
+    if (!signature) throw new CRPCError({ code: "BAD_REQUEST" });
 
     const body = await c.req.text();
     await ctx.runMutation(internal.stripe.process, { body, signature });
 
-    return c.text('OK', 200);
+    return c.text("OK", 200);
   });
 
 // Redirect
 export const redirect = publicRoute
-  .get('/api/old-path')
-  .query(async ({ c }) => c.redirect('/api/new-path', 301));
+  .get("/api/old-path")
+  .query(async ({ c }) => c.redirect("/api/new-path", 301));
 ```
