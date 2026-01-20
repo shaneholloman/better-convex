@@ -170,8 +170,6 @@ export const processData = privateQuery
 
 ### HTTP Endpoints
 
-For cRPC HTTP router (REST APIs, TanStack Query, RSC prefetching), see [/docs/server/http](/docs/server/http).
-
 For advanced patterns (Hono, streaming, webhooks), see [convex-http.mdc](mdc:.claude/rules/convex-http.mdc).
 
 ### Validators

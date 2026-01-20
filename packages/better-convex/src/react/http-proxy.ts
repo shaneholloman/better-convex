@@ -39,6 +39,69 @@ export type HttpRouteInfo = { path: string; method: string };
 export type HttpRouteMap = Record<string, HttpRouteInfo>;
 
 // ============================================================================
+// Hybrid Input Types (tRPC-like JSON body, explicit param/query/form)
+// ============================================================================
+
+/** Form value types (matches Hono's FormValue) */
+export type HttpFormValue = string | Blob;
+
+/** Reserved keys that are not part of JSON body */
+const RESERVED_KEYS = new Set([
+  'params',
+  'searchParams',
+  'form',
+  'fetch',
+  'init',
+  'headers',
+]);
+
+/**
+ * Hybrid input args: JSON body fields at root, explicit params/searchParams/form.
+ * - JSON body: spread at root level (tRPC-style)
+ * - Path params: { params: { id: '123' } }
+ * - Query params: { searchParams: { limit: '10' } }
+ * - Form data: { form: { file: blob } } - typed via .form() builder
+ * - Client options: { headers, fetch, init } - for per-call customization
+ */
+export type HttpInputArgs = {
+  /** Path parameters (e.g., :id in /users/:id) */
+  params?: Record<string, string>;
+  /** Query string parameters */
+  searchParams?: Record<string, string | string[]>;
+  /** Form data body (Content-Type: multipart/form-data) - typed via .form() builder */
+  form?: Record<string, HttpFormValue | HttpFormValue[]>;
+  /** Custom fetch function (per-call override) */
+  fetch?: typeof fetch;
+  /** Standard RequestInit (per-call override) */
+  init?: RequestInit;
+  /** Additional headers (per-call override) */
+  headers?:
+    | Record<string, string>
+    | (() => Record<string, string> | Promise<Record<string, string>>);
+  /** Any other properties are JSON body fields */
+  [key: string]: unknown;
+};
+
+/**
+ * Client request options (matches Hono's ClientRequestOptions).
+ * Standard RequestInit in `init` takes highest priority and can override
+ * things that are set automatically like body, method, headers.
+ */
+export type HttpClientOptions = {
+  /** Custom fetch function */
+  fetch?: typeof fetch;
+  /**
+   * Standard RequestInit - takes highest priority.
+   * Can override body, method, headers if needed.
+   */
+  init?: RequestInit;
+  /** Additional headers (or async function returning headers) */
+  headers?:
+    | Record<string, string>
+    | (() => Record<string, string> | Promise<Record<string, string>>);
+};
+
+// ============================================================================
 // Type Inference Utilities
 // ============================================================================
 
@@ -49,7 +112,7 @@ type InferSchemaOrEmpty<T> = T extends UnsetMarker
     ? z.infer<T>
     : object;
 
-/** Infer merged input from HttpProcedure */
+/** Infer merged input from HttpProcedure (flat - used internally) */
 type InferHttpInput<T> =
   T extends HttpProcedure<
     infer TInput,
@@ -63,6 +126,74 @@ type InferHttpInput<T> =
           InferSchemaOrEmpty<TInput>
       >
     : object;
+
+/**
+ * Extract string keys from a Zod object schema.
+ * Used for param/query which are always strings in URLs.
+ */
+type ZodObjectKeys<T> =
+  T extends z.ZodObject<infer Shape>
+    ? { [K in keyof Shape]: string }
+    : Record<string, string>;
+
+/**
+ * Extract string or string[] keys from a Zod object schema.
+ * Query params can have array values.
+ */
+type ZodQueryKeys<T> =
+  T extends z.ZodObject<infer Shape>
+    ? { [K in keyof Shape]?: string | string[] }
+    : Record<string, string | string[]>;
+
+/**
+ * Infer client-side args from HttpProcedure with proper nesting.
+ * - params: only present if TParams is defined, always strings (URL path params)
+ * - searchParams: only present if TQuery is defined, always strings (URL query params)
+ * - form: only present if TForm is defined, typed from schema
+ * - JSON body fields spread at root level (typed from schema)
+ * - Client options (fetch, init, headers) always optional for per-call overrides
+ */
+type InferHttpClientArgs<T> =
+  T extends HttpProcedure<
+    infer TInput,
+    infer _TOutput,
+    infer TParams,
+    infer TQuery,
+    infer _TMethod,
+    infer TForm
+  >
+    ? Simplify<
+        // params key only if TParams is defined - always strings (URL path params)
+        (TParams extends UnsetMarker
+          ? object
+          : { params: ZodObjectKeys<TParams> }) &
+          // searchParams key only if TQuery is defined - always strings (URL query params)
+          (TQuery extends UnsetMarker
+            ? object
+            : { searchParams: ZodQueryKeys<TQuery> }) &
+          // form key only if TForm is defined - typed from schema
+          (TForm extends UnsetMarker
+            ? object
+            : TForm extends z.ZodTypeAny
+              ? { form: z.infer<TForm> }
+              : object) &
+          // JSON body fields spread at root - use actual inferred types
+          (TInput extends UnsetMarker
+            ? object
+            : TInput extends z.ZodTypeAny
+              ? z.infer<TInput>
+              : object) & // Client options always optional for per-call overrides
+          {
+            fetch?: typeof fetch;
+            init?: RequestInit;
+            headers?:
+              | Record<string, string>
+              | (() =>
+                  | Record<string, string>
+                  | Promise<Record<string, string>>);
+          }
+      >
+    : HttpInputArgs;
 
 /** Infer output type from HttpProcedure */
 type InferHttpOutput<T> =
@@ -96,15 +227,6 @@ export type HttpMutationKey = readonly ['httpMutation', string];
 type ReservedQueryOptions = 'queryKey' | 'queryFn';
 type ReservedMutationOptions = 'mutationFn';
 
-/** Variables type for mutations - void when no args required */
-type HttpMutationVariables<T extends HttpProcedure> =
-  keyof InferHttpInput<T> extends never
-    ? // biome-ignore lint/suspicious/noConfusingVoidType: TanStack Query requires void for optional variables
-      void
-    : object extends InferHttpInput<T>
-      ? InferHttpInput<T> | undefined
-      : InferHttpInput<T>;
-
 /** Query options for GET HTTP endpoints - compatible with both useQuery and useSuspenseQuery */
 type HttpQueryOptsReturn<T extends HttpProcedure> = Omit<
   UseQueryOptions<InferHttpOutput<T>, Error, InferHttpOutput<T>, HttpQueryKey>,
@@ -113,43 +235,64 @@ type HttpQueryOptsReturn<T extends HttpProcedure> = Omit<
   queryFn: () => Promise<InferHttpOutput<T>>;
 };
 
-/** Mutation options for POST/PUT/PATCH/DELETE HTTP endpoints */
+/** Mutation options for POST/PUT/PATCH/DELETE HTTP endpoints - typed variables */
 type HttpMutationOptsReturn<T extends HttpProcedure> = UseMutationOptions<
   InferHttpOutput<T>,
   DefaultError,
-  HttpMutationVariables<T>
+  InferHttpClientArgs<T>
 >;
 
-/** Decorated GET procedure with queryOptions */
+/** Query options (TanStack Query only - client opts go in args) */
+type HttpQueryOptions<T extends HttpProcedure> = DistributiveOmit<
+  HttpQueryOptsReturn<T>,
+  ReservedQueryOptions
+>;
+
+/** Mutation options (TanStack Query only - client opts go in mutate args) */
+type HttpMutationOptions<T extends HttpProcedure> = DistributiveOmit<
+  HttpMutationOptsReturn<T>,
+  ReservedMutationOptions
+>;
+
+/**
+ * Decorated GET procedure with queryOptions and mutationOptions.
+ * - queryOptions: For cached data fetching (useQuery/useSuspenseQuery)
+ * - mutationOptions: For one-time actions like exports (useMutation)
+ */
 type DecorateHttpQuery<T extends HttpProcedure> = {
   queryOptions: keyof InferHttpInput<T> extends never
     ? (
-        args?: object,
-        opts?: DistributiveOmit<HttpQueryOptsReturn<T>, ReservedQueryOptions>
+        args?: InferHttpClientArgs<T>,
+        opts?: HttpQueryOptions<T>
       ) => HttpQueryOptsReturn<T>
     : object extends InferHttpInput<T>
       ? (
-          args?: InferHttpInput<T>,
-          opts?: DistributiveOmit<HttpQueryOptsReturn<T>, ReservedQueryOptions>
+          args?: InferHttpClientArgs<T>,
+          opts?: HttpQueryOptions<T>
         ) => HttpQueryOptsReturn<T>
       : (
-          args: InferHttpInput<T>,
-          opts?: DistributiveOmit<HttpQueryOptsReturn<T>, ReservedQueryOptions>
+          args: InferHttpClientArgs<T>,
+          opts?: HttpQueryOptions<T>
         ) => HttpQueryOptsReturn<T>;
   /** Get query key for QueryClient methods (with args = exact match, without = prefix) */
-  queryKey: (args?: InferHttpInput<T>) => HttpQueryKey;
+  queryKey: (args?: InferHttpClientArgs<T>) => HttpQueryKey;
   /** Get query filter for QueryClient methods (e.g., invalidateQueries) */
   queryFilter: (
-    args?: InferHttpInput<T>,
+    args?: InferHttpClientArgs<T>,
     filters?: DistributiveOmit<QueryFilters, 'queryKey'>
   ) => QueryFilters;
+  /** Mutation options for GET endpoints (exports, downloads - no caching) */
+  mutationOptions: (opts?: HttpMutationOptions<T>) => HttpMutationOptsReturn<T>;
+  /** Get mutation key for QueryClient methods */
+  mutationKey: () => HttpMutationKey;
 };
 
-/** Decorated POST/PUT/PATCH/DELETE procedure with mutationOptions */
+/**
+ * Decorated POST/PUT/PATCH/DELETE procedure with mutationOptions.
+ * The mutationFn receives typed args inferred from server schemas.
+ */
 type DecorateHttpMutation<T extends HttpProcedure> = {
-  mutationOptions: (
-    opts?: DistributiveOmit<HttpMutationOptsReturn<T>, ReservedMutationOptions>
-  ) => HttpMutationOptsReturn<T>;
+  mutationOptions: (opts?: HttpMutationOptions<T>) => HttpMutationOptsReturn<T>;
   /** Get mutation key for QueryClient methods */
   mutationKey: () => HttpMutationKey;
 };
@@ -169,7 +312,8 @@ export type HttpCRPCClient<T extends HttpRouterRecord> = {
     infer _TOutput,
     infer _TParams,
     infer _TQuery,
-    infer TMethod
+    infer TMethod,
+    infer _TForm
   >
     ? TMethod extends 'GET'
       ? DecorateHttpQuery<T[K]>
@@ -214,88 +358,155 @@ export interface HttpProxyOptions<TRoutes extends HttpRouteMap> {
 // ============================================================================
 
 /**
- * Extract path parameter names from a route path
- * e.g., '/users/:id/posts/:postId' -> ['id', 'postId']
+ * Replace URL path parameters with actual values.
+ * e.g., '/users/:id' with { id: '123' } -> '/users/123'
  */
-function extractPathParamNames(path: string): string[] {
-  const matches = path.match(/:([a-zA-Z_][a-zA-Z0-9_]*)/g);
-  return matches ? matches.map((m) => m.slice(1)) : [];
+function replaceUrlParam(url: string, params: Record<string, string>): string {
+  return url.replace(/:(\w+)/g, (_, key) => {
+    const value = params[key];
+    return value !== undefined ? encodeURIComponent(value) : `:${key}`;
+  });
 }
 
 /**
- * Execute an HTTP request to a cRPC endpoint
+ * Build URLSearchParams from query object.
+ * Handles array values as multiple params with same key (like Hono).
+ */
+function buildSearchParams(
+  query: Record<string, string | string[]>
+): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (Array.isArray(value)) {
+      for (const v of value) {
+        params.append(key, v);
+      }
+    } else if (value !== undefined && value !== null) {
+      params.append(key, value);
+    }
+  }
+  return params;
+}
+
+/**
+ * Hono-style HTTP request executor.
+ * Processes args in the same way as Hono's ClientRequestImpl.fetch().
  */
 async function executeHttpRequest(opts: {
   convexSiteUrl: string;
   route: { path: string; method: string };
   procedureName: string;
-  input: unknown;
-  headers?:
+  /** Hono-style input args */
+  args?: HttpInputArgs;
+  /** Per-request client options */
+  clientOpts?: HttpClientOptions;
+  /** Base headers from proxy config */
+  baseHeaders?:
     | { [key: string]: string | undefined }
     | (() =>
         | { [key: string]: string | undefined }
         | Promise<{ [key: string]: string | undefined }>);
-  fetch?: typeof fetch;
+  /** Base fetch from proxy config */
+  baseFetch?: typeof fetch;
 }): Promise<unknown> {
   const { method, path } = opts.route;
-  const input = opts.input as Record<string, unknown> | undefined;
-  const pathParamNames = extractPathParamNames(path);
+  const args = opts.args ?? {};
 
-  // Build URL with path params replaced (:id -> actual value)
-  let url =
-    opts.convexSiteUrl +
-    path.replace(/:(\w+)/g, (_, key) => {
-      const value = input?.[key];
-      return value !== null && value !== undefined
-        ? encodeURIComponent(String(value))
-        : '';
-    });
+  // Process request body (form or json, mutually exclusive)
+  let rBody: BodyInit | undefined;
+  let cType: string | undefined;
 
-  // Resolve headers (support async headers fn for auth tokens)
-  const headers =
-    typeof opts.headers === 'function' ? await opts.headers() : opts.headers;
-
-  // Build request based on method
-  let body: string | undefined;
-  if (method === 'GET') {
-    // Query params for GET (exclude path params)
-    const queryInput = input
-      ? Object.fromEntries(
-          Object.entries(input).filter(([k]) => !pathParamNames.includes(k))
-        )
-      : {};
-    if (Object.keys(queryInput).length > 0) {
-      const params = new URLSearchParams();
-      for (const [key, value] of Object.entries(queryInput)) {
-        if (value !== undefined && value !== null) {
-          params.append(key, String(value));
+  if (args.form) {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(args.form)) {
+      if (Array.isArray(v)) {
+        for (const v2 of v) {
+          form.append(k, v2);
         }
-      }
-      const queryString = params.toString();
-      if (queryString) {
-        url += `?${queryString}`;
+      } else {
+        form.append(k, v);
       }
     }
+    rBody = form;
+    // Don't set Content-Type - browser sets with boundary
   } else {
-    // Body for POST/PUT/PATCH/DELETE (exclude path params)
-    const bodyInput = input
-      ? Object.fromEntries(
-          Object.entries(input).filter(([k]) => !pathParamNames.includes(k))
-        )
-      : {};
-    if (Object.keys(bodyInput).length > 0) {
-      body = JSON.stringify(bodyInput);
+    // Extract JSON body (all non-reserved keys at root level)
+    const jsonBody: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(args)) {
+      if (!RESERVED_KEYS.has(key) && value !== undefined) {
+        jsonBody[key] = value;
+      }
+    }
+    if (Object.keys(jsonBody).length > 0) {
+      rBody = JSON.stringify(jsonBody);
+      cType = 'application/json';
     }
   }
 
-  const fetchFn = opts.fetch ?? globalThis.fetch;
+  // Extract client options from args (per-call overrides)
+  const argsClientOpts: HttpClientOptions = {};
+  if (args.fetch) argsClientOpts.fetch = args.fetch as typeof fetch;
+  if (args.init) argsClientOpts.init = args.init as RequestInit;
+  if (args.headers)
+    argsClientOpts.headers = args.headers as HttpClientOptions['headers'];
+
+  // Merge client opts: args override clientOpts param
+  const mergedClientOpts = { ...opts.clientOpts, ...argsClientOpts };
+
+  // Build headers (merge in order: cType, baseHeaders, clientOpts.headers, args.headers)
+  const resolvedBaseHeaders =
+    typeof opts.baseHeaders === 'function'
+      ? await opts.baseHeaders()
+      : opts.baseHeaders;
+  const resolvedClientHeaders =
+    typeof mergedClientOpts.headers === 'function'
+      ? await mergedClientOpts.headers()
+      : mergedClientOpts.headers;
+
+  const headerValues: Record<string, string> = {
+    ...resolvedClientHeaders,
+  };
+
+  if (cType) {
+    headerValues['Content-Type'] = cType;
+  }
+
+  // Merge base headers (lower priority), filtering out undefined values
+  const finalHeaders: Record<string, string> = {};
+  if (resolvedBaseHeaders) {
+    for (const [key, value] of Object.entries(resolvedBaseHeaders)) {
+      if (value !== undefined) {
+        finalHeaders[key] = value;
+      }
+    }
+  }
+  Object.assign(finalHeaders, headerValues);
+
+  // Build URL with path params
+  let url = opts.convexSiteUrl + path;
+  if (args.params) {
+    url = opts.convexSiteUrl + replaceUrlParam(path, args.params);
+  }
+
+  // Add query params
+  if (args.searchParams) {
+    const queryString = buildSearchParams(args.searchParams).toString();
+    if (queryString) {
+      url = `${url}?${queryString}`;
+    }
+  }
+
+  // Determine if body should be sent (not for GET/HEAD)
+  const methodUpperCase = method.toUpperCase();
+  const setBody = !(methodUpperCase === 'GET' || methodUpperCase === 'HEAD');
+
+  // Execute fetch (mergedClientOpts.init has highest priority per Hono pattern)
+  const fetchFn = mergedClientOpts.fetch ?? opts.baseFetch ?? globalThis.fetch;
   const response = await fetchFn(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...headers,
-    },
-    body,
+    body: setBody ? rBody : undefined,
+    method: methodUpperCase,
+    headers: finalHeaders,
+    ...mergedClientOpts.init,
   });
 
   if (!response.ok) {
@@ -366,6 +577,7 @@ function createRecursiveHttpProxy(
       const route = opts.routes[routeKey];
 
       // Terminal method: queryOptions (for GET endpoints)
+      // API: (args?, queryOpts?) - client opts (headers, fetch, init) go in args
       if (prop === 'queryOptions') {
         if (!route) {
           throw new Error(`Unknown HTTP procedure: ${routeKey}`);
@@ -376,8 +588,8 @@ function createRecursiveHttpProxy(
           );
         }
 
-        return (args?: unknown, userOpts?: UseQueryOptions<unknown>) => ({
-          ...userOpts,
+        return (args?: HttpInputArgs, queryOpts?: Record<string, unknown>) => ({
+          ...queryOpts,
           queryKey: ['httpQuery', routeKey, args] as const,
           queryFn: async () => {
             try {
@@ -385,9 +597,9 @@ function createRecursiveHttpProxy(
                 convexSiteUrl: opts.convexSiteUrl,
                 route,
                 procedureName: routeKey,
-                input: args,
-                headers: opts.headers,
-                fetch: opts.fetch,
+                args,
+                baseHeaders: opts.headers,
+                baseFetch: opts.fetch,
               });
             } catch (error) {
               if (opts.onError && error instanceof HttpClientError) {
@@ -438,31 +650,25 @@ function createRecursiveHttpProxy(
         };
       }
 
-      // Terminal method: mutationOptions (for POST/PUT/PATCH/DELETE)
+      // Terminal method: mutationOptions (for all HTTP methods)
+      // API: (mutationOpts?) - client opts (headers, fetch, init) go in mutate() args
       if (prop === 'mutationOptions') {
         if (!route) {
           throw new Error(`Unknown HTTP procedure: ${routeKey}`);
         }
-        if (route.method === 'GET') {
-          throw new Error(
-            `mutationOptions is not available for GET endpoints, use queryOptions for ${routeKey}`
-          );
-        }
 
-        return (
-          userOpts?: UseMutationOptions<unknown, DefaultError, unknown>
-        ) => ({
-          ...userOpts,
+        return (mutationOpts?: Record<string, unknown>) => ({
+          ...mutationOpts,
           mutationKey: ['httpMutation', routeKey] as const,
-          mutationFn: async (args: unknown) => {
+          mutationFn: async (args: HttpInputArgs) => {
             try {
               return await executeHttpRequest({
                 convexSiteUrl: opts.convexSiteUrl,
                 route,
                 procedureName: routeKey,
-                input: args,
-                headers: opts.headers,
-                fetch: opts.fetch,
+                args,
+                baseHeaders: opts.headers,
+                baseFetch: opts.fetch,
               });
             } catch (error) {
               if (opts.onError && error instanceof HttpClientError) {

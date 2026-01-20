@@ -1,7 +1,8 @@
 - In all interactions and commit messages, be extremely concise and sacrifice grammar for the sake of concision
 - ALWAYS read and understand relevant files before proposing edits. Do not speculate about code you have not inspected
 - ALWAYS use AskUserQuestion tool when asking questions to the user
-- After any package modification, run `bun --cwd packages/better-convex build`, then touch `convex/functions/schema.ts` to trigger a re-build
+- After any package modification, run `bun --cwd packages/better-convex build`, then touch `example/convex/functions/schema.ts` to trigger a re-build
+- When using Ralph Loop, use local `/ralph` command instead of `/ralph-loop` (fixes shell escaping bug in upstream plugin)
 
 ## PR Comments
 

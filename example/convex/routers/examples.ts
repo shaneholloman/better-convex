@@ -1,5 +1,7 @@
 import { CRPCError } from 'better-convex/server';
-import { publicRoute, router } from '../lib/crpc';
+import { zid } from 'convex-helpers/server/zod4';
+import { z } from 'zod';
+import { authRoute, publicRoute, router } from '../lib/crpc';
 
 /** POST /webhooks/example - Webhook with signature verification */
 export const webhook = publicRoute
@@ -21,7 +23,123 @@ export const redirectExample = publicRoute
   .get('/api/old-path')
   .query(async ({ c }) => c.redirect('/api/health', 301));
 
+/** GET /api/examples/search - searchParams only */
+export const searchExample = publicRoute
+  .get('/api/examples/search')
+  .searchParams(
+    z.object({
+      q: z.string(),
+      page: z.coerce.number().optional(),
+      tags: z.array(z.string()).optional(),
+    })
+  )
+  .output(
+    z.object({ q: z.string(), page: z.number(), tags: z.array(z.string()) })
+  )
+  .query(async ({ searchParams }) => ({
+    q: searchParams.q,
+    page: searchParams.page ?? 1,
+    tags: searchParams.tags ?? [],
+  }));
+
+/** GET /api/examples/items/:id - params only */
+export const paramsExample = publicRoute
+  .get('/api/examples/items/:id')
+  .params(z.object({ id: zid('todos') }))
+  .output(z.object({ id: zid('todos') }))
+  .query(async ({ params }) => ({ id: params.id }));
+
+/** POST /api/examples/items - input only (JSON body) */
+export const inputExample = publicRoute
+  .post('/api/examples/items')
+  .input(
+    z.object({
+      name: z.string(),
+      count: z.number(),
+      metadata: z.record(z.string(), z.string()).optional(),
+    })
+  )
+  .output(z.object({ name: z.string(), count: z.number() }))
+  .mutation(async ({ input }) => ({
+    name: input.name,
+    count: input.count,
+  }));
+
+/** PATCH /api/examples/items/:id - params + input combined */
+export const paramsInputExample = publicRoute
+  .patch('/api/examples/items/:id')
+  .params(z.object({ id: zid('todos') }))
+  .input(
+    z.object({ name: z.string().optional(), active: z.boolean().optional() })
+  )
+  .output(z.object({ id: zid('todos'), updated: z.boolean() }))
+  .mutation(async ({ params, input }) => ({
+    id: params.id,
+    updated: !!input.name || input.active !== undefined,
+  }));
+
+/** GET /api/examples/items/:id/history - params + searchParams combined */
+export const paramsSearchParamsExample = publicRoute
+  .get('/api/examples/items/:id/history')
+  .params(z.object({ id: zid('todos') }))
+  .searchParams(
+    z.object({
+      limit: z.coerce.number().optional(),
+      offset: z.coerce.number().optional(),
+    })
+  )
+  .output(z.object({ id: zid('todos'), limit: z.number(), offset: z.number() }))
+  .query(async ({ params, searchParams }) => ({
+    id: params.id,
+    limit: searchParams.limit ?? 10,
+    offset: searchParams.offset ?? 0,
+  }));
+
+/** POST /api/examples/items/:id/tags - params + searchParams + input all combined */
+export const allCombinedExample = authRoute
+  .post('/api/examples/items/:id/tags')
+  .params(z.object({ id: zid('todos') }))
+  .searchParams(z.object({ notify: z.coerce.boolean().optional() }))
+  .input(z.object({ tags: z.array(z.string()) }))
+  .output(
+    z.object({
+      id: zid('todos'),
+      tags: z.array(z.string()),
+      notified: z.boolean(),
+    })
+  )
+  .mutation(async ({ params, searchParams, input }) => ({
+    id: params.id,
+    tags: input.tags,
+    notified: searchParams.notify ?? false,
+  }));
+
+/** POST /api/examples/upload - FormData file upload (typed via .form()) */
+export const uploadExample = authRoute
+  .post('/api/examples/upload')
+  .form(
+    z.object({ file: z.instanceof(Blob), description: z.string().optional() })
+  )
+  .mutation(async ({ ctx, c, form }) => {
+    // form.file is typed as Blob, form.description as string | undefined
+    const storageId = await ctx.storage.store(form.file);
+
+    return c.json({
+      storageId,
+      filename: form.file instanceof File ? form.file.name : 'unknown',
+      size: form.file.size,
+      description: form.description ?? null,
+    });
+  });
+
 export const examplesRouter = router({
   webhook,
   redirectExample,
+  searchExample,
+  paramsExample,
+  inputExample,
+  paramsInputExample,
+  paramsSearchParamsExample,
+  allCombinedExample,
+  uploadExample,
 });

@@ -27,12 +27,13 @@ export function TodoList() {
   const crpc = useCRPC();
   const queryClient = useQueryClient();
 
-  // GET /api/todos → useSuspenseQuery
+  // GET /api/todos?limit=10
   const { data: todos } = useSuspenseQuery(
-    crpc.http.todos.list.queryOptions({ limit: 10 })
+    crpc.http.todos.list.queryOptions({ searchParams: { limit: '10' } })
   );
 
   // POST /api/todos → useMutation
+  // mutationOptions(opts?) - merged TanStack + client options
   const createTodo = useMutation(
     crpc.http.todos.create.mutationOptions({
       onSuccess: () => {
@@ -46,6 +47,7 @@ export function TodoList() {
       {todos.map(todo => (
         <div key={todo._id}>{todo.title}</div>
       ))}
+      {/* JSON body at root level (tRPC-style) */}
       <button onClick={() => createTodo.mutate({ title: 'New Todo' })}>
         Add
       </button>
@@ -175,11 +177,11 @@ export const list = publicRoute
     offset: z.coerce.number().optional().default(0),
   }))
   .output(z.array(todoSchema))
-  .query(async ({ ctx, query }) => {
-    // query.limit and query.offset are typed as numbers
+  .query(async ({ ctx, searchParams }) => {
+    // searchParams.limit and searchParams.offset are typed as numbers
     return ctx.runQuery(api.todos.list, {
-      limit: query.limit,
-      offset: query.offset,
+      limit: searchParams.limit,
+      offset: searchParams.offset,
     });
   });
 ```
@@ -627,7 +629,23 @@ export const stripe = publicRoute
 
 ## React Client
 
-Access HTTP endpoints on the client via `crpc.http.*`. The proxy provides `queryOptions` for GET requests and `mutationOptions` for POST/PATCH/DELETE.
+Access HTTP endpoints on the client via `crpc.http.*`. The proxy uses a **hybrid API** that combines the best of both worlds: tRPC-style JSON body at root level with explicit `params`/`searchParams`/`form` for URL and form data.
+
+### Input Args
+
+The client uses a structured input format that separates concerns clearly. All options go in args (1st param):
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `params` | `Record<string, string>` | Path parameters (`:id` in `/users/:id`) |
+| `searchParams` | `Record<string, string \| string[]>` | Query string parameters |
+| `form` | `z.infer<TForm>` | Typed FormData (if server uses `.form()`) |
+| `fetch` | `typeof fetch` | Custom fetch function (per-call override) |
+| `init` | `RequestInit` | Standard fetch options (highest priority) |
+| `headers` | `Record<string, string> \| (() => ...)` | Request headers (incl. auth, cookies) |
+| `[key]` | `unknown` | JSON body fields at root level |
+
+JSON body fields are spread at the root level (tRPC-style), while URL-related data and client options use explicit keys.
 
 ### Setup
 
@@ -657,9 +675,14 @@ import { useCRPC } from '@/lib/convex/crpc';
 export function TodoList() {
   const crpc = useCRPC();
 
-  // GET /api/todos?limit=10
+  // GET /api/todos?limit=10 - searchParams explicit
   const { data: todos } = useSuspenseQuery(
-    crpc.http.todos.list.queryOptions({ limit: 10 })
+    crpc.http.todos.list.queryOptions({ searchParams: { limit: '10' } })
+  );
+
+  // GET /api/todos/:id - path params explicit
+  const { data: todo } = useSuspenseQuery(
+    crpc.http.todos.get.queryOptions({ params: { id: todoId } })
   );
 
   return (
@@ -672,11 +695,35 @@ export function TodoList() {
 }
 ```
 
+### One-Time Fetch
+
+For one-time fetches like exports or downloads, use `mutationOptions` with `useMutation`. This gives you `isPending` state and `onSuccess`/`onError` callbacks without caching:
+
+```tsx showLineNumbers {1-3}
+const exportTodos = useMutation(
+  crpc.http.todos.export.mutationOptions()
+);
+
+// Trigger export with loading state
+exportTodos.mutate({ params: { format: 'csv' } });
+```
+
+Alternatively, use `fetchQuery` for imperative fetching with caching:
+
+```tsx showLineNumbers {3}
+import { useQueryClient } from '@tanstack/react-query';
+
+const queryClient = useQueryClient();
+const todos = await queryClient.fetchQuery(
+  crpc.http.todos.list.queryOptions({ searchParams: { limit: '10' } })
+);
+```
+
 ### POST/PATCH/DELETE Requests
 
 Use `mutationOptions` with TanStack Query's `useMutation`.
 
-```tsx title="components/create-todo.tsx" showLineNumbers {9-16,21}
+```tsx title="components/create-todo.tsx" showLineNumbers {9-17,22}
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCRPC } from '@/lib/convex/crpc';
 
@@ -686,10 +733,10 @@ export function CreateTodo() {
   const [title, setTitle] = useState('');
 
   // POST /api/todos
+  // mutationOptions(opts?) - merged TanStack + client options
   const createTodo = useMutation(
     crpc.http.todos.create.mutationOptions({
       onSuccess: () => {
-        // Invalidate the list cache to refetch
         queryClient.invalidateQueries(crpc.http.todos.list.queryFilter());
         setTitle('');
       },
@@ -698,6 +745,7 @@ export function CreateTodo() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // JSON body at root level (tRPC-style)
     createTodo.mutate({ title });
   };
 
@@ -716,18 +764,56 @@ export function CreateTodo() {
 }
 ```
 
+### File Uploads with FormData
+
+For typed file uploads, define a `.form()` schema on your endpoint:
+
+```ts title="convex/routers/files.ts"
+export const upload = authRoute
+  .post('/api/files/upload')
+  .form(z.object({
+    file: z.instanceof(File),
+    title: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+  }))
+  .mutation(async ({ ctx, c, form }) => {
+    // form.file is typed as File, form.title as string | undefined
+    const storageId = await ctx.storage.store(form.file);
+    return c.json({ storageId, filename: form.file.name });
+  });
+```
+
+The client then gets typed `form` args:
+
+```tsx showLineNumbers {4-6,11-17}
+const uploadFile = useMutation(
+  crpc.http.files.upload.mutationOptions()
+);
+
+// Single file - typed from .form() schema
+uploadFile.mutate({ form: { file: selectedFile } });
+
+// Mixed form data - all fields typed
+uploadFile.mutate({
+  form: {
+    title: 'My Document',
+    file: selectedFile,
+    tags: ['work', 'important'],
+  }
+});
+```
+
 ### Cache Invalidation
 
 Use `queryFilter()` to invalidate related queries after mutations.
 
-```tsx showLineNumbers {6-8,15-17}
+```tsx showLineNumbers {5-9,14-18}
 const crpc = useCRPC();
 const queryClient = useQueryClient();
 
 const deleteTodo = useMutation(
   crpc.http.todos.delete.mutationOptions({
     onSuccess: () => {
-      // Invalidate all todo list queries
       queryClient.invalidateQueries(crpc.http.todos.list.queryFilter());
     },
   })
@@ -735,23 +821,65 @@ const deleteTodo = useMutation(
 
 const updateTodo = useMutation(
   crpc.http.todos.update.mutationOptions({
-    onSuccess: (_, { id }) => {
-      // Invalidate both list and specific item
+    onSuccess: (_, vars) => {
+      // vars is HttpInputArgs - access params.id
       queryClient.invalidateQueries(crpc.http.todos.list.queryFilter());
-      queryClient.invalidateQueries(crpc.http.todos.get.queryFilter({ id }));
+      queryClient.invalidateQueries(
+        crpc.http.todos.get.queryFilter({ params: { id: vars.params?.id } })
+      );
     },
+  })
+);
+
+// PATCH with path params + JSON body at root
+updateTodo.mutate({ params: { id: todoId }, completed: true });
+
+// DELETE with path params
+deleteTodo.mutate({ params: { id: todoId } });
+```
+
+### Custom Headers and Fetch Options
+
+You can pass custom headers, a custom `fetch` function, or standard `RequestInit` options directly in your args. This keeps everything in one place and makes per-request customization straightforward.
+
+For queries, add client options alongside your other args:
+
+```tsx showLineNumbers {4-5}
+// Query with custom headers
+const { data } = useSuspenseQuery(
+  crpc.http.todos.list.queryOptions({
+    searchParams: { limit: '10' },
+    headers: { 'X-Custom-Header': 'value' },
   })
 );
 ```
 
+For mutations, you can set options at the `mutationOptions` level (for defaults) or pass them per-call in `mutate()`. Per-call options are useful for things like auth tokens or abort signals:
+
+```tsx showLineNumbers {9-13}
+const controller = new AbortController();
+const createTodo = useMutation(
+  crpc.http.todos.create.mutationOptions({
+    onSuccess: () => console.log('Created!'),
+  })
+);
+
+// Per-call client options in mutate args
+createTodo.mutate({
+  title: 'New Todo',
+  headers: { 'Authorization': `Bearer ${token}` },
+  init: { signal: controller.signal },
+});
+```
+
 ### Client API Reference
 
-| Method | Description |
-|--------|-------------|
-| `queryOptions(params)` | Options for `useQuery`/`useSuspenseQuery` |
-| `mutationOptions(options?)` | Options for `useMutation` |
-| `queryKey(params)` | Get the query key for cache operations |
-| `queryFilter(params?)` | Filter for `invalidateQueries`, `cancelQueries`, etc. |
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `queryOptions` | `(args?, queryOpts?)` | Options for `useQuery`/`useSuspenseQuery`. `args` includes client opts, `queryOpts` is TanStack Query only |
+| `mutationOptions` | `(mutationOpts?)` | Options for `useMutation`. `mutationOpts` is TanStack Mutation only, client opts go in `mutate(args)` |
+| `queryKey` | `(args?)` | Get the query key for cache operations |
+| `queryFilter` | `(args?, filters?)` | Filter for `invalidateQueries`, etc. |
 
 <Callout icon={<InfoIcon />}>
   **Note:** For more React patterns including loading states, error handling, and conditional queries, see [Queries](/docs/react/queries) and [Mutations](/docs/react/mutations).
@@ -771,8 +899,8 @@ import { TodoList } from './todo-list';
 
 export default async function TodosPage() {
   // Fire-and-forget prefetch - doesn't block rendering
-  prefetch(crpc.http.health.queryOptions({}));
-  prefetch(crpc.http.todos.list.queryOptions({ limit: 10 }));
+  prefetch(crpc.http.health.queryOptions());
+  prefetch(crpc.http.todos.list.queryOptions({ searchParams: { limit: '10' } }));
 
   return (
     <HydrateClient>
@@ -786,7 +914,7 @@ export default async function TodosPage() {
 
 Use `preloadQuery()` when you need the data on the server (e.g., for conditionals or metadata).
 
-```tsx title="app/todos/[id]/page.tsx" showLineNumbers {9-11,13-15}
+```tsx title="app/todos/[id]/page.tsx" showLineNumbers {9-12,14-16}
 import { crpc, HydrateClient, preloadQuery } from '@/lib/convex/rsc';
 import { notFound } from 'next/navigation';
 import { TodoDetail } from './todo-detail';
@@ -797,8 +925,9 @@ export default async function TodoPage({
   const { id } = await params;
 
   // Await the data - available on server
+  // Path params explicit: { params: { ... } }
   const todo = await preloadQuery(
-    crpc.http.todos.get.queryOptions({ id })
+    crpc.http.todos.get.queryOptions({ params: { id } })
   );
 
   if (!todo) {
@@ -817,13 +946,16 @@ export default async function TodoPage({
 
 Use `skipUnauth` to skip auth-required queries without errors when not logged in.
 
-```tsx title="app/layout.tsx" showLineNumbers {7}
+```tsx title="app/layout.tsx" showLineNumbers {5-8}
 import { crpc, HydrateClient, prefetch } from '@/lib/convex/rsc';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   // Skip if not authenticated - returns null instead of erroring
   prefetch(
-    crpc.http.todos.list.queryOptions({ limit: 10 }, { skipUnauth: true })
+    crpc.http.todos.list.queryOptions(
+      { searchParams: { limit: '10' } },
+      { skipUnauth: true }
+    )
   );
 
   return <HydrateClient>{children}</HydrateClient>;

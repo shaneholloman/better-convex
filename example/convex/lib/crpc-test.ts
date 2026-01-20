@@ -740,9 +740,9 @@ export const http_query = publicRoute
   .searchParams(
     z.object({ q: z.string(), limit: z.coerce.number().optional() })
   )
-  .query(async ({ query }) => {
-    const q: string = query.q;
-    const limit: number | undefined = query.limit;
+  .query(async ({ searchParams }) => {
+    const q: string = searchParams.q;
+    const limit: number | undefined = searchParams.limit;
     return { q, limit };
   });
 
@@ -751,9 +751,9 @@ export const http_params_query = publicRoute
   .get('/api/users/:id/posts')
   .params(z.object({ id: zid('user') }))
   .searchParams(z.object({ page: z.coerce.number().optional() }))
-  .query(async ({ params, query }) => {
+  .query(async ({ params, searchParams }) => {
     const userId: Id<'user'> = params.id;
-    const page: number | undefined = query.page;
+    const page: number | undefined = searchParams.page;
     return { userId, page };
   });
 
@@ -854,13 +854,13 @@ export const error_http_params_wrong_prop = publicRoute
     return params.nonexistent;
   });
 
-// 17.5 Wrong query property
-export const error_http_query_wrong_prop = publicRoute
+// 17.5 Wrong searchParams property
+export const error_http_searchParams_wrong_prop = publicRoute
   .get('/api/search')
   .searchParams(z.object({ q: z.string() }))
-  .query(async ({ query }) => {
-    // @ts-expect-error - query.nonexistent does not exist
-    return query.nonexistent;
+  .query(async ({ searchParams }) => {
+    // @ts-expect-error - searchParams.nonexistent does not exist
+    return searchParams.nonexistent;
   });
 
 // 17.6 Output schema enforced at compile-time
@@ -923,9 +923,9 @@ export const http_all_schemas = publicRoute
   .searchParams(z.object({ notify: z.coerce.boolean().optional() }))
   .input(z.object({ title: z.string(), description: z.string().optional() }))
   .output(z.object({ taskId: z.string(), projectId: zid('projects') }))
-  .mutation(async ({ params, query, input }) => {
+  .mutation(async ({ params, searchParams, input }) => {
     const projectId: Id<'projects'> = params.projectId;
-    const notify: boolean | undefined = query.notify;
+    const notify: boolean | undefined = searchParams.notify;
     const title: string = input.title;
     const description: string | undefined = input.description;
     return { taskId: `task_${title}`, projectId };

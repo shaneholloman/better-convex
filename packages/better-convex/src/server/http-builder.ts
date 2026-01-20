@@ -108,6 +108,7 @@ type AnyHttpProcedureBuilderDef = HttpProcedureBuilderDef<
   any,
   any,
   any,
+  any,
   any
 >;
 
@@ -128,6 +129,7 @@ export interface HttpProcedureBuilder<
   TQuery extends UnsetMarker | z.ZodTypeAny = UnsetMarker,
   TMeta extends ProcedureMeta = ProcedureMeta,
   TMethod extends HttpMethod = HttpMethod,
+  TForm extends UnsetMarker | z.ZodTypeAny = UnsetMarker,
 > {
   _def: HttpProcedureBuilderDef<
     TCtx,
@@ -136,7 +138,8 @@ export interface HttpProcedureBuilder<
     TParams,
     TQuery,
     TMeta,
-    TMethod
+    TMethod,
+    TForm
   >;
 
   /** Add middleware to the procedure */
@@ -152,7 +155,8 @@ export interface HttpProcedureBuilder<
     TParams,
     TQuery,
     TMeta,
-    TMethod
+    TMethod,
+    TForm
   >;
 
   /** Set procedure metadata (shallow merged when chained) */
@@ -166,7 +170,8 @@ export interface HttpProcedureBuilder<
     TParams,
     TQuery,
     TMeta,
-    TMethod
+    TMethod,
+    TForm
   >;
 
   /** Define the route path and HTTP method */
@@ -181,7 +186,8 @@ export interface HttpProcedureBuilder<
     TParams,
     TQuery,
     TMeta,
-    M
+    M,
+    TForm
   >;
 
   /** GET endpoint (Hono-style) */
@@ -195,7 +201,8 @@ export interface HttpProcedureBuilder<
     TParams,
     TQuery,
     TMeta,
-    'GET'
+    'GET',
+    TForm
   >;
 
   /** POST endpoint (Hono-style) */
@@ -209,7 +216,8 @@ export interface HttpProcedureBuilder<
     TParams,
     TQuery,
     TMeta,
-    'POST'
+    'POST',
+    TForm
   >;
 
   /** PUT endpoint (Hono-style) */
@@ -223,7 +231,8 @@ export interface HttpProcedureBuilder<
     TParams,
     TQuery,
     TMeta,
-    'PUT'
+    'PUT',
+    TForm
   >;
 
   /** PATCH endpoint (Hono-style) */
@@ -237,7 +246,8 @@ export interface HttpProcedureBuilder<
     TParams,
     TQuery,
     TMeta,
-    'PATCH'
+    'PATCH',
+    TForm
   >;
 
   /** DELETE endpoint (Hono-style) */
@@ -251,7 +261,8 @@ export interface HttpProcedureBuilder<
     TParams,
     TQuery,
     TMeta,
-    'DELETE'
+    'DELETE',
+    TForm
   >;
 
   /** Define path parameter schema (for :param in path) */
@@ -265,7 +276,8 @@ export interface HttpProcedureBuilder<
     TSchema,
     TQuery,
     TMeta,
-    TMethod
+    TMethod,
+    TForm
   >;
 
   /** Define query parameter schema (?key=value) */
@@ -279,7 +291,8 @@ export interface HttpProcedureBuilder<
     TParams,
     TSchema,
     TMeta,
-    TMethod
+    TMethod,
+    TForm
   >;
 
   /** Define request body schema (for POST/PUT/PATCH) */
@@ -293,7 +306,8 @@ export interface HttpProcedureBuilder<
     TParams,
     TQuery,
     TMeta,
-    TMethod
+    TMethod,
+    TForm
   >;
 
   /** Define response schema */
@@ -307,7 +321,23 @@ export interface HttpProcedureBuilder<
     TParams,
     TQuery,
     TMeta,
-    TMethod
+    TMethod,
+    TForm
+  >;
+
+  /** Define form data schema (for multipart/form-data uploads) */
+  form<TSchema extends z.ZodTypeAny>(
+    schema: TSchema
+  ): HttpProcedureBuilder<
+    TInitialCtx,
+    TCtx,
+    TInput,
+    TOutput,
+    TParams,
+    TQuery,
+    TMeta,
+    TMethod,
+    TSchema
   >;
 
   /**
@@ -317,11 +347,11 @@ export interface HttpProcedureBuilder<
    */
   query<TResult>(
     handler: (
-      opts: HttpHandlerOpts<TCtx, TInput, TParams, TQuery>
+      opts: HttpHandlerOpts<TCtx, TInput, TParams, TQuery, TForm>
     ) => Promise<
       Response | (TOutput extends z.ZodTypeAny ? z.infer<TOutput> : TResult)
     >
-  ): HttpProcedure<TInput, TOutput, TParams, TQuery, TMethod>;
+  ): HttpProcedure<TInput, TOutput, TParams, TQuery, TMethod, TForm>;
 
   /**
    * Define the handler for POST/PUT/PATCH/DELETE endpoints (maps to useMutation on client).
@@ -330,15 +360,16 @@ export interface HttpProcedureBuilder<
    */
   mutation<TResult>(
     handler: (
-      opts: HttpHandlerOpts<TCtx, TInput, TParams, TQuery>
+      opts: HttpHandlerOpts<TCtx, TInput, TParams, TQuery, TForm>
     ) => Promise<
       Response | (TOutput extends z.ZodTypeAny ? z.infer<TOutput> : TResult)
     >
-  ): HttpProcedure<TInput, TOutput, TParams, TQuery, TMethod>;
+  ): HttpProcedure<TInput, TOutput, TParams, TQuery, TMethod, TForm>;
 }
 
 // Any-typed builder for internal use
 type AnyHttpProcedureBuilder = HttpProcedureBuilder<
+  any,
   any,
   any,
   any,
@@ -438,6 +469,17 @@ function createProcedure(
         parsedInput = def.inputSchema.parse(body as any);
       }
 
+      // Parse form data (multipart/form-data)
+      let parsedForm: unknown;
+      if (def.formSchema && request.method !== 'GET') {
+        const formData = await request.formData();
+        const formObj: Record<string, unknown> = {};
+        for (const [key, value] of formData.entries()) {
+          formObj[key] = value;
+        }
+        parsedForm = def.formSchema.parse(formObj);
+      }
+
       // Build handler options - ctx namespaced, include Hono Context `c`
       const handlerOpts: any = {
         ctx,
@@ -453,7 +495,11 @@ function createProcedure(
       }
 
       if (parsedQuery !== undefined) {
-        handlerOpts.query = parsedQuery;
+        handlerOpts.searchParams = parsedQuery;
+      }
+
+      if (parsedForm !== undefined) {
+        handlerOpts.form = parsedForm;
       }
 
       const result = await handler(handlerOpts);
@@ -516,7 +562,7 @@ function createProcedure(
   );
 
   // Attach route metadata and def for client type inference
-  const procedure = httpActionFn as HttpProcedure<any, any, any, any, any>;
+  const procedure = httpActionFn as HttpProcedure<any, any, any, any, any, any>;
   procedure.isHttp = true;
   procedure._crpcHttpRoute = def.route;
   procedure._def = {
@@ -524,6 +570,7 @@ function createProcedure(
     outputSchema: def.outputSchema,
     paramsSchema: def.paramsSchema,
     querySchema: def.querySchema,
+    formSchema: def.formSchema,
   };
   // Attach Hono handler for use with HttpRouterWithHono
   (procedure as any)._honoHandler = honoHandler;
@@ -650,6 +697,12 @@ function createHttpBuilder(
       });
     },
 
+    form(schema: any) {
+      return createNewHttpBuilder(def, {
+        formSchema: schema,
+      });
+    },
+
     query(handler: any) {
       return createProcedure(def, handler, 'query');
     },
@@ -676,7 +729,8 @@ export function createHttpProcedureBuilder<
     UnsetMarker,
     UnsetMarker,
     TMeta,
-    HttpMethod
+    HttpMethod,
+    UnsetMarker
   >['functionConfig']['base'];
   createContext: (ctx: GenericActionCtx<GenericDataModel>) => TCtx;
   meta: TMeta;
@@ -688,7 +742,8 @@ export function createHttpProcedureBuilder<
   UnsetMarker,
   UnsetMarker,
   TMeta,
-  HttpMethod
+  HttpMethod,
+  UnsetMarker
 > {
   return createHttpBuilder({
     middlewares: [],
@@ -705,6 +760,7 @@ export function createHttpProcedureBuilder<
     UnsetMarker,
     UnsetMarker,
     TMeta,
-    HttpMethod
+    HttpMethod,
+    UnsetMarker
   >;
 }
