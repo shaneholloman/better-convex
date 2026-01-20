@@ -6,22 +6,21 @@ alwaysApply: false
 
 # Convex HTTP - Advanced Patterns
 
-> Prerequisites: See [/docs/server/http](/docs/server/http) for cRPC HTTP router setup, React client, RSC prefetching
-
 ## Quick Reference
 
-| Pattern                                  | Use Case                 |
-| ---------------------------------------- | ------------------------ |
-| `publicRoute.get('/path').query()`       | Public GET endpoint      |
-| `authRoute.post('/path').mutation()`     | Auth-required POST       |
-| `optionalAuthRoute.get('/path').query()` | Optional auth endpoint   |
-| `.params(z.object({id}))`                | Path params `/todos/:id` |
-| `.searchParams(z.object({limit}))`       | Query params `?limit=10` |
-| `.input(z.object({...}))`                | JSON body (POST/PATCH)   |
-| `.output(z.object({...}))`               | Response validation      |
-| `.meta({ rateLimit: 'api/heavy' })`      | Procedure metadata       |
-| `.use(middleware)`                       | Custom middleware        |
-| `router({ endpoint1, endpoint2 })`       | Group endpoints          |
+| Pattern                                  | Use Case                    |
+| ---------------------------------------- | --------------------------- |
+| `publicRoute.get('/path').query()`       | Public GET endpoint         |
+| `authRoute.post('/path').mutation()`     | Auth-required POST          |
+| `optionalAuthRoute.get('/path').query()` | Optional auth endpoint      |
+| `.params(z.object({id}))`                | Path params `/todos/:id`    |
+| `.searchParams(z.object({limit}))`       | Query params `?limit=10`    |
+| `.input(z.object({...}))`                | JSON body (POST/PATCH)      |
+| `.form(z.object({file, description}))`   | FormData uploads            |
+| `.output(z.object({...}))`               | Response validation         |
+| `.meta({ rateLimit: 'api/heavy' })`      | Procedure metadata          |
+| `.use(middleware)`                       | Custom middleware           |
+| `router({ endpoint1, endpoint2 })`       | Group endpoints             |
 
 ## HTTP Setup with Hono
 
@@ -181,7 +180,7 @@ export const status = publicRoute
   }));
 ```
 
-### Combined Schemas (params + query + input)
+### Combined Schemas (params + searchParams + input)
 
 ```typescript
 export const createTask = authRoute
@@ -190,12 +189,12 @@ export const createTask = authRoute
   .searchParams(z.object({ notify: z.coerce.boolean().optional() }))
   .input(z.object({ title: z.string(), description: z.string().optional() }))
   .output(z.object({ taskId: zid("tasks"), projectId: zid("projects") }))
-  .mutation(async ({ ctx, params, query, input }) => {
+  .mutation(async ({ ctx, params, searchParams, input }) => {
     const taskId = await ctx.runMutation(api.tasks.create, {
       projectId: params.projectId,
       ...input,
     });
-    if (query.notify) {
+    if (searchParams.notify) {
       await ctx.scheduler.runAfter(0, internal.notifications.send, { taskId });
     }
     return { taskId, projectId: params.projectId };
@@ -476,6 +475,96 @@ export const discordWebhook = publicRoute
       message: "Unknown interaction",
     });
   });
+```
+
+## React Client (Hybrid API)
+
+The HTTP client uses a hybrid API with tRPC-style JSON body at root level and explicit `params`/`searchParams`. All client options go in args (1st param):
+
+```typescript
+// Input args: JSON body at root, explicit params/searchParams/headers
+type HttpInputArgs = {
+  params?: Record<string, string>;                // Path params (:id)
+  searchParams?: Record<string, string | string[]>;     // Query string params
+  form?: z.infer<TForm>;                         // Typed FormData (if .form() defined)
+  fetch?: typeof fetch;                          // Custom fetch
+  init?: RequestInit;                            // Request options
+  headers?: Record<string, string> | (() => ...); // Headers (incl. cookies)
+  [key: string]: unknown;                        // JSON body fields at root
+};
+```
+
+### Query Examples
+
+```typescript
+// GET with searchParams
+crpc.http.todos.list.queryOptions({ searchParams: { limit: '10' } });
+
+// GET with path params
+crpc.http.todos.get.queryOptions({ params: { id: todoId } });
+
+// GET with custom headers (in args)
+crpc.http.todos.list.queryOptions({
+  searchParams: { limit: '10' },
+  headers: { 'X-Custom': 'value' },
+});
+```
+
+### One-Time Fetch
+
+```typescript
+// For exports/downloads (no caching, mutation semantics)
+const exportTodos = useMutation(
+  crpc.http.todos.export.mutationOptions()
+);
+exportTodos.mutate({ params: { format: 'csv' } });
+```
+
+### Mutation Examples
+
+```typescript
+// mutationOptions(opts?) - TanStack Query options only
+const createTodo = useMutation(
+  crpc.http.todos.create.mutationOptions({
+    onSuccess: () => queryClient.invalidateQueries(...),
+  })
+);
+
+// POST with JSON body at root (tRPC-style)
+createTodo.mutate({ title: 'New Todo' });
+
+// PATCH with path params + JSON body at root
+updateTodo.mutate({ params: { id: '123' }, completed: true });
+
+// DELETE with path params
+deleteTodo.mutate({ params: { id: '123' } });
+
+// File upload with typed FormData (server uses .form() builder)
+uploadFile.mutate({ form: { file: selectedFile, description: 'My file' } });
+
+// Per-call client options (headers, abort signal, etc.)
+updateTodo.mutate({
+  params: { id: '123' },
+  completed: true,
+  headers: { 'X-Custom': 'value' },
+  init: { signal: controller.signal },
+});
+```
+
+### Cache Invalidation
+
+```typescript
+// Access mutation variables (HttpInputArgs)
+const updateTodo = useMutation(
+  crpc.http.todos.update.mutationOptions({
+    onSuccess: (_, vars) => {
+      // vars.params?.id for path params
+      queryClient.invalidateQueries(
+        crpc.http.todos.get.queryFilter({ params: { id: vars.params?.id } })
+      );
+    },
+  })
+);
 ```
 
 ## Server-Side Calls

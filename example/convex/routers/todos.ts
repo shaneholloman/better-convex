@@ -17,9 +17,9 @@ export const todosRouter = router({
     .get('/api/todos')
     .searchParams(z.object({ limit: z.coerce.number().optional() }))
     .output(z.array(todoOutput))
-    .query(async ({ ctx, query }) => {
+    .query(async ({ ctx, searchParams }) => {
       const result = await ctx.runQuery(api.todos.list, {
-        limit: query.limit ?? 10,
+        limit: searchParams.limit ?? 10,
       });
       return result.page.map((t) => ({
         _id: t._id,

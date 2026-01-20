@@ -25,15 +25,18 @@ export function HttpDemo() {
   const [newTitle, setNewTitle] = useState('');
 
   // Todos query options
-  const todosQueryOpts = crpc.http.todos.list.queryOptions({ limit: 10 });
+  const todosQueryOpts = crpc.http.todos.list.queryOptions({
+    searchParams: { limit: '10' },
+  });
 
   // 1. Health check (GET, public)
-  const health = useSuspenseQuery(crpc.http.health.queryOptions({}));
+  const health = useSuspenseQuery(crpc.http.health.queryOptions());
 
   // 2. List todos (GET, public)
   const todos = useSuspenseQuery(todosQueryOpts);
 
   // 3. Create todo (POST, auth required)
+  // mutationOptions(userOpts?, clientOpts?) - clean API
   const createTodo = useMutation(
     crpc.http.todos.create.mutationOptions({
       onSuccess: () => {
@@ -64,15 +67,18 @@ export function HttpDemo() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
+    // JSON body fields at root level (tRPC-style)
     createTodo.mutate({ title: newTitle.trim() });
   };
 
   const handleToggle = (id: Id<'todos'>, completed: boolean) => {
-    updateTodo.mutate({ id, completed: !completed });
+    // Path params explicit, JSON body at root
+    updateTodo.mutate({ params: { id }, completed: !completed });
   };
 
   const handleDelete = (id: Id<'todos'>) => {
-    deleteTodo.mutate({ id });
+    // Path params only
+    deleteTodo.mutate({ params: { id } });
   };
 
   return (
@@ -148,7 +154,7 @@ export function HttpDemo() {
                   className="size-5 rounded border text-xs disabled:opacity-50"
                   disabled={
                     updateTodo.isPending &&
-                    updateTodo.variables?.id === todo._id
+                    updateTodo.variables?.params?.id === todo._id
                   }
                   onClick={() => handleToggle(todo._id, todo.completed)}
                   type="button"
@@ -170,7 +176,7 @@ export function HttpDemo() {
                   className="text-destructive hover:text-destructive/80 disabled:opacity-50"
                   disabled={
                     deleteTodo.isPending &&
-                    deleteTodo.variables?.id === todo._id
+                    deleteTodo.variables?.params?.id === todo._id
                   }
                   onClick={() => handleDelete(todo._id)}
                   type="button"
@@ -185,33 +191,6 @@ export function HttpDemo() {
 
       {/* Examples Endpoints */}
       <ExamplesSection />
-
-      {/* Code Examples */}
-      <section className="mt-8 rounded-lg border p-4">
-        <h2 className="mb-3 font-semibold text-lg">Code Examples</h2>
-        <pre className="overflow-x-auto rounded bg-muted p-3 text-xs">
-          {`// Hook setup
-const crpc = useCRPC();
-const queryClient = useQueryClient();
-
-// GET requests → useSuspenseQuery (data is always defined)
-const health = useSuspenseQuery(crpc.http.health.queryOptions({}));
-const todos = useSuspenseQuery(crpc.http.todos.list.queryOptions({ limit: 10 }));
-
-// POST/PATCH/DELETE → mutationOptions
-const createTodo = useMutation({
-  ...crpc.http.todos.create.mutationOptions(),
-  onSuccess: () => {
-    queryClient.invalidateQueries({
-      queryKey: crpc.http.todos.list.queryKey(),
-    });
-  },
-});
-
-// Trigger mutation
-createTodo.mutate({ title: 'New Todo' });`}
-        </pre>
-      </section>
     </div>
   );
 }
@@ -223,6 +202,62 @@ function ExamplesSection() {
   const queryClient = useQueryClient();
   const [webhookResult, setWebhookResult] = useState<string | null>(null);
   const [webhookLoading, setWebhookLoading] = useState(false);
+
+  // -------------------------------------------------------------------------
+  // Examples Router Usage - Full Type Coverage
+  // -------------------------------------------------------------------------
+
+  // GET with searchParams only
+  const _searchExample = useSuspenseQuery(
+    crpc.http.examples.searchExample.queryOptions({
+      searchParams: { q: 'test', page: '1', tags: ['demo'] },
+    })
+  );
+
+  // GET with params only
+  const _paramsExample = useSuspenseQuery(
+    crpc.http.examples.paramsExample.queryOptions({
+      params: { id: 'k57a9gkc0dgfnvgptp2vc4sc2d7b248j' as Id<'todos'> },
+    })
+  );
+
+  // GET with params + searchParams
+  const _paramsSearchExample = useSuspenseQuery(
+    crpc.http.examples.paramsSearchParamsExample.queryOptions({
+      params: { id: 'k57a9gkc0dgfnvgptp2vc4sc2d7b248j' as Id<'todos'> },
+      searchParams: { limit: '5', offset: '0' },
+    })
+  );
+
+  // POST with input only (JSON body at root)
+  const _inputMutation = useMutation(
+    crpc.http.examples.inputExample.mutationOptions()
+  );
+  void _inputMutation.mutate({ name: 'test', count: 5 });
+
+  // PATCH with params + input
+  const _paramsInputMutation = useMutation(
+    crpc.http.examples.paramsInputExample.mutationOptions()
+  );
+  void _paramsInputMutation.mutate({ params: { id: 'abc' }, name: 'updated' });
+
+  // POST with params + searchParams + input (all combined)
+  const _allCombinedMutation = useMutation(
+    crpc.http.examples.allCombinedExample.mutationOptions()
+  );
+  void _allCombinedMutation.mutate({
+    params: { id: 'abc' },
+    searchParams: { notify: 'true' },
+    tags: ['a'],
+  });
+
+  // POST FormData upload (raw mutation)
+  const _uploadMutation = useMutation(
+    crpc.http.examples.uploadExample.mutationOptions()
+  );
+  void _uploadMutation.mutate({
+    form: { file: new Blob(), description: 'test' },
+  });
 
   const handleWebhook = async () => {
     setWebhookLoading(true);
@@ -244,8 +279,9 @@ function ExamplesSection() {
   };
 
   const handleDownload = async (format: 'json' | 'csv') => {
+    // Hono-style: { params: { ... } } for path params
     const data = await queryClient.fetchQuery(
-      crpc.http.todos.download.queryOptions({ format })
+      crpc.http.todos.download.queryOptions({ params: { format } })
     );
 
     const content =

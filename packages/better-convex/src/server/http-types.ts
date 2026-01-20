@@ -38,6 +38,7 @@ export interface HttpProcedureBuilderDef<
   TQuery extends UnsetMarker | z.ZodTypeAny,
   TMeta extends ProcedureMeta,
   TMethod extends HttpMethod = HttpMethod,
+  TForm extends UnsetMarker | z.ZodTypeAny = UnsetMarker,
 > {
   middlewares: AnyMiddleware[];
   meta: TMeta;
@@ -45,6 +46,7 @@ export interface HttpProcedureBuilderDef<
   outputSchema?: z.ZodTypeAny;
   paramsSchema?: z.ZodTypeAny;
   querySchema?: z.ZodTypeAny;
+  formSchema?: z.ZodTypeAny;
   route?: HttpRouteDefinition<TMethod>;
   functionConfig: {
     base: HttpActionConstructor;
@@ -56,6 +58,7 @@ export interface HttpProcedureBuilderDef<
     output: TOutput;
     params: TParams;
     query: TQuery;
+    form: TForm;
   };
 }
 
@@ -79,6 +82,7 @@ export interface HttpProcedure<
   TParams extends UnsetMarker | z.ZodTypeAny = any,
   TQuery extends UnsetMarker | z.ZodTypeAny = any,
   TMethod extends HttpMethod = HttpMethod,
+  TForm extends UnsetMarker | z.ZodTypeAny = any,
 > extends HttpActionHandler {
   _crpcHttpRoute: HttpRouteDefinition<TMethod>;
   /** @internal Expose def for client-side type inference */
@@ -87,6 +91,7 @@ export interface HttpProcedure<
     outputSchema?: TOutput;
     paramsSchema?: TParams;
     querySchema?: TQuery;
+    formSchema?: TForm;
   };
 }
 
@@ -95,19 +100,24 @@ export interface HttpProcedure<
  * - ctx: context properties (userId, db, runQuery, etc.)
  * - input: parsed JSON body
  * - params: parsed path params
- * - query: parsed query params
+ * - searchParams: parsed query params
+ * - form: parsed form data
  * - c: Hono Context for Response helpers (c.json, c.text, c.redirect, c.header, c.req)
  */
 export type HttpHandlerOpts<
   TCtx,
   TInput extends UnsetMarker | z.ZodTypeAny,
   TParams extends UnsetMarker | z.ZodTypeAny,
-  TQuery extends UnsetMarker | z.ZodTypeAny,
+  TSearchParams extends UnsetMarker | z.ZodTypeAny,
+  TForm extends UnsetMarker | z.ZodTypeAny,
 > = { ctx: TCtx; c: Context } & (TInput extends UnsetMarker
   ? object
   : { input: z.output<TInput> }) &
   (TParams extends UnsetMarker ? object : { params: z.output<TParams> }) &
-  (TQuery extends UnsetMarker ? object : { query: z.output<TQuery> });
+  (TSearchParams extends UnsetMarker
+    ? object
+    : { searchParams: z.output<TSearchParams> }) &
+  (TForm extends UnsetMarker ? object : { form: z.output<TForm> });
 
 /**
  * Hono handler with cRPC route metadata attached
