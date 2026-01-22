@@ -117,16 +117,17 @@ export const profile = authQuery
 
 ## Input Access
 
-Middleware placed **after** `.input()` receives typed input. Use it to fetch related data and add to context:
+Middleware placed **after** `.input()` receives typed input. Use it to fetch related data:
 
-```ts showLineNumbers {4-5}
+```ts showLineNumbers {4-6}
 export const queryWithProject = publicQuery
   .input(z.object({ projectId: zid('projects') }))
   .use(async ({ ctx, input, next }) => {
     const project = await ctx.db.get(input.projectId);
-    return next({ ctx: { ...ctx, project } });
+    // Add to context, enrich input, or override fields
+    return next({ ctx: { ...ctx, project }, input: { project, projectId: project.slug } });
   })
-  .query(async ({ ctx }) => ctx.project); // project available
+  .query(async ({ ctx, input }) => input.project); // both work
 ```
 
 Before `.input()`, input is `unknown`. Use `getRawInput()` for raw input before validation.
