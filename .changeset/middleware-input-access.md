@@ -1,17 +1,17 @@
 ---
-"better-convex": minor
+"better-convex": patch
 ---
 
-Middleware now receives `input` and `getRawInput` parameters (tRPC-style):
+Middleware now receives `input` and `getRawInput` parameters:
 
 ```ts
 publicQuery
-  .input(z.object({ projectId: zid('projects') }))
+  .input(z.object({ projectId: zid("projects") }))
   .use(async ({ ctx, input, next }) => {
     // input.projectId is typed!
     const project = await ctx.db.get(input.projectId);
     return next({ ctx: { ...ctx, project } });
-  })
+  });
 ```
 
 - Middleware after `.input()` receives typed input
