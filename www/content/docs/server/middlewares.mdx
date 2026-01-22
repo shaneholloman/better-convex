@@ -121,11 +121,11 @@ Middleware placed **after** `.input()` receives typed input. Use it to fetch rel
 
 ```ts showLineNumbers {4-6}
 export const queryWithProject = publicQuery
-  .input(z.object({ projectId: zid('projects') }))
+  .input(z.object({ projectId: zid('projects'), name: z.string() }))
   .use(async ({ ctx, input, next }) => {
     const project = await ctx.db.get(input.projectId);
     // Add to context, enrich input, or override fields
-    return next({ ctx: { ...ctx, project }, input: { project, projectId: project.slug } });
+    return next({ ctx: { ...ctx, project }, input: { ...input, project, name: input.name.trim() } });
   })
   .query(async ({ ctx, input }) => input.project); // both work
 ```
