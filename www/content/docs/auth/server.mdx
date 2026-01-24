@@ -354,39 +354,76 @@ user: authSchema.user.index('username', ['username']),
 
 Now we'll expose Better Auth's endpoints via HTTP. We use Hono as the router:
 
-```ts title="convex/functions/http.ts" showLineNumbers {1-5,9-18,21}
-import '../lib/http-polyfills';
-import { authMiddleware } from 'better-convex/auth';
-import { createHttpRouter } from 'better-convex/server';
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
-import { router } from '../lib/crpc';
-import { createAuth } from './auth';
+<Tabs groupId="router" items={["With crpc", "Without crpc"]} persist>
+  <Tab value="With crpc">
+    ```ts title="convex/functions/http.ts" showLineNumbers {1-5,9-18,21}
+    import '../lib/http-polyfills';
+    import { authMiddleware } from 'better-convex/auth';
+    import { createHttpRouter } from 'better-convex/server';
+    import { Hono } from 'hono';
+    import { cors } from 'hono/cors';
+    import { router } from '../lib/crpc';
+    import { createAuth } from './auth';
 
-const app = new Hono();
+    const app = new Hono();
 
-// CORS for API routes
-app.use(
-  '/api/*',
-  cors({
-    origin: process.env.SITE_URL!,
-    allowHeaders: ['Content-Type', 'Authorization', 'Better-Auth-Cookie'],
-    exposeHeaders: ['Set-Better-Auth-Cookie'],
-    credentials: true,
-  })
-);
+    // CORS for API routes
+    app.use(
+      '/api/*',
+      cors({
+        origin: process.env.SITE_URL!,
+        allowHeaders: ['Content-Type', 'Authorization', 'Better-Auth-Cookie'],
+        exposeHeaders: ['Set-Better-Auth-Cookie'],
+        credentials: true,
+      })
+    );
 
-// Better Auth middleware
-app.use(authMiddleware(createAuth));
+    // Better Auth middleware
+    app.use(authMiddleware(createAuth));
 
-export const appRouter = router({
-  // Add your routers here
-});
+    export const appRouter = router({
+      // Add your routers here
+    });
 
-export default createHttpRouter(app, appRouter);
-```
+    export default createHttpRouter(app, appRouter);
+    ```
 
+  </Tab>
+  <Tab value="Without crpc">
+    ```ts title="convex/functions/http.ts" showLineNumbers {1-4,8-17,20}
+    import { authMiddleware } from "better-convex/auth";
+    import {
+        type HonoWithConvex,
+        HttpRouterWithHono,
+    } from "convex-helpers/server/hono";
+    import { Hono } from "hono";
+    import { cors } from "hono/cors";
+    import type { ActionCtx } from "./_generated/server";
+    import { createAuth } from "./auth";
+
+    const app: HonoWithConvex<ActionCtx> = new Hono();
+
+    // CORS for API routes
+    app.use(
+      "/api/*",
+        cors({
+          origin: process.env.SITE_URL!,
+            allowHeaders: ["Content-Type", "Authorization", "Better-Auth-Cookie"],
+            exposeHeaders: ["Set-Better-Auth-Cookie"],
+            credentials: true,
+        }),
+    );
+
+    // Better Auth middleware
+    app.use(authMiddleware(createAuth));
+
+    export default new HttpRouterWithHono(app);
+    ```
+  </Tab>
+</Tabs>
+<Callout type="info">
 See [HTTP Router](/docs/server/http) for route examples, webhooks, and streaming.
+</Callout   >
 
 ## 5. Sync Environment Variables
 
