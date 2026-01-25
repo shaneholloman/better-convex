@@ -393,22 +393,18 @@ Now we'll expose Better Auth's endpoints via HTTP. We use Hono as the router:
     ```ts title="convex/functions/http.ts" showLineNumbers {1-4,8-17,20}
     import '../lib/http-polyfills';
     import { authMiddleware } from "better-convex/auth";
-    import {
-        type HonoWithConvex,
-        HttpRouterWithHono,
-    } from "convex-helpers/server/hono";
+    import { HttpRouterWithHono } from "better-convex/server";
     import { Hono } from "hono";
     import { cors } from "hono/cors";
-    import type { ActionCtx } from "./_generated/server";
     import { createAuth } from "./auth";
 
-    const app: HonoWithConvex<ActionCtx> = new Hono();
+    const app = new Hono();
 
     // CORS for API routes
     app.use(
-      "/api/*",
+        "/api/*",
         cors({
-          origin: process.env.SITE_URL!,
+            origin: process.env.SITE_URL!,
             allowHeaders: ["Content-Type", "Authorization", "Better-Auth-Cookie"],
             exposeHeaders: ["Set-Better-Auth-Cookie"],
             credentials: true,
