@@ -492,6 +492,50 @@ export default async function RootLayout({ children }) {
 
 For TanStack Start, follow Steps 1-7 above for core auth migration. This section covers framework-specific setup.
 
+### HTTP Router
+
+Update the Convex HTTP router to use Hono with the auth middleware:
+
+**Before:**
+```ts showLineNumbers title="convex/http.ts"
+import { httpRouter } from 'convex/server';
+import { authComponent, createAuth } from './auth';
+
+const http = httpRouter();
+
+authComponent.registerRoutes(http, createAuth);
+
+export default http;
+```
+
+**After:**
+```ts showLineNumbers title="convex/functions/http.ts" {1-4,8-17,20}
+import '../lib/http-polyfills';
+import { authMiddleware } from 'better-convex/auth';
+import { HttpRouterWithHono } from 'better-convex/server';
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { createAuth } from './auth';
+
+const app = new Hono();
+
+// CORS for API routes
+app.use(
+  '/api/*',
+  cors({
+    origin: process.env.SITE_URL!,
+    allowHeaders: ['Content-Type', 'Authorization', 'Better-Auth-Cookie'],
+    exposeHeaders: ['Set-Better-Auth-Cookie'],
+    credentials: true,
+  }),
+);
+
+// Better Auth middleware
+app.use(authMiddleware(createAuth));
+
+export default new HttpRouterWithHono(app);
+```
+
 ### Server Setup
 
 Create server-side auth helpers using `@convex-dev/better-auth`:
