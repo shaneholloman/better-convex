@@ -421,30 +421,21 @@ If you were using the auto-generated component schema, you'll now define auth ta
 
 ## Next.js Migration
 
-If you're using Next.js, migrate the server-side helpers too.
+If you're using Next.js with CRPC, migrate the server-side helpers.
 
-### Server Setup
+<Callout icon={<InfoIcon />}>
+**Not using CRPC?** Keep using `convexBetterAuthNextJs` from `@convex-dev/better-auth/nextjs`. The migration above covers everything you need.
+</Callout>
+
+### Server Setup (CRPC)
 
 **Before:**
-```ts showLineNumbers title="lib/auth-server.ts" {2,4-11}
-import { isAuthError } from "@/lib/utils";
+```ts showLineNumbers title="lib/auth-server.ts"
 import { convexBetterAuthNextJs } from "@convex-dev/better-auth/nextjs";
 
-export const {
-  handler,
-  preloadAuthQuery,
-  isAuthenticated,
-  getToken,
-  fetchAuthQuery,
-  fetchAuthMutation,
-  fetchAuthAction,
-} = convexBetterAuthNextJs({
+export const { handler, getToken } = convexBetterAuthNextJs({
   convexUrl: process.env.NEXT_PUBLIC_CONVEX_URL!,
   convexSiteUrl: process.env.NEXT_PUBLIC_CONVEX_SITE_URL!,
-  jwtCache: {
-    enabled: true,
-    isAuthError,
-  },
 });
 ```
 
@@ -461,27 +452,10 @@ export const { createContext, createCaller, handler } = convexBetterAuth({
 });
 ```
 
-### API Route
+### Root Layout (CRPC)
 
 **Before:**
-```ts showLineNumbers title="app/api/auth/[...all]/route.ts"
-import { handler } from "@/lib/auth-server";
-
-export const { GET, POST } = handler;
-```
-
-**After:**
-```ts showLineNumbers title="app/api/auth/[...all]/route.ts"
-import { handler } from "@/lib/convex/server";
-
-export const { GET, POST } = handler;
-```
-
-### Root Layout
-
-**Before:**
-```tsx showLineNumbers title="app/layout.tsx" {3,7}
-import "./globals.css";
+```tsx showLineNumbers title="app/layout.tsx" {3,6}
 import { ConvexClientProvider } from "./ConvexClientProvider";
 import { getToken } from "@/lib/auth-server";
 
@@ -490,9 +464,7 @@ export default async function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <ConvexClientProvider initialToken={token}>
-          {children}
-        </ConvexClientProvider>
+        <ConvexClientProvider initialToken={token}>{children}</ConvexClientProvider>
       </body>
     </html>
   );
@@ -500,8 +472,7 @@ export default async function RootLayout({ children }) {
 ```
 
 **After:**
-```tsx showLineNumbers title="app/layout.tsx" {3,7}
-import "./globals.css";
+```tsx showLineNumbers title="app/layout.tsx" {3,6}
 import { BetterConvexProvider } from "@/lib/convex/convex-provider";
 import { createCaller } from "@/lib/convex/server";
 
@@ -510,9 +481,7 @@ export default async function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <BetterConvexProvider token={token}>
-          {children}
-        </BetterConvexProvider>
+        <BetterConvexProvider token={token}>{children}</BetterConvexProvider>
       </body>
     </html>
   );
@@ -521,65 +490,14 @@ export default async function RootLayout({ children }) {
 
 ## TanStack Start Migration
 
-For TanStack Start, the migration is similar to the core steps above. The `@convex-dev/better-auth` package provides `convexBetterAuthReactStart` which better-convex doesn't replace — continue using it from the original package.
-
-### Server Setup
-
-Keep using `@convex-dev/better-auth` for TanStack Start server helpers:
+For TanStack Start, follow the core steps above (Steps 1-7). Keep using `@convex-dev/better-auth` for server helpers — better-convex doesn't replace them:
 
 ```ts showLineNumbers title="src/lib/auth-server.ts"
 import { convexBetterAuthReactStart } from '@convex-dev/better-auth/react-start';
 
-export const {
-  handler,
-  getToken,
-  fetchAuthQuery,
-  fetchAuthMutation,
-  fetchAuthAction,
-} = convexBetterAuthReactStart({
+export const { handler, getToken } = convexBetterAuthReactStart({
   convexUrl: process.env.VITE_CONVEX_URL!,
   convexSiteUrl: process.env.VITE_CONVEX_SITE_URL!,
-});
-```
-
-### Client Setup
-
-Update the client to use `createAuthMutations`:
-
-```ts showLineNumbers title="src/lib/auth-client.tsx" {3,12-17}
-import { convexClient } from '@convex-dev/better-auth/client/plugins';
-import { createAuthClient } from 'better-auth/react';
-import { createAuthMutations } from 'better-convex/react';
-
-export const authClient = createAuthClient({
-  plugins: [
-    convexClient(),
-    // ... other plugins
-  ],
-});
-
-export const {
-  useSignOutMutationOptions,
-  useSignInSocialMutationOptions,
-  useSignInMutationOptions,
-  useSignUpMutationOptions,
-} = createAuthMutations(authClient);
-```
-
-### Protected Routes
-
-Use TanStack Router's `beforeLoad` for auth guards:
-
-```tsx showLineNumbers title="src/routes/_authed.tsx"
-import { createFileRoute, Outlet, redirect } from '@tanstack/react-router';
-
-export const Route = createFileRoute('/_authed')({
-  beforeLoad: ({ context }) => {
-    if (!context.isAuthenticated) {
-      throw redirect({ to: '/sign-in' });
-    }
-  },
-  component: () => <Outlet />,
 });
 ```
 
