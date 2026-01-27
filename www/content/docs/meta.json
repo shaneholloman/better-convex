@@ -39,6 +39,7 @@
     "auth/admin",
     "auth/organizations",
     "auth/polar",
+    "auth/migration",
     "---Reference---",
     "cli",
     "migration",
