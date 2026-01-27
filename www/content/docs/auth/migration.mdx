@@ -153,6 +153,7 @@ const authFunctions: AuthFunctions = internal.auth;
 export const authClient = createClient<DataModel, typeof schema>({
   authFunctions,
   schema,
+  internalMutation, // Optional: custom mutation wrapper for triggers
   triggers: {
     user: {
       beforeCreate: async (_ctx, data) => {
@@ -214,7 +215,9 @@ export const {
   updateOne,
   getLatestJwks,
   rotateKeys,
-} = createApi(schema, createAuth);
+} = createApi(schema, createAuth, {
+  internalMutation, // Optional: same wrapper as createClient
+});
 
 // Generate trigger handlers
 export const {
@@ -242,6 +245,10 @@ export const auth = betterAuth(createAuthOptions({} as any));
 
 <Callout icon={<InfoIcon />}>
 **Why two adapters?** Use `httpAdapter(ctx)` for HTTP routes/actions. Use `adapter(ctx, createAuthOptions)` for queries/mutations with direct DB access (better performance).
+</Callout>
+
+<Callout icon={<InfoIcon />}>
+**Custom mutation wrapper:** The optional `internalMutation` option wraps auth mutations to support custom logic like Convex Triggers.
 </Callout>
 
 ## Step 5: Update http.ts
@@ -488,6 +495,95 @@ If you were using the auto-generated component schema, you'll now define auth ta
   </Tab>
 </Tabs>
 
+## Step 9: Migrate Helper Methods
+
+The component pattern provided several helper methods on `authComponent`. These now use direct `ctx.db` access.
+
+### getAuthUser / safeGetAuthUser
+
+**Before:**
+```ts showLineNumbers
+// In a query or mutation
+const user = await authComponent.getAuthUser(ctx); // throws if not found
+const user = await authComponent.safeGetAuthUser(ctx); // returns null
+```
+
+**After:**
+```ts showLineNumbers {1,5-6,9-14}
+import { getAuthUserIdentity } from 'better-convex/auth';
+
+// In a query or mutation
+export const myQuery = query({
+  handler: async (ctx) => {
+    const identity = await getAuthUserIdentity(ctx);
+    if (!identity) return null; // or throw
+
+    // Use ctx.db directly
+    const user = await ctx.db.get('user', identity.userId);
+    if (!user) throw new ConvexError("User not found");
+
+    return user;
+  },
+});
+```
+
+### getHeaders
+
+**Before:**
+```ts showLineNumbers
+const headers = await authComponent.getHeaders(ctx);
+```
+
+**After:**
+```ts showLineNumbers {1,4}
+import { getHeaders } from 'better-convex/auth';
+
+// In a query or mutation
+const headers = await getHeaders(ctx);
+```
+
+### getAuth
+
+**Before:**
+```ts showLineNumbers
+const { auth, headers } = await authComponent.getAuth(createAuth, ctx);
+const session = await auth.api.getSession({ headers });
+```
+
+**After:**
+```ts showLineNumbers {1,5-6}
+import { getHeaders, getSession } from 'better-convex/auth';
+
+// Option 1: Use helper for common operations
+const session = await getSession(ctx);
+
+// Option 2: Use Better Auth API directly
+const headers = await getHeaders(ctx);
+const auth = getAuth(ctx); // Your getAuth function from auth.ts
+const session = await auth.api.getSession({ headers });
+```
+
+### clientApi().getAuthUser
+
+**Before:**
+```ts showLineNumbers title="convex/auth.ts"
+export const { getAuthUser } = authComponent.clientApi();
+```
+
+**After:**
+```ts showLineNumbers title="convex/functions/queries.ts" {1,4-10}
+import { getAuthUserIdentity } from 'better-convex/auth';
+
+export const getAuthUser = query({
+  handler: async (ctx) => {
+    const identity = await getAuthUserIdentity(ctx);
+    if (!identity) throw new ConvexError("Unauthenticated");
+
+    return await ctx.db.get('user', identity.userId);
+  },
+});
+```
+
 ## Migration Checklist
 
 - [ ] **Dependencies:** Remove `@convex-dev/better-auth`, install `better-convex`
@@ -498,6 +594,7 @@ If you were using the auto-generated component schema, you'll now define auth ta
 - [ ] **auth-client.ts:** Add `createAuthMutations`, update imports
 - [ ] **Provider:** Replace `ConvexBetterAuthProvider` with `ConvexAuthProvider`
 - [ ] **AuthBoundary:** Remove and use provider callbacks
+- [ ] **Helper methods:** Replace `authComponent.getAuthUser` etc with `ctx.db` access
 - [ ] **Schema:** Generate or define auth tables in main schema
 - [ ] **Env vars:** Run `npx better-convex env sync --auth` for JWKS
 - [ ] **Test:** Verify sign-in, sign-up, session persistence, and token refresh
@@ -573,7 +670,7 @@ export default async function RootLayout({ children }) {
 
 ## TanStack Start Migration
 
-For TanStack Start, follow Steps 1-8 above for core auth migration. This section covers framework-specific setup.
+For TanStack Start, follow Steps 1-9 above for core auth migration. This section covers framework-specific setup.
 
 ### Server Setup
 
