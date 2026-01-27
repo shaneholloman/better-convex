@@ -2,18 +2,13 @@
 "better-convex": patch
 ---
 
-Support nested file structures in meta generation. Codegen now recursively scans subdirectories in the functions directory using `globSync('**/*.ts')`.
+Support nested file structures in meta generation:
 
-Nested files use their path as the namespace key with `/` separator:
-
-```typescript
-// convex/functions/items/queries.ts exports are now included
-export const meta = {
-  todos: { create: {...}, list: {...} },
-  'items/queries': { list: {...}, get: {...} },
-} as const;
+```
+convex/functions/
+  todos.ts           → crpc.todos.*
+  items/queries.ts   → crpc.items.queries.*
 ```
 
-- Backward compatible: existing flat structure works unchanged
+- Organize functions in subdirectories
 - `_` prefixed files/directories are excluded
-- Shared `getFuncRef`, `getFunctionType`, `getFunctionMeta` utilities extracted to `meta-utils.ts`
