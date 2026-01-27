@@ -1,5 +1,21 @@
 # better-convex
 
+## 0.5.5
+
+### Patch Changes
+
+- [#56](https://github.com/udecode/better-convex/pull/56) [`b34a396`](https://github.com/udecode/better-convex/commit/b34a39621af83c6b6f2b2e6e11e35997981c5bb4) Thanks [@zbeyens](https://github.com/zbeyens)! - Add `ConvexProviderWithAuth` for `@convex-dev/auth` users (React Native):
+
+  ```tsx
+  import { ConvexProviderWithAuth } from "better-convex/react";
+
+  <ConvexProviderWithAuth client={convex} useAuth={useAuthFromConvexDev}>
+    <App />
+  </ConvexProviderWithAuth>;
+  ```
+
+  Enables `skipUnauth` queries, `useAuth`, and conditional rendering components.
+
 ## 0.5.4
 
 ### Patch Changes
