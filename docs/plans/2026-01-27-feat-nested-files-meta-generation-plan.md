@@ -246,7 +246,7 @@ export function getFunctionMeta(
 - [x] Shared `getFunctionType` utility created and used
 - [x] Edge cases handled (empty paths, invalid inputs)
 - [x] Existing tests pass
-- [ ] Add tests for nested file structures
+- [x] Add tests for nested file structures
 
 ## Files to Modify
 
