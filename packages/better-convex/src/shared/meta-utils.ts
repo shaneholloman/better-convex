@@ -74,7 +74,7 @@ export function getFunctionType(
   if (path.length < 2) return 'query';
 
   // Last segment is function name, rest is namespace joined by '/'
-  const fnName = path[path.length - 1];
+  const fnName = path.at(-1)!;
   const namespace = path.slice(0, -1).join('/');
 
   const fnType = meta[namespace]?.[fnName]?.type;
@@ -97,9 +97,9 @@ export function getFunctionMeta(
   path: string[],
   meta: Meta
 ): FnMeta | undefined {
-  if (path.length < 2) return undefined;
+  if (path.length < 2) return;
 
-  const fnName = path[path.length - 1];
+  const fnName = path.at(-1)!;
   const namespace = path.slice(0, -1).join('/');
 
   return meta[namespace]?.[fnName];

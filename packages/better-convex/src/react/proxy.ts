@@ -27,7 +27,11 @@ import {
   type InfiniteQueryOptsParam,
 } from '../crpc/types';
 import type { CallerMeta } from '../server/caller';
-import { getFuncRef, getFunctionMeta, getFunctionType } from '../shared/meta-utils';
+import {
+  getFuncRef,
+  getFunctionMeta,
+  getFunctionType,
+} from '../shared/meta-utils';
 import {
   useConvexActionOptions,
   useConvexActionQueryOptions,

@@ -22,12 +22,18 @@ describe('getFunctionType', () => {
   });
 
   it('returns type for nested namespace', () => {
-    expect(getFunctionType(['items', 'queries', 'list'], testMeta)).toBe('query');
-    expect(getFunctionType(['items', 'queries', 'get'], testMeta)).toBe('query');
+    expect(getFunctionType(['items', 'queries', 'list'], testMeta)).toBe(
+      'query'
+    );
+    expect(getFunctionType(['items', 'queries', 'get'], testMeta)).toBe(
+      'query'
+    );
   });
 
   it('returns type for deeply nested namespace', () => {
-    expect(getFunctionType(['deep', 'nested', 'path', 'action'], testMeta)).toBe('action');
+    expect(
+      getFunctionType(['deep', 'nested', 'path', 'action'], testMeta)
+    ).toBe('action');
   });
 
   it('returns query for unknown function', () => {
@@ -42,11 +48,15 @@ describe('getFunctionType', () => {
 
 describe('getFunctionMeta', () => {
   it('returns meta for flat namespace', () => {
-    expect(getFunctionMeta(['todos', 'create'], testMeta)).toEqual({ type: 'mutation' });
+    expect(getFunctionMeta(['todos', 'create'], testMeta)).toEqual({
+      type: 'mutation',
+    });
   });
 
   it('returns meta for nested namespace', () => {
-    expect(getFunctionMeta(['items', 'queries', 'list'], testMeta)).toEqual({ type: 'query' });
+    expect(getFunctionMeta(['items', 'queries', 'list'], testMeta)).toEqual({
+      type: 'query',
+    });
   });
 
   it('returns undefined for unknown function', () => {
