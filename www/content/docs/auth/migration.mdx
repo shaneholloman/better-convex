@@ -251,7 +251,47 @@ export const auth = betterAuth(createAuthOptions({} as any));
 **Custom mutation wrapper:** The optional `internalMutation` option wraps auth mutations to support custom logic like Convex Triggers.
 </Callout>
 
-## Step 5: Update http.ts
+## Step 5: Add Polyfills
+
+Convex's runtime environment doesn't include `MessageChannel`, which Better Auth's HTTP handling requires. Create this polyfill file:
+
+```ts title="convex/lib/http-polyfills.ts" showLineNumbers
+// polyfill MessageChannel without using node:events
+if (typeof MessageChannel === 'undefined') {
+  class MockMessagePort {
+    onmessage: ((ev: MessageEvent) => void) | undefined;
+    onmessageerror: ((ev: MessageEvent) => void) | undefined;
+
+    addEventListener() {}
+    close() {}
+
+    dispatchEvent(_event: Event): boolean {
+      return false;
+    }
+
+    postMessage(_message: unknown, _transfer: Transferable[] = []) {}
+    removeEventListener() {}
+    start() {}
+  }
+
+  class MockMessageChannel {
+    port1: MockMessagePort;
+    port2: MockMessagePort;
+
+    constructor() {
+      this.port1 = new MockMessagePort();
+      this.port2 = new MockMessagePort();
+    }
+  }
+
+  globalThis.MessageChannel =
+    MockMessageChannel as unknown as typeof MessageChannel;
+}
+```
+
+Import this at the top of your HTTP file (before other imports).
+
+## Step 6: Update http.ts
 
 Update the Convex HTTP router to use Hono with the auth middleware.
 
@@ -273,7 +313,8 @@ Update the HTTP router:
 
 <Tabs groupId="router" items={["With cRPC", "Without cRPC"]} persist>
   <Tab value="Without cRPC">
-    ```ts title="convex/functions/http.ts" showLineNumbers {1-4,8-17,20}
+    ```ts title="convex/functions/http.ts" showLineNumbers {1-5,9-18,21}
+    import '../lib/http-polyfills';
     import { authMiddleware } from 'better-convex/auth';
     import { HttpRouterWithHono } from 'better-convex/server';
     import { Hono } from 'hono';
@@ -300,7 +341,8 @@ Update the HTTP router:
     ```
   </Tab>
   <Tab value="With cRPC">
-    ```ts title="convex/functions/http.ts" showLineNumbers {1-5,9-18,21}
+    ```ts title="convex/functions/http.ts" showLineNumbers {1-6,10-19,22}
+    import '../lib/http-polyfills';
     import { authMiddleware } from 'better-convex/auth';
     import { createHttpRouter } from 'better-convex/server';
     import { Hono } from 'hono';
@@ -334,7 +376,7 @@ Update the HTTP router:
   </Tab>
 </Tabs>
 
-## Step 6: Update auth-client.ts
+## Step 7: Update auth-client.ts
 
 Now we'll update the client-side auth setup.
 
@@ -378,7 +420,7 @@ export const {
 
 The new `createAuthMutations` helper generates TanStack Query mutation options for common auth operations.
 
-## Step 7: Update Provider
+## Step 8: Update Provider
 
 Replace `ConvexBetterAuthProvider` with `ConvexAuthProvider`.
 
@@ -441,7 +483,7 @@ export function BetterConvexProvider({ children, token }) {
 - `onMutationUnauthorized` — Handle auth errors on mutations
 - `onQueryUnauthorized` — Handle auth errors on queries (includes `queryName` for debugging)
 
-## Step 8: Remove AuthBoundary
+## Step 9: Remove AuthBoundary
 
 If you were using `AuthBoundary`, you can now handle auth errors via provider callbacks instead.
 
@@ -464,9 +506,9 @@ export const ClientAuthBoundary = ({ children }) => {
 };
 ```
 
-**After:** Remove `AuthBoundary` and use the provider's `onQueryUnauthorized` and `onMutationUnauthorized` callbacks instead (configured in Step 6).
+**After:** Remove `AuthBoundary` and use the provider's `onQueryUnauthorized` and `onMutationUnauthorized` callbacks instead (configured in Step 8).
 
-## Step 8: Update Schema
+## Step 10: Update Schema
 
 If you were using the auto-generated component schema, you'll now define auth tables in your main schema.
 
@@ -495,7 +537,7 @@ If you were using the auto-generated component schema, you'll now define auth ta
   </Tab>
 </Tabs>
 
-## Step 9: Migrate Helper Methods
+## Step 11: Migrate Helper Methods
 
 The component pattern provided several helper methods on `authComponent`. These now use direct `ctx.db` access.
 
