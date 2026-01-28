@@ -1,6 +1,5 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "better-convex",
@@ -85,7 +84,7 @@
     },
     "packages/better-convex": {
       "name": "better-convex",
-      "version": "0.5.4",
+      "version": "0.5.5",
       "bin": {
         "better-convex": "./dist/cli.cjs",
       },
