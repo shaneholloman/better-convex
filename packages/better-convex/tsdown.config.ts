@@ -25,6 +25,7 @@ export default defineConfig([
     dts: true,
     banner: "'use client';",
     plugins: [babelPlugin],
+    checks: { pluginTimings: false },
   },
   // Server-safe builds (crpc, rsc, server) - no "use client"
   {
@@ -40,6 +41,7 @@ export default defineConfig([
     tsconfig: 'tooling/tsconfig.build.json',
     exports: true,
     dts: true,
+    checks: { pluginTimings: false },
   },
   // CLI builds (CJS) - skip bundling node_modules like tsup
   {
@@ -51,5 +53,6 @@ export default defineConfig([
     shims: true,
     skipNodeModulesBundle: true,
     banner: '#!/usr/bin/env node',
+    checks: { pluginTimings: false },
   },
 ]);

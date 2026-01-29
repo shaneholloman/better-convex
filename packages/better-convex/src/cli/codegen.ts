@@ -83,14 +83,14 @@ function isCRPCHttpRouter(value: unknown): value is {
  */
 async function parseModuleRuntime(
   filePath: string,
-  jiti: ReturnType<typeof createJiti>
+  jitiInstance: ReturnType<typeof createJiti>
 ): Promise<{ meta: ModuleMeta | null; httpRoutes: HttpRoutes }> {
   const result: ModuleMeta = {};
   const httpRoutes: HttpRoutes = {};
   const isHttp = filePath.endsWith('http.ts');
 
   // Use jiti to import TypeScript files
-  const module = await jiti.import(filePath);
+  const module = await jitiInstance.import(filePath);
 
   if (!module || typeof module !== 'object') {
     if (isHttp) {
@@ -176,7 +176,7 @@ export async function generateMeta(
   }
 
   // Create jiti instance for importing TypeScript files
-  const jiti = createJiti(process.cwd(), {
+  const jitiInstance = createJiti(process.cwd(), {
     interopDefault: true,
     moduleCache: false,
   });
@@ -198,7 +198,7 @@ export async function generateMeta(
     try {
       const { meta: moduleMeta, httpRoutes } = await parseModuleRuntime(
         filePath,
-        jiti
+        jitiInstance
       );
 
       if (moduleMeta) {
