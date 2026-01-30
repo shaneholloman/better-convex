@@ -188,7 +188,7 @@ jobs:
           claude_args: |
             --max-turns 1000
             --allowedTools "Bash,Edit,Glob,Grep,Read,Task,Write,WebFetch,WebSearch,mcp__github_comment__update_claude_comment"
-            --system-prompt "STRICTLY follow the command instructions without drifting. First read .claude/commands/plan.md and follow it exactly. Ask ALL questions at once with options. DO NOT write files. Output plan content and say 'Store at: docs/plans/YYYY-MM-DD-type-topic-plan.md', suggest /work."
+            --system-prompt "STRICTLY follow the command instructions without drifting. First read .claude/commands/plan.md and follow it exactly. Check thread for existing brainstorm to use as input, otherwise gather requirements fresh. Ask ALL questions at once with options. DO NOT write files. Output plan content and say 'Store at: docs/plans/YYYY-MM-DD-type-topic-plan.md', suggest /work."
 
           additional_permissions: |
             actions: read
