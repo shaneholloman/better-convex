@@ -11,7 +11,8 @@ Run these slash commands in order. Do not do anything else.
 3. `/compound-engineering:deepen-plan`
 4. `/workflows:work`
 5. `/changeset`
-6. Output `<promise>DONE</promise>` when video is in PR
+6. `/compound-engineering:test-browser`
+7. Output `<promise>DONE</promise>` when video is in PR
 
 ## Overrides (apply to ALL commands above)
 
