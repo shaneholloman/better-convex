@@ -11,10 +11,9 @@ Run these slash commands in order. Do not do anything else.
 3. `/compound-engineering:deepen-plan`
 4. `/workflows:work`
 5. `/changeset`
-6. `/workflows:review`
-7. `/compound-engineering:resolve_todo_parallel`
-8. `/compound-engineering:test-browser`
-9. Output `<promise>DONE</promise>` when video is in PR
+6. `/compound-engineering:resolve_todo_parallel`
+7. `/compound-engineering:test-browser`
+8. Output `<promise>DONE</promise>` when video is in PR
 
 ## Overrides (apply to ALL commands above)
 
@@ -30,10 +29,6 @@ Run these slash commands in order. Do not do anything else.
 
 - Task loop: For UI tasks, run test-browser BEFORE marking complete (don't guess - verify visually)
 - Never mark UI task complete without browser verification
-
-**review:**
-
-- performance-oracle: don't over-engineer, ship fast, keep simple
 
 **feature-video:**
 
