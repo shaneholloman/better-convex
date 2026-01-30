@@ -1,18 +1,20 @@
 ---
-description: "Start Ralph Loop in current session"
-argument-hint: "PROMPT [--max-iterations N] [--completion-promise TEXT]"
-allowed-tools: ["Bash(~/.claude/plugins/marketplaces/claude-plugins-official/plugins/ralph-loop/scripts/setup-ralph-loop.sh:*)"]
-hide-from-slash-command-tool: "true"
+name: lfg
+description: Full autonomous engineering workflow
+argument-hint: "[feature description]"
 ---
 
-# Ralph Loop Command
+Run these slash commands in order. Do not do anything else.
 
-Execute the setup script to initialize the Ralph loop:
+1. /ralph-wiggum:ralph-loop "finish all slash commands" --completion-promise "DONE"
+2. /workflows:plan $ARGUMENTS
+3. /compound-engineering:deepen-plan: Context7: only query when not covered by skills
+4. /workflows:work
+   - Task loop: For UI tasks, run test-browser BEFORE marking complete (don't guess - verify visually)
+   - Never mark UI task complete without browser verification
+5. /changeset
+6. /workflows:review
+7. /compound-engineering:test-browser - only run if any browser-based features
+8. Output `<promise>DONE</promise>` when all steps are complete
 
-```!
-"$HOME/.claude/plugins/marketplaces/claude-plugins-official/plugins/ralph-loop/scripts/setup-ralph-loop.sh" "$ARGUMENTS"
-```
-
-Please work on the task. When you try to exit, the Ralph loop will feed the SAME PROMPT back to you for the next iteration. You'll see your previous work in files and git history, allowing you to iterate and improve.
-
-CRITICAL RULE: If a completion promise is set, you may ONLY output it when the statement is completely and unequivocally TRUE. Do not output false promises to escape the loop, even if you think you're stuck or should exit for other reasons. The loop is designed to continue until genuine completion.
+Start with step 1 now.

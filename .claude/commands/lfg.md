@@ -6,7 +6,6 @@ argument-hint: "[feature description]"
 
 Run these slash commands in order. Do not do anything else.
 
-1. /ralph-wiggum:ralph-loop "finish all slash commands" --completion-promise "DONE"
 2. /workflows:plan $ARGUMENTS
 3. /compound-engineering:deepen-plan: Context7: only query when not covered by skills
 4. /workflows:work
@@ -15,6 +14,5 @@ Run these slash commands in order. Do not do anything else.
 5. /changeset
 6. /workflows:review
 7. /compound-engineering:test-browser - only run if any browser-based features
-8. Output `<promise>DONE</promise>` when all steps are complete
 
 Start with step 1 now.
