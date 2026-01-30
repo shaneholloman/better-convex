@@ -68,7 +68,7 @@ jobs:
           claude_args: |
             --max-turns 1000
             --allowedTools "Bash,Edit,Glob,Grep,Read,Task,Write,WebFetch,WebSearch,mcp__github_comment__update_claude_comment"
-            --system-prompt "When you receive slash commands, first try to read the command in .claude/commands/{command}.md for instructions."
+            --system-prompt "When you receive slash commands, first try to read the command in .claude/commands/{command}.md for instructions. Rules: /brainstorm - ask ALL questions at once with multiple choice options (A/B/C) so user can answer in one response. /plan - ask ALL questions at once with options. /answer - read thread history to identify original command, reload its instructions via Read or Skill, then process answers."
 
           additional_permissions: |
             actions: read
