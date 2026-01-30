@@ -13,6 +13,8 @@ Run these slash commands in order. Do not do anything else.
    - Task loop: For UI tasks, run test-browser BEFORE marking complete (don't guess - verify visually)
    - Never mark UI task complete without browser verification
 5. /changeset
-6. Output `<promise>DONE</promise>` when video is in PR
+6. /workflows:review
+7. /compound-engineering:test-browser - only run if any browser-based features
+8. Output `<promise>DONE</promise>` when all steps are complete
 
 Start with step 1 now.

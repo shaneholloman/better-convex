@@ -3,6 +3,15 @@ name: ReleaseOrVersionPR
 on:
   push:
     branches: [main]
+    paths:
+      - 'packages/**'
+      - 'www/**'
+      - 'example/**'
+      - 'tooling/**'
+      - '.changeset/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/release.yml'
 
 jobs:
   release:

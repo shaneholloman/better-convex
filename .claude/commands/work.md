@@ -8,3 +8,4 @@ Run these commands in order:
    - Task loop: For UI tasks, run test-browser BEFORE marking complete (don't guess - verify visually)
    - Never mark UI task complete without browser verification
 2. /changeset
+3. /review

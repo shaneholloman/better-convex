@@ -1,5 +1,48 @@
 name: Claude Code
 
+# ┌─────────────────────────────────────────────────────────────────────────────┐
+# │                              WORKFLOW FLOW                                  │
+# ├─────────────────────────────────────────────────────────────────────────────┤
+# │                                                                             │
+# │  ISSUE                                                                      │
+# │    │                                                                        │
+# │    ├── @claude "question"        → claude (interactive, 15min)              │
+# │    │                               └→ answers in comment                    │
+# │    │                                                                        │
+# │    └── /brainstorm "feature"     → brainstorm (interactive, 15min)          │
+# │        │                           └→ asks Q&A (multiple rounds OK)         │
+# │        │                                                                    │
+# │        └── /answer "A, B, C"     → answer (interactive, 15min)              │
+# │            │                                                                │
+# │            ├── More questions?   → ask another round                        │
+# │            │                                                                │
+# │            └── All clear?        → create PR with brainstorm.md             │
+# │                │                   PR suggests: 1) /plan 2) /draft 3) /lfg  │
+# │                ▼                                                            │
+# │  PR ◄──────────┘                                                            │
+# │    │                                                                        │
+# │    ├── /plan "details"           → plan (automation, 30min)                 │
+# │    │                               └→ writes plan.md with research          │
+# │    │                               └→ PR description suggests /work         │
+# │    │                                                                        │
+# │    ├── /draft "details"          → draft (automation, 15min)                │
+# │    │                               └→ writes quick plan.md                  │
+# │    │                               └→ PR description suggests /work         │
+# │    │                                                                        │
+# │    ├── /work                     → slash-commands (automation, 30min)       │
+# │    │                               └→ implements + changeset + review       │
+# │    │                                                                        │
+# │    ├── /resolve                  → resolve (automation, 30min)              │
+# │    │                               └→ fixes P1/P2/P3 review findings        │
+# │    │                                                                        │
+# │    ├── /lfg "feature"            → lfg (automation, 60min, 200 turns)       │
+# │    │                               └→ full autonomous: plan→work→review     │
+# │    │                                                                        │
+# │    └── /other-command            → slash-commands (automation, 30min)       │
+# │                                    └→ reads .claude/commands/{cmd}.md       │
+# │                                                                             │
+# └─────────────────────────────────────────────────────────────────────────────┘
+
 on:
   issue_comment:
     types: [created]
@@ -66,14 +109,14 @@ jobs:
             test@dotai
 
           claude_args: |
-            --max-turns 1000
+            --max-turns 100
             --allowedTools "Bash,Edit,Glob,Grep,Read,Task,Write,WebFetch,WebSearch,mcp__github_comment__update_claude_comment"
-            --system-prompt "STRICTLY follow the command instructions without drifting. When you receive slash commands, first read .claude/commands/{command}.md and follow it exactly. Rules: /brainstorm - ask ALL questions at once with multiple choice options (A/B/C). DO NOT write files. Output brainstorm content and say 'Store at: docs/brainstorms/YYYY-MM-DD-topic-brainstorm.md', suggest /dplan. /dplan - ask ALL questions at once. DO NOT write files. Output plan content and say 'Store at: docs/plans/YYYY-MM-DD-type-topic-plan.md', suggest /work. /answer - read thread history, reload original command instructions, follow same rules."
+            --system-prompt "STRICTLY follow the command instructions without drifting. When you receive slash commands, first read .claude/commands/{command}.md and follow it exactly. Rules: /brainstorm - ask ALL questions at once with multiple choice options (A/B/C). DO NOT write files. Output brainstorm content and say 'Store at: docs/brainstorms/YYYY-MM-DD-topic-brainstorm.md', suggest next steps: 1) /plan 2) /draft 3) /lfg. /plan - DO NOT write files. Output plan content and say 'Store at: docs/plans/YYYY-MM-DD-type-topic-plan.md', suggest /work. /answer - read thread history, reload original command instructions, follow same rules."
 
           additional_permissions: |
             actions: read
 
-  # Interactive mode - /brainstorm
+  # Interactive mode - /brainstorm (Q&A first, then opens PR after answers)
   brainstorm:
     if: |
       github.actor == 'zbeyens' && (
@@ -126,19 +169,19 @@ jobs:
             test@dotai
 
           claude_args: |
-            --max-turns 1000
+            --max-turns 100
             --allowedTools "Bash,Edit,Glob,Grep,Read,Task,Write,WebFetch,WebSearch,mcp__github_comment__update_claude_comment"
-            --system-prompt "STRICTLY follow the command instructions without drifting. First read .claude/commands/brainstorm.md and follow it exactly. Ask ALL questions at once with multiple choice options (A/B/C). DO NOT write files. Output brainstorm content and say 'Store at: docs/brainstorms/YYYY-MM-DD-topic-brainstorm.md', suggest /dplan."
+            --system-prompt "STRICTLY follow the command instructions without drifting. First read .claude/commands/brainstorm.md and follow it exactly. Ask ALL questions at once with multiple choice options (A/B/C). IF no questions needed (requirements are clear): create PR with description suggesting next steps: 1) /plan - plan with research 2) /draft - quick plan 3) /lfg - full autonomous. IF questions asked: wait for /answer to create PR."
 
           additional_permissions: |
             actions: read
 
-  # Interactive mode - /plan
-  plan:
+  # Automation mode - /draft (quick plan to PR branch)
+  draft:
     if: |
       github.actor == 'zbeyens' && (
-        (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/plan')) ||
-        (github.event_name == 'pull_request_review_comment' && startsWith(github.event.comment.body, '/plan'))
+        (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/draft')) ||
+        (github.event_name == 'pull_request_review_comment' && startsWith(github.event.comment.body, '/draft'))
       )
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -174,7 +217,9 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          trigger_phrase: '/plan'
+
+          prompt: ${{ github.event.comment.body }}
+          track_progress: true
 
           plugin_marketplaces: |
             https://github.com/EveryInc/compound-engineering-plugin.git
@@ -186,19 +231,19 @@ jobs:
             test@dotai
 
           claude_args: |
-            --max-turns 1000
+            --max-turns 100
             --allowedTools "Bash,Edit,Glob,Grep,Read,Task,Write,WebFetch,WebSearch,mcp__github_comment__update_claude_comment"
-            --system-prompt "STRICTLY follow the command instructions without drifting. First read .claude/commands/plan.md and follow it exactly. Check thread for existing brainstorm to use as input, otherwise gather requirements fresh. Ask ALL questions at once with options. DO NOT write files. Output plan content and say 'Store at: docs/plans/YYYY-MM-DD-type-topic-plan.md', suggest /work."
+            --system-prompt "STRICTLY follow the command instructions without drifting. First read .claude/commands/draft.md and follow it exactly. Check PR for existing brainstorm file in docs/brainstorms/. After creating plan: 1) Write to docs/plans/YYYY-MM-DD-type-topic-plan.md 2) Commit and push to PR branch 3) Update PR description suggesting /work."
 
           additional_permissions: |
             actions: read
 
-  # Interactive mode - /dplan
-  dplan:
+  # Automation mode - /plan (creates plan with research)
+  plan:
     if: |
       github.actor == 'zbeyens' && (
-        (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/dplan')) ||
-        (github.event_name == 'pull_request_review_comment' && startsWith(github.event.comment.body, '/dplan'))
+        (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/plan')) ||
+        (github.event_name == 'pull_request_review_comment' && startsWith(github.event.comment.body, '/plan'))
       )
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -234,7 +279,9 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          trigger_phrase: '/dplan'
+
+          prompt: ${{ github.event.comment.body }}
+          track_progress: true
 
           plugin_marketplaces: |
             https://github.com/EveryInc/compound-engineering-plugin.git
@@ -246,9 +293,9 @@ jobs:
             test@dotai
 
           claude_args: |
-            --max-turns 1000
+            --max-turns 100
             --allowedTools "Bash,Edit,Glob,Grep,Read,Task,Write,WebFetch,WebSearch,mcp__github_comment__update_claude_comment"
-            --system-prompt "STRICTLY follow the command instructions without drifting. First read .claude/commands/dplan.md and follow it exactly. Check thread for existing brainstorm to use as input, otherwise gather requirements fresh. Ask ALL questions at once with options. DO NOT write files. Output plan content and say 'Store at: docs/plans/YYYY-MM-DD-type-topic-plan.md', suggest /work."
+            --system-prompt "STRICTLY follow the command instructions without drifting. First read .claude/commands/plan.md and follow it exactly. Check PR for existing brainstorm file in docs/brainstorms/. After creating plan: 1) Write to docs/plans/YYYY-MM-DD-type-topic-plan.md 2) Commit and push to PR branch 3) Update PR description suggesting /work."
 
           additional_permissions: |
             actions: read
@@ -306,9 +353,9 @@ jobs:
             test@dotai
 
           claude_args: |
-            --max-turns 1000
+            --max-turns 100
             --allowedTools "Bash,Edit,Glob,Grep,Read,Task,Write,WebFetch,WebSearch,mcp__github_comment__update_claude_comment"
-            --system-prompt "STRICTLY follow the command instructions without drifting. This is a follow-up answer. First: read thread history to identify the original command (/brainstorm, /plan, /dplan, etc). Then: Read .claude/commands/{command}.md and follow it exactly. DO NOT write files. For /brainstorm: output brainstorm content, say 'Store at: docs/brainstorms/YYYY-MM-DD-topic-brainstorm.md', suggest /dplan. For /plan or /dplan: output plan content, say 'Store at: docs/plans/YYYY-MM-DD-type-topic-plan.md', suggest /work."
+            --system-prompt "STRICTLY follow the command instructions without drifting. This is a follow-up answer. First: read thread history to identify the original command. For /brainstorm follow-up: IF more questions needed, ask them (multiple rounds OK). IF all questions answered, THEN: 1) Write docs/brainstorms/YYYY-MM-DD-topic-brainstorm.md 2) Create branch feat/topic 3) Commit and push 4) Open PR with description suggesting next steps: 1) /plan - plan with research 2) /draft - quick plan 3) /lfg - full autonomous. For other commands: continue the conversation."
 
           additional_permissions: |
             actions: read
@@ -368,9 +415,71 @@ jobs:
             test@dotai
 
           claude_args: |
-            --max-turns 1000
+            --max-turns 100
             --allowedTools "Bash,Edit,Glob,Grep,Read,Task,Write,WebFetch,WebSearch,mcp__github_comment__update_claude_comment"
             --system-prompt "STRICTLY follow the command instructions without drifting. Read thread history to find the previous /review comment containing todos (P1/P2/P3 findings). If no priority specified ('/resolve'), fix ALL priorities. If priorities specified ('/resolve P1 P2'), only fix those. For each todo: implement the fix, commit with conventional message. After all fixes: run typecheck, lint, test-browser."
+
+          additional_permissions: |
+            actions: read
+
+  # Automation mode - /lfg (long-running autonomous workflow)
+  lfg:
+    if: |
+      github.actor == 'zbeyens' && (
+        (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/lfg')) ||
+        (github.event_name == 'pull_request_review_comment' && startsWith(github.event.comment.body, '/lfg'))
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache bun
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          prompt: ${{ github.event.comment.body }}
+          track_progress: true
+
+          plugin_marketplaces: |
+            https://github.com/EveryInc/compound-engineering-plugin.git
+            https://github.com/udecode/dotai.git
+          plugins: |
+            compound-engineering@every-marketplace
+            dig@dotai
+            debug@dotai
+            test@dotai
+
+          claude_args: |
+            --max-turns 200
+            --allowedTools "Bash,Edit,Glob,Grep,Read,Task,Write,WebFetch,WebSearch,mcp__github_comment__update_claude_comment"
+            --system-prompt "STRICTLY follow the command instructions without drifting. First read .claude/commands/lfg.md and follow it exactly."
 
           additional_permissions: |
             actions: read
@@ -379,8 +488,8 @@ jobs:
   slash-commands:
     if: |
       github.actor == 'zbeyens' && (
-        (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/') && !startsWith(github.event.comment.body, '/brainstorm') && !startsWith(github.event.comment.body, '/plan') && !startsWith(github.event.comment.body, '/dplan') && !startsWith(github.event.comment.body, '/answer') && !startsWith(github.event.comment.body, '/resolve')) ||
-        (github.event_name == 'pull_request_review_comment' && startsWith(github.event.comment.body, '/') && !startsWith(github.event.comment.body, '/brainstorm') && !startsWith(github.event.comment.body, '/plan') && !startsWith(github.event.comment.body, '/dplan') && !startsWith(github.event.comment.body, '/answer') && !startsWith(github.event.comment.body, '/resolve'))
+        (github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/') && !startsWith(github.event.comment.body, '/brainstorm') && !startsWith(github.event.comment.body, '/draft') && !startsWith(github.event.comment.body, '/plan') && !startsWith(github.event.comment.body, '/answer') && !startsWith(github.event.comment.body, '/resolve') && !startsWith(github.event.comment.body, '/lfg')) ||
+        (github.event_name == 'pull_request_review_comment' && startsWith(github.event.comment.body, '/') && !startsWith(github.event.comment.body, '/brainstorm') && !startsWith(github.event.comment.body, '/draft') && !startsWith(github.event.comment.body, '/plan') && !startsWith(github.event.comment.body, '/answer') && !startsWith(github.event.comment.body, '/resolve') && !startsWith(github.event.comment.body, '/lfg'))
       )
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -430,7 +539,7 @@ jobs:
             test@dotai
 
           claude_args: |
-            --max-turns 1000
+            --max-turns 100
             --allowedTools "Bash,Edit,Glob,Grep,Read,Task,Write,WebFetch,WebSearch,mcp__github_comment__update_claude_comment"
             --system-prompt "STRICTLY follow the command instructions without drifting. First read .claude/commands/{command}.md and follow it exactly."
 
