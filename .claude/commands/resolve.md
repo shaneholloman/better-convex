@@ -1,16 +1,21 @@
 ---
-description: Resolve review findings from todos/ directory with code edits
+description: Resolve review findings with code edits
+argument-hint: "[P1] [P2] [P3]"
 ---
 
 Run `/compound-engineering:resolve_todo_parallel`
 
-Context: `/review` creates todo files in `todos/` with findings from agents:
-- P1 (critical) - security, data issues
+Sources (checks both):
+1. `todos/` directory - if todo files exist (local workflow)
+2. Thread comments - if running in GitHub CI (reads previous /review comment)
+
+Priority levels:
+- P1 (critical) - security, data issues - BLOCKS MERGE
 - P2 (important) - performance, architecture
 - P3 (nice-to-have) - cleanup, enhancements
 
-This command fixes all pending/ready todos by:
-1. Reading each todo file's Problem Statement and Proposed Solutions
-2. Implementing the recommended fix
-3. Updating todo status: pending → ready → complete
-4. Committing fixes with conventional messages
+For each specified priority:
+1. Read Problem Statement and Proposed Solutions
+2. Implement the recommended fix
+3. Commit with conventional message
+4. Run typecheck, lint after all fixes
