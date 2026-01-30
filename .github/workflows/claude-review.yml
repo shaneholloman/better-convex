@@ -8,6 +8,7 @@ jobs:
   claude-review:
     if: github.event.pull_request.user.login == 'zbeyens'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
@@ -54,19 +55,10 @@ jobs:
             debug@dotai
             test@dotai
 
-          settings: |
-            {
-              "env": {
-                "BASH_DEFAULT_TIMEOUT_MS": "1800000"
-              },
-              "permissions": {
-                "allow": ["Bash", "Edit", "Glob", "Grep", "Read", "Task", "Write", "WebFetch", "WebSearch"]
-              }
-            }
           claude_args: |
             --max-turns 1000
             --allowedTools "Bash,Edit,Glob,Grep,Read,Task,Write,WebFetch,WebSearch,mcp__github_comment__update_claude_comment"
-            --system-prompt "When you receive a slash command like /lfg, /plan, /work, /review, /brainstorm, first read .claude/commands/{command}.md to understand the workflow steps to execute."
+            --system-prompt "When you receive a slash command like /lfg, /plan, /work, /review, first read .claude/commands/{command}.md to understand the workflow steps to execute. These are autonomous commands - do not ask questions, make reasonable assumptions based on the issue context."
 
           additional_permissions: |
             actions: read
