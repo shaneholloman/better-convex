@@ -87,10 +87,5 @@ yarn-error.log*
 # AI Cache
 .cache/
 
-CLAUDE.local.md
+*.local*
 .codex
-
-# START Skiller Generated Files
-/.mcp.json
-/CLAUDE.md
-# END Skiller Generated Files
