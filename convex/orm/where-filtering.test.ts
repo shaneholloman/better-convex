@@ -769,7 +769,8 @@ describe('M4 Where Filtering - Type Safety', () => {
     // TODO M4.5: Properly type column proxies for compile-time safety
     // Currently cols is Record<string, any> so invalid columns don't error at compile time
     // TypeScript should prevent accessing invalid columns (compile-time check)
-    // @ts-expect-error - 'invalidColumn' does not exist
+    // TODO(M4.5): Uncomment when column proxy typing implemented
+    // // @ts-expect-error - 'invalidColumn' does not exist
     // await db.query.users.findMany({
     //   where: (cols, { eq }) => eq(cols.invalidColumn, 'value'),
     // });

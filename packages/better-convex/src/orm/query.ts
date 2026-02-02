@@ -211,12 +211,39 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
   /**
    * Create operator functions that build FilterExpression trees
    * Used by where() function to construct filter expressions
+   *
+   * Since _createColumnProxies() already wraps columns with column(),
+   * just return the raw operators from filter-expression.ts
    */
   private _createOperators(): any {
     // Import operators dynamically to avoid circular dependency
-    const { eq, ne, gt, gte, lt, lte, inArray, notInArray, isNull, isNotNull } =
-      require('./filter-expression');
-    return { eq, ne, gt, gte, lt, lte, inArray, notInArray, isNull, isNotNull };
+    const {
+      eq,
+      ne,
+      gt,
+      gte,
+      lt,
+      lte,
+      inArray,
+      notInArray,
+      isNull,
+      isNotNull,
+    } = require('./filter-expression');
+
+    // Return operators as-is - they already expect Column wrappers
+    // which _createColumnProxies() provides (cast to raw builder type)
+    return {
+      eq,
+      ne,
+      gt,
+      gte,
+      lt,
+      lte,
+      inArray,
+      notInArray,
+      isNull,
+      isNotNull,
+    };
   }
 
   /**

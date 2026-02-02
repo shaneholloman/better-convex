@@ -12,6 +12,7 @@ severity: high
 tags: [convex, schema, typescript, duck-typing, table-definition]
 related_docs:
   - "docs/solutions/typescript-patterns/phantom-type-brand-preservation-20260202.md"
+  - "docs/solutions/typescript-patterns/select-ts-type-inference-drizzle-patterns-20260202.md"
   - "docs/plans/2026-02-01-fix-convex-table-schema-integration-plan.md"
 ---
 

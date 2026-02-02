@@ -2,33 +2,11 @@
  * Test InferModelFromColumns with actual table columns
  */
 
+// Import actual InferModelFromColumns from types
+import type { InferModelFromColumns } from 'better-convex/orm';
 import { convexTable, id, integer, text } from 'better-convex/orm';
+import type { GenericId } from 'convex/values';
 import { type Equal, Expect } from './utils';
-
-// Inline InferModelFromColumns for testing
-type ColumnBuilder = import('better-convex/orm').ColumnBuilder<any, any, any>;
-
-type BuilderToType<TBuilder extends ColumnBuilder> =
-  TBuilder['_']['notNull'] extends true
-    ? TBuilder['_']['data']
-    : TBuilder['_']['data'] | null;
-
-type ColumnToType<V> = V extends ColumnBuilder ? BuilderToType<V> : never;
-
-type ColumnsToType<T> =
-  T extends Record<string, ColumnBuilder>
-    ? {
-        [K in keyof T]: ColumnToType<T[K]>;
-      }
-    : never;
-
-type InferModelFromColumns<TColumns> =
-  TColumns extends Record<string, ColumnBuilder>
-    ? {
-        _id: string;
-        _creationTime: number;
-      } & ColumnsToType<TColumns>
-    : never;
 
 // Test with actual columns from tables-rel.ts
 {
@@ -48,8 +26,8 @@ type InferModelFromColumns<TColumns> =
     name: string; // Should be string (notNull)
     email: string; // Should be string (notNull)
     age: number | null; // Should be number | null (nullable)
-    cityId: string; // Should be string (notNull ID)
-    homeCityId: string | null; // Should be string | null (nullable ID)
+    cityId: GenericId<'cities'>; // Should be GenericId<'cities'> (notNull ID)
+    homeCityId: GenericId<'cities'> | null; // Should be GenericId<'cities'> | null (nullable ID)
   };
 
   Expect<Equal<Result, Expected>>;

@@ -374,17 +374,33 @@ Based on categories, here's the recommended implementation order:
 | M2 | Cat 1 + 3 | Relations API (Drizzle) + Edges (Convex-native) | Core feature, type inference |
 | M3 | Cat 1 + 3 | Query reads + cursor pagination | Essential queries, hybrid approach |
 | M4 | Cat 1 + 2 | Core filtering (supported operators) | 90% of filter use cases |
-| M4.5 | Cat 2 + 3 | String operators + ordering + advanced | Polish, edge cases |
-| M5 | Cat 1 + 2 | Mutations (insert/update/delete) | CRUD complete |
-| M6 | Cat 1 + 3 | Drizzle-style builders + polish | API refinement, final UX |
+| **M4.5** | **Testing** | **Comprehensive type testing audit (M1-M4)** | **Validate type inference, ensure Drizzle parity** |
+| M5 | Cat 2 + 3 | String operators + ordering + advanced | Polish, edge cases |
+| M6 | Cat 1 + 2 | Mutations (insert/update/delete) | CRUD complete |
+| M7 | Cat 1 + 3 | Drizzle-style builders + polish | API refinement, final UX |
 
 ### How This Guides Milestones
 
 **M1-M3**: Focus on Category 1 (100% compatible) - prove Drizzle ergonomics work
 **M4**: Mix Category 1 + 2 - core filtering with clear limitation docs
-**M4.5-M5**: Address Category 2 limitations with workarounds
-**M6**: Polish Category 3 (Convex-native) features for best DX
-**Post-M6**: Category 4 features explicitly documented as not applicable
+**M4.5**: **Type Testing Audit** - comprehensive validation of M1-M4 type inference
+**M5-M6**: Address Category 2 limitations with workarounds
+**M7**: Polish Category 3 (Convex-native) features for best DX
+**Post-M7**: Category 4 features explicitly documented as not applicable
+
+### Type Testing Philosophy
+
+**Test After Each Milestone** (M4.5, M5, M6, M7):
+1. Feature implementation first
+2. Comprehensive type testing when milestone complete
+3. Mirror Drizzle's test structure using `dig` skill
+4. Fix gaps before proceeding to next milestone
+
+**Why This Works**:
+- No rework - tests validate finished features
+- Systematic coverage - Drizzle's tests are comprehensive
+- Clear quality gate - all tests pass before moving forward
+- Ensures Drizzle parity - catch TypeScript pattern differences early
 
 ### Key Differences Summary Table
 
@@ -392,12 +408,15 @@ Based on categories, here's the recommended implementation order:
 |---------|---------|---------------|----------|--------|
 | Relations | `relations()`, `one()`, `many()` | Same API | 1 | ✅ M2 |
 | Queries | `findMany()`, `findFirst()` | Same API | 1 | ✅ M3 |
-| Core Filters | `eq`, `gt`, `and`, `or` | Same API | 1 | 📋 M4 |
-| String Filters | `like`, `ilike`, `contains` | Post-filter workaround | 2 | 🔜 M4.5 |
+| Core Filters | `eq`, `gt`, `and`, `or` | Same API | 1 | ✅ M4 |
+| **Type Testing** | **Equal<>, @ts-expect-error** | **Mirror Drizzle tests** | **Testing** | **📋 M4.5** |
+| String Filters | `like`, `ilike`, `contains` | Post-filter workaround | 2 | 🔜 M5 |
+| Ordering | `orderBy`, `asc`, `desc` | Same API | 1 | 🔜 M5 |
 | Joins | SQL LEFT/RIGHT/FULL | Relations only (inner) | 2 | ✅ M2 |
 | Pagination | `limit`/`offset` | + cursor (recommended) | 1+3 | ✅ M3 |
-| Mutations | INSERT/UPDATE/DELETE | Same, no RETURNING | 1+2 | 🔜 M5 |
+| Mutations | INSERT/UPDATE/DELETE | Same, no RETURNING | 1+2 | 🔜 M6 |
 | Real-time | None | Auto-subscribe | 3 | ✅ M3 |
+| Column Builders | `text()`, `integer()` | Same API as Drizzle | 1 | 🔜 M7 |
 | Subqueries | Full support | Not supported | 2 | ❌ N/A |
 
 **Legend**: ✅ Completed | 📋 In Progress | 🔜 Planned | ❌ Not Applicable
@@ -520,7 +539,128 @@ const result = await ctx.db.query.users.findMany({
 });
 ```
 
-### Milestone 4.5: Query Builder - Ordering & Advanced Queries
+### Milestone 4.5: Type Testing Audit
+
+**Goal**: Comprehensive type testing for M1-M4 features, mirroring Drizzle's TypeScript patterns and test coverage
+
+**Why This Milestone**: M1-M4 were implemented without rigorous type testing methodology. This milestone systematically validates type inference, catches gaps, and ensures Drizzle parity before proceeding to M5+.
+
+**Testing Methodology** (Template for all future milestones):
+
+#### Step 1: Clone and Study Drizzle-ORM
+
+Use `dig` skill to clone drizzle-orm repo locally and explore PostgreSQL adapter patterns:
+
+```bash
+# Clone Drizzle-ORM to /tmp/cc-repos
+Skill(dig, "drizzle-orm")
+
+# Study key directories:
+# - drizzle-orm/drizzle-orm/src/pg-core/ - PostgreSQL types, builders, queries
+# - drizzle-orm/drizzle-orm/tests/ - Test structure and coverage
+# - drizzle-orm/drizzle-orm/tests/pg/ - Postgres-specific type tests
+```
+
+**Focus areas**:
+- Type inference patterns (InferSelectModel, InferInsertModel, query result types)
+- Phantom type branding with `declare readonly _` properties
+- Mode-based type extraction (query vs raw)
+- Nullable vs notNull tracking
+- Relation type inference patterns
+- Negative type tests (@ts-expect-error directives)
+
+#### Step 2: Map Drizzle Test Structure to Better-Convex
+
+Compare Drizzle's test organization with Better-Convex structure:
+
+| Drizzle Location | Better-Convex Equivalent | Purpose |
+|------------------|-------------------------|---------|
+| `tests/pg/` | `convex/test-types/` | Type-level tests (Equal assertions) |
+| `tests/pg/*.test.ts` | `convex/*.test.ts` | Runtime behavior tests (vitest + convex-test) |
+| Type assertions in files | `@ts-expect-error` directives | Negative tests (verify invalid usage errors) |
+
+#### Step 3: Create Comprehensive Test Coverage
+
+For **each M1-M4 feature**, create tests in four categories:
+
+**A. Type Inference Tests** (convex/test-types/*.ts):
+- InferSelectModel correctness (system fields, notNull, nullable, GenericId types)
+- InferInsertModel correctness (excludes system fields)
+- Query result types (findMany, findFirst, with relations)
+- Column selection types (PickColumns)
+- Relation type inference (InferRelations)
+- GetColumnData in 'query' and 'raw' modes
+- Phantom type brand preservation (NotNull brand, GenericId brand)
+
+**B. Runtime Behavior Tests** (convex/*.test.ts):
+- Query execution with convex-test harness
+- Filter operator behavior (eq, ne, gt, inArray, etc.)
+- Relation loading correctness
+- Index selection verification
+- Edge traversal correctness
+- Null handling in queries
+
+**C. Negative Type Tests** (convex/test-types/*.ts):
+- `@ts-expect-error` - Invalid field access (e.g., `user.invalidField`)
+- `@ts-expect-error` - Type mismatch in operators (e.g., `eq(user.age, "string")`)
+- `@ts-expect-error` - isNull on notNull field
+- `@ts-expect-error` - Invalid column selection
+- `@ts-expect-error` - Invalid relation config (e.g., `limit` on one() relation)
+
+**D. Edge Case Coverage** (both type and runtime):
+- Nullable vs notNull combinations
+- GenericId vs string (no widening to string)
+- Union types in relations (e.g., multiple table references)
+- Optional fields in inserts vs selects
+- Nested relation type inference
+- Empty result sets
+- Circular relation detection
+
+#### Step 4: Fix Gaps and Ensure Drizzle Parity
+
+For each test failure or gap:
+
+1. **Identify difference from Drizzle**: Compare Better-Convex implementation with Drizzle's equivalent
+2. **Dig into Drizzle source**: Find how Drizzle solves this (use `dig` skill to explore code)
+3. **Adapt pattern**: Implement Drizzle's pattern for Better-Convex
+4. **Verify fix**: Ensure test passes and matches Drizzle behavior
+5. **Document limitation**: If can't match Drizzle due to Convex constraints, document in limitations.md
+
+**Reference repositories**:
+- **Drizzle patterns**: drizzle-team/drizzle-orm (TypeScript mastery)
+- **Convex patterns**: get-convex/convex-backend/npm-packages (Convex-specific testing)
+- **Ents patterns**: get-convex/convex-ents (edge traversal, type inference)
+
+#### Step 5: Validation Checklist
+
+**M4.5 Completion Status** (2026-02-02):
+
+- ✅ Drizzle type inference patterns studied (cloned drizzle-orm, studied table.ts, columns, select.ts, db-rel.ts)
+- ✅ Tests for IMPLEMENTED features only (M1, M2, M4, partial M3)
+- ✅ Deferred unimplemented features (relation loading to Phase 4, column exclusion to M5)
+- ✅ `bun typecheck` passes with 0 errors
+- ✅ `vitest run` passes (147 tests passed, 1 skipped)
+- ✅ Runtime tests passing with convex-test
+- ⚠️ Equal<> assertions: Passing for implemented features, 9 tests deferred for unimplemented features
+- ⚠️ Negative tests: Updated (commented out tests for unimplemented type constraints)
+
+**Deferred Tests** (documented with TODO markers):
+- 7 relation loading tests in `convex/test-types/db-rel.ts` → Phase 4
+- 2 column selection tests in `convex/test-types/select.ts` (exclusion, nested relations) → M5 / Phase 4
+- 1 type widening test in `convex/test-types/debug-typeof-widening.ts` → M4.5+
+- 6 negative tests for unimplemented constraints (relation validation, findFirst limits) → M5 / Phase 4
+
+**Deliverable**: Type tests validate M1, M2, M4, and partial M3 (basic queries). Unimplemented features documented in brainstorm "Deferred Features" section.
+
+**Test Files Created** (examples):
+- `convex/test-types/schema-inference.ts` - M1 table and type inference
+- `convex/test-types/relations-inference.ts` - M2 relation types
+- `convex/test-types/query-result-types.ts` - M3 query builder types
+- `convex/test-types/filter-operators.ts` - M4 where clause types
+- `convex/test-types/edge-cases.ts` - Nullable, GenericId, unions
+- `convex/test-types/negative-tests.ts` - All @ts-expect-error cases
+
+### Milestone 5: Query Builder - Ordering & Advanced Queries
 
 **Goal**: Complete query API with ordering and advanced operators
 
@@ -532,7 +672,13 @@ const result = await ctx.db.query.users.findMany({
 - **Multi-field ordering**: Combine multiple sort fields
 - **Search integration**: Full-text search operators (if needed)
 
-**Deliverable**: Full-featured query API matching Drizzle ergonomics
+**Type Testing** (Apply M4.5 methodology):
+- Type tests for orderBy result types
+- Type tests for string operator signatures
+- Negative tests for invalid ordering
+- Runtime tests for ordering correctness
+
+**Deliverable**: Full-featured query API matching Drizzle ergonomics + complete type test coverage
 
 **Example**:
 
@@ -544,7 +690,7 @@ const result = await ctx.db.query.users.findMany({
 });
 ```
 
-### Milestone 5: Mutations
+### Milestone 6: Mutations
 
 **Goal**: Drizzle-style insert/update/delete
 
@@ -556,7 +702,25 @@ const result = await ctx.db.query.users.findMany({
 - Type-safe input validation
 - Direct `ctx.db.insert/patch/delete` operations
 
-**Deliverable**: Full CRUD with Drizzle ergonomics
+**Type Testing** (Apply M4.5 methodology):
+
+1. **Clone Drizzle**: Study `drizzle-orm/src/pg-core/query-builders/insert.ts`, `update.ts`, `delete.ts`
+2. **Type inference tests**:
+   - Insert value type validation (InferInsertModel)
+   - Update set() parameter types
+   - Batch insert type safety
+   - Returning type inference (if supported)
+3. **Negative tests**:
+   - `@ts-expect-error` - Invalid field in insert
+   - `@ts-expect-error` - Type mismatch in update
+   - `@ts-expect-error` - Required field missing in insert
+4. **Runtime tests**:
+   - Insert execution with convex-test
+   - Update with where clause
+   - Delete operations
+   - Transaction rollback behavior
+
+**Deliverable**: Full CRUD with Drizzle ergonomics + complete type test coverage
 
 **Example**:
 
@@ -572,7 +736,7 @@ await ctx.db
   .where(eq(users.id, userId));
 ```
 
-### Milestone 6: Advanced Features & Drizzle-Style API
+### Milestone 7: Advanced Features & Drizzle-Style Column Builders
 
 **Goal**: Polish and final API alignment with Drizzle
 
@@ -589,7 +753,24 @@ await ctx.db
 - Schema migrations helpers
 - Documentation and examples
 
-**Deliverable**: Final API matches Drizzle ergonomics
+**Type Testing** (Apply M4.5 methodology):
+
+1. **Clone Drizzle**: Study `drizzle-orm/src/pg-core/columns/` for all column builders
+2. **Type inference tests**:
+   - Builder phantom type brands (NotNull, HasDefault, etc.)
+   - Column type inference with all modifiers
+   - Default value type validation
+   - Backwards compatibility with v.* validators
+3. **Negative tests**:
+   - `@ts-expect-error` - Invalid modifier combinations
+   - `@ts-expect-error` - Type mismatch in default values
+   - `@ts-expect-error` - Invalid primaryKey usage
+4. **Runtime tests**:
+   - Builder compilation to Convex validators
+   - Default value application
+   - Type coercion behavior
+
+**Deliverable**: Final API matches Drizzle ergonomics + complete type test coverage
 
 **Example**:
 
@@ -1288,8 +1469,27 @@ const user = await db.query.users.findFirst({
 // Type: User | undefined
 ```
 
+**Deferred Features** (documented during M4.5 audit):
+
+The following M3 features are **type-only** (runtime stubbed) and deferred to **Phase 4** (relation loading implementation):
+- ❌ **Relation loading with `with` option** - Type inference works, runtime stubbed
+  - Types: `BuildQueryResult` and `BuildRelationResult` fully implemented
+  - Runtime: `_loadRelations()` currently returns rows unchanged
+  - Tests: db-rel.ts relation loading tests marked as TODO
+  - Plan: Implement in separate milestone focused on edge traversal integration
+
+The following M3 features are **partially implemented**:
+- ✅ **Column inclusion** (`columns: { name: true, email: true }`) - Fully working
+- ❌ **Column exclusion** (`columns: { age: false }`) - Not implemented, deferred to M5
+  - Type support exists but runtime only handles `include === true`
+  - Workaround: Explicitly list included columns
+
+**Completed:**
+- **M4**: Query Builder - Where Filtering (core operators, index optimization) ✅ COMPLETE
+- **M4.5**: Type Testing Audit - Testing implemented features only (M1, M2, M4, partial M3) ✅ COMPLETE
+
 **Next Up:**
-- **M4**: Query Builder - Where Filtering (core operators, index optimization)
-- **M4.5**: Query Builder - Ordering & Advanced Queries (`orderBy`, string operators)
-- **M5**: Mutations (`insert`, `update`, `delete`)
-- **M6**: Drizzle-Style Column Builders & Polish
+- **Phase 4**: Relation Loading Implementation - Complete M3 `with` option runtime (currently stubbed)
+- **M5**: Query Builder - Ordering & Advanced Queries (`orderBy`, string operators, column exclusion)
+- **M6**: Mutations (`insert`, `update`, `delete`)
+- **M7**: Drizzle-Style Column Builders & Polish

@@ -1,5 +1,6 @@
-import { bigint, boolean, id, integer, text } from 'better-convex/orm';
 import type { GetColumnData } from 'better-convex/orm';
+import { bigint, boolean, id, integer, text } from 'better-convex/orm';
+import type { GenericId } from 'convex/values';
 import { type Equal, Expect } from './utils';
 
 // ============================================================================
@@ -75,7 +76,7 @@ import { type Equal, Expect } from './utils';
   const userId = id('users').notNull();
   type UserIdQuery = GetColumnData<typeof userId, 'query'>;
 
-  Expect<Equal<UserIdQuery, string>>;
+  Expect<Equal<UserIdQuery, GenericId<'users'>>>;
 }
 
 // Test 10: nullable id field in query mode
@@ -83,7 +84,7 @@ import { type Equal, Expect } from './utils';
   const parentId = id('posts'); // nullable
   type ParentIdQuery = GetColumnData<typeof parentId, 'query'>;
 
-  Expect<Equal<ParentIdQuery, string | null>>;
+  Expect<Equal<ParentIdQuery, GenericId<'posts'> | null>>;
 }
 
 // ============================================================================
@@ -159,7 +160,7 @@ import { type Equal, Expect } from './utils';
   const userId = id('users').notNull();
   type UserIdRaw = GetColumnData<typeof userId, 'raw'>;
 
-  Expect<Equal<UserIdRaw, string>>;
+  Expect<Equal<UserIdRaw, GenericId<'users'>>>;
 }
 
 // Test 20: nullable id field in raw mode (no null union)
@@ -167,7 +168,7 @@ import { type Equal, Expect } from './utils';
   const parentId = id('posts'); // nullable
   type ParentIdRaw = GetColumnData<typeof parentId, 'raw'>;
 
-  Expect<Equal<ParentIdRaw, string>>;
+  Expect<Equal<ParentIdRaw, GenericId<'posts'>>>;
 }
 
 // ============================================================================

@@ -223,6 +223,13 @@ export class Relations<
   constructor(table: TTable, config: (helpers: RelationHelpers) => TConfig) {
     this.table = table;
     this.config = config;
+
+    // Evaluate the config callback and store in symbol for runtime access
+    const helpers: RelationHelpers = {
+      one: createOne(table),
+      many: createMany(table),
+    };
+    this[RelationsSymbol] = config(helpers);
   }
 }
 

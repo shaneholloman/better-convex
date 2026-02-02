@@ -132,7 +132,7 @@ export {
   Relations as RelationsSymbol,
   TableName,
 } from './symbols';
-export type { TableConfig, ConvexTable } from './table';
+export type { ConvexTable, TableConfig } from './table';
 export { convexTable } from './table';
 // M3: Query Builder Types
 export type {
@@ -141,6 +141,7 @@ export type {
   DBQueryConfig,
   ExtractTablesWithRelations,
   FilterOperators,
+  GetColumnData,
   InferInsertModel,
   InferModelFromColumns,
   InferRelations,

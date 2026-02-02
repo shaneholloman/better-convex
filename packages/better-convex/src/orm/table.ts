@@ -1,11 +1,11 @@
-import type { Validator } from 'convex/values';
-import { v } from 'convex/values';
 import type {
   GenericTableIndexes,
   GenericTableSearchIndexes,
   GenericTableVectorIndexes,
   TableDefinition,
 } from 'convex/server';
+import type { Validator } from 'convex/values';
+import { v } from 'convex/values';
 import type { ColumnBuilder } from './builders/column-builder';
 import { Brand, Columns, TableName } from './symbols';
 

@@ -13,6 +13,7 @@ severity: high
 tags: [typescript, phantom-types, type-branding, intersection-types, drizzle-pattern]
 related_docs:
   - "docs/solutions/integration-issues/convex-table-schema-integration-20260202.md"
+  - "docs/solutions/typescript-patterns/select-ts-type-inference-drizzle-patterns-20260202.md"
 ---
 
 # TypeScript Phantom Type Brand Preservation

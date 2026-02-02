@@ -1,7 +1,6 @@
 import type { GenericId } from 'convex/values';
 import type { Simplify } from '../internal/types';
 import type { ColumnBuilder } from './builders/column-builder';
-import type { FieldReference } from './filter-expression';
 import type { One, Relation, Relations } from './relations';
 import type { ConvexTable } from './table';
 
@@ -100,7 +99,7 @@ type ColumnToType<V> =
  */
 export type GetColumnData<
   TColumn extends ColumnBuilder<any, any, any>,
-  TInferMode extends 'query' | 'raw' = 'query'
+  TInferMode extends 'query' | 'raw' = 'query',
 > = TInferMode extends 'raw'
   ? TColumn['_']['data'] // Raw mode: just the base data type
   : TColumn['_']['notNull'] extends true
@@ -120,7 +119,6 @@ type ColumnsToType<T> =
       }
     : never;
 
-
 /**
  * Extract relation types from a Relations definition
  * Requires schema context to look up referenced tables
@@ -137,7 +135,7 @@ type ColumnsToType<T> =
  */
 export type InferRelations<
   TRelations extends Relations<any, any>,
-  TSchema extends TablesRelationalConfig
+  TSchema extends TablesRelationalConfig,
 > = TRelations extends Relations<any, infer TConfig>
   ? Simplify<{
       [K in keyof TConfig]: TConfig[K] extends Relation<any>
@@ -155,7 +153,7 @@ export type InferRelations<
  */
 type InferRelationTypeWithSchema<
   TRel extends Relation<any>,
-  TSchema extends TablesRelationalConfig
+  TSchema extends TablesRelationalConfig,
 > = BuildQueryResult<
   TSchema,
   FindTableByDBName<TSchema, TRel['referencedTableName']>,
@@ -175,7 +173,9 @@ type InferRelationTypeWithSchema<
  * type Schema = ExtractTablesWithRelations<typeof schema>;
  * type Relations = InferRelations<typeof usersRelations, Schema>;
  */
-export type ExtractTablesWithRelations<TSchema extends Record<string, unknown>> = {
+export type ExtractTablesWithRelations<
+  TSchema extends Record<string, unknown>,
+> = {
   [K in keyof TSchema]: TSchema[K] extends ConvexTable<infer TConfig>
     ? {
         tsName: K;
@@ -269,19 +269,59 @@ export type DBQueryConfig<
 
 /**
  * Filter operators available in where clause
- * Following Drizzle pattern: first param is column reference, second param is the value
+ * Following Drizzle pattern: accept column builders directly, extract types with GetColumnData
+ *
+ * Operators use 'raw' mode for comparisons (no null union in comparison values)
+ * Runtime wraps builders with column() helper for FilterExpression construction
  */
 export interface FilterOperators {
-  eq: <T>(field: FieldReference<T>, value: T) => any;
-  ne: <T>(field: FieldReference<T>, value: T) => any;
-  gt: <T>(field: FieldReference<T>, value: T) => any;
-  gte: <T>(field: FieldReference<T>, value: T) => any;
-  lt: <T>(field: FieldReference<T>, value: T) => any;
-  lte: <T>(field: FieldReference<T>, value: T) => any;
-  inArray: <T>(field: FieldReference<T>, values: readonly T[]) => any;
-  notInArray: <T>(field: FieldReference<T>, values: readonly T[]) => any;
-  isNull: <T>(field: FieldReference<T | null>) => any;
-  isNotNull: <T>(field: FieldReference<T | null>) => any;
+  eq<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    value: GetColumnData<TBuilder, 'raw'>
+  ): any;
+
+  ne<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    value: GetColumnData<TBuilder, 'raw'>
+  ): any;
+
+  gt<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    value: GetColumnData<TBuilder, 'raw'>
+  ): any;
+
+  gte<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    value: GetColumnData<TBuilder, 'raw'>
+  ): any;
+
+  lt<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    value: GetColumnData<TBuilder, 'raw'>
+  ): any;
+
+  lte<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    value: GetColumnData<TBuilder, 'raw'>
+  ): any;
+
+  inArray<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    values: readonly GetColumnData<TBuilder, 'raw'>[]
+  ): any;
+
+  notInArray<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    values: readonly GetColumnData<TBuilder, 'raw'>[]
+  ): any;
+
+  isNull<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder extends { _: { notNull: true } } ? never : TBuilder
+  ): any;
+
+  isNotNull<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder
+  ): any;
 }
 
 /**
