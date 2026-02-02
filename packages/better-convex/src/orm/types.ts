@@ -120,21 +120,6 @@ type ColumnsToType<T> =
       }
     : never;
 
-/**
- * Map column builders to FieldReference objects for type-safe column access
- * Following Drizzle pattern: pass column objects (not extracted types) to where clause
- *
- * @example
- * type Columns = { name: text().notNull(), age: integer() };
- * type Refs = ColumnFieldReferences<Columns>;
- * // → { name: FieldReference<string>, age: FieldReference<number | null> }
- */
-export type ColumnFieldReferences<TColumns> =
-  TColumns extends Record<string, ColumnBuilder<any, any, any>>
-    ? {
-        [K in keyof TColumns]: FieldReference<ColumnToType<TColumns[K]>>;
-      }
-    : never;
 
 /**
  * Extract relation types from a Relations definition
@@ -262,14 +247,17 @@ export type DBQueryConfig<
   };
 } & (TRelationType extends 'many'
   ? {
-      /** Filter rows - receives raw columns (validators) and operators */
+      /**
+       * Filter rows - receives raw column builders (not FieldReference)
+       * Following Drizzle pattern: pass columns directly, operators wrap at runtime
+       */
       where?: (
-        columns: TTableConfig['columns'],
+        fields: TTableConfig['columns'],
         operators: FilterOperators
       ) => any;
-      /** Order results - receives raw columns (validators) and direction helpers */
+      /** Order results - receives raw column builders and direction helpers */
       orderBy?: (
-        columns: TTableConfig['columns'],
+        fields: TTableConfig['columns'],
         direction: OrderDirection
       ) => any;
       /** Limit number of results */

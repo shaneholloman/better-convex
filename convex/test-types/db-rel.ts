@@ -45,16 +45,16 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     _creationTime: number;
     name: string;
     email: string;
-    age: number | undefined;
+    age: number | null;
     cityId: string;
-    homeCityId: string | undefined;
+    homeCityId: string | null;
     posts: Array<{
       _id: string;
       _creationTime: number;
       title: string;
       content: string;
-      authorId: string | undefined;
-      published: boolean | undefined;
+      authorId: string | null;
+      published: boolean | null;
     }>;
   }>;
 
@@ -78,21 +78,21 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     _creationTime: number;
     name: string;
     email: string;
-    age: number | undefined;
+    age: number | null;
     cityId: string;
-    homeCityId: string | undefined;
+    homeCityId: string | null;
     posts: Array<{
       _id: string;
       _creationTime: number;
       title: string;
       content: string;
-      authorId: string | undefined;
-      published: boolean | undefined;
+      authorId: string | null;
+      published: boolean | null;
       comments: Array<{
         _id: string;
         _creationTime: number;
         postId: string;
-        authorId: string | undefined;
+        authorId: string | null;
         text: string;
       }>;
     }>;
@@ -141,16 +141,16 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     _creationTime: number;
     title: string;
     content: string;
-    authorId: string | undefined;
-    published: boolean | undefined;
+    authorId: string | null;
+    published: boolean | null;
     author: {
       _id: string;
       _creationTime: number;
       name: string;
       email: string;
-      age: number | undefined;
+      age: number | null;
       cityId: string;
-      homeCityId: string | undefined;
+      homeCityId: string | null;
     } | null;
   }>;
 
@@ -170,9 +170,9 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   type NodeType = {
     _id: string;
     _creationTime: number;
-    parentId: string | undefined;
-    leftId: string | undefined;
-    rightId: string | undefined;
+    parentId: string | null;
+    leftId: string | null;
+    rightId: string | null;
   };
 
   type Expected = Array<
@@ -213,9 +213,9 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
         _creationTime: number;
         name: string;
         email: string;
-        age: number | undefined;
+        age: number | null;
         cityId: string;
-        homeCityId: string | undefined;
+        homeCityId: string | null;
       } | null;
     }>;
   }>;
@@ -236,16 +236,16 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     _creationTime: number;
     name: string;
     email: string;
-    age: number | undefined;
+    age: number | null;
     cityId: string;
-    homeCityId: string | undefined;
+    homeCityId: string | null;
     posts: Array<{
       _id: string;
       _creationTime: number;
       title: string;
       content: string;
-      authorId: string | undefined;
-      published: boolean | undefined;
+      authorId: string | null;
+      published: boolean | null;
     }>;
   } | null;
 
