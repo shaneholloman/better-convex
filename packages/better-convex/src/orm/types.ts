@@ -1,6 +1,7 @@
 import type { GenericId } from 'convex/values';
 import type { Simplify } from '../internal/types';
 import type { ColumnBuilder } from './builders/column-builder';
+import type { Column } from './filter-expression';
 import type { One, Relation, Relations } from './relations';
 import type { ConvexTable } from './table';
 
@@ -9,7 +10,7 @@ import type { ConvexTable } from './table';
  * Intersection can cause TypeScript to lose phantom type brands
  * This manually combines keys from both types
  */
-type Merge<A, B> = {
+export type Merge<A, B> = {
   [K in keyof A | keyof B]: K extends keyof B
     ? B[K]
     : K extends keyof A
@@ -255,11 +256,11 @@ export type DBQueryConfig<
         fields: TTableConfig['columns'],
         operators: FilterOperators
       ) => any;
-      /** Order results - receives raw column builders and direction helpers */
-      orderBy?: (
-        fields: TTableConfig['columns'],
-        direction: OrderDirection
-      ) => any;
+      /**
+       * Order results - receives OrderByClause from asc()/desc() helpers
+       * Following Drizzle pattern: orderBy: desc(posts._creationTime)
+       */
+      orderBy?: OrderByClause<any>;
       /** Limit number of results */
       limit?: number;
       /** Skip first N results */
@@ -322,6 +323,43 @@ export interface FilterOperators {
   isNotNull<TBuilder extends ColumnBuilder<any, any, any>>(
     field: TBuilder
   ): any;
+
+  // M5 String Operators (Post-Fetch)
+  like<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    pattern: string
+  ): any;
+
+  ilike<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    pattern: string
+  ): any;
+
+  startsWith<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    prefix: string
+  ): any;
+
+  endsWith<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    suffix: string
+  ): any;
+
+  contains<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    substring: string
+  ): any;
+}
+
+/**
+ * Order by clause - represents a single field ordering
+ * Following Drizzle pattern for type-safe ordering
+ *
+ * @template TColumn - Column builder type
+ */
+export interface OrderByClause<TColumn extends ColumnBuilder<any, any, any>> {
+  readonly column: Column<TColumn, string>;
+  readonly direction: 'asc' | 'desc';
 }
 
 /**

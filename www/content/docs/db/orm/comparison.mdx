@@ -93,22 +93,21 @@ Compare Drizzle ORM and Better-Convex ORM APIs side-by-side. This guide shows ex
   </Tab>
   <Tab value="Better-Convex">
     ```ts
-    import { convexTable } from 'better-convex/orm';
-    import { v } from 'convex/values';
+    import { convexTable, text, integer, boolean } from 'better-convex/orm';
 
     const users = convexTable('users', {
       // id is auto-created as _id: Id<'users'>
-      name: v.string(),
-      email: v.string(),
-      age: v.optional(v.number()),
-      isAdmin: v.optional(v.boolean()), // No .default() yet
+      name: text().notNull(),
+      email: text().notNull(),
+      age: integer(),
+      isAdmin: boolean(), // Nullable by default
     });
 
     const posts = convexTable('posts', {
       // id is auto-created as _id: Id<'posts'>
-      title: v.string(),
-      content: v.string(),
-      published: v.optional(v.boolean()),
+      title: text().notNull(),
+      content: text().notNull(),
+      published: boolean(),
       // userId will be created by relation
     });
     ```
@@ -489,13 +488,13 @@ import { v } from 'convex/values';
 
 const users = convexTable('users', {
   // _id auto-created
-  name: v.string(),
-  email: v.string(),
+  name: text().notNull(),
+  email: text().notNull(),
 });
 
 const posts = convexTable('posts', {
   // _id auto-created
-  title: v.string(),
+  title: text().notNull(),
   // userId created by relation
 });
 

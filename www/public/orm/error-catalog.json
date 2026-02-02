@@ -2,7 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Better-Convex ORM Error Catalog",
   "description": "Common TypeScript errors and their solutions for Better-Convex ORM",
-  "version": "1.0.0",
+  "version": "1.0.0-m6",
+  "lastUpdated": "2026-02-02",
   "errors": {
     "type_errors": {
       "null_instead_of_undefined": {
@@ -13,12 +14,12 @@
         "doc_url": "/docs/db/orm/schema#optional-fields",
         "severity": "error"
       },
-      "missing_optional_wrapper": {
-        "pattern": "Type 'number | undefined' is not assignable",
-        "message": "Use v.optional() wrapper for optional fields",
-        "example_wrong": "age: v.number() | undefined",
-        "example_correct": "age: v.optional(v.number())",
-        "doc_url": "/docs/db/orm/schema#optional-fields",
+      "nullable_field_type_error": {
+        "pattern": "Type 'number | null' is not assignable",
+        "message": "Column builders are nullable by default - use .notNull() for required fields",
+        "example_wrong": "age: integer() | null",
+        "example_correct": "age: integer() // Already nullable",
+        "doc_url": "/docs/db/orm/schema#nullable-fields",
         "severity": "error"
       },
       "wrong_field_type": {

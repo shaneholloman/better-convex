@@ -30,13 +30,12 @@ Define a Convex table with Drizzle-style API.
 
 **Example:**
 ```ts
-import { convexTable } from 'better-convex/orm';
-import { v } from 'convex/values';
+import { convexTable, text, integer } from 'better-convex/orm';
 
 const users = convexTable('users', {
-  name: v.string(),
-  email: v.string(),
-  age: v.optional(v.number()),
+  name: text().notNull(),
+  email: text().notNull(),
+  age: integer(),
 });
 
 // Inferred type:
@@ -126,7 +125,7 @@ Define one-to-many relation.
 many(posts) // User has many posts
 ```
 
-## Query Operations (M1-M4)
+## Query Operations (M1-M5)
 
 ### findMany()
 
@@ -138,14 +137,14 @@ db(ctx).query.tableName.findMany(
 
 Query multiple records with optional filtering.
 
-**Options (M1-M4):**
+**Options (M1-M5):**
 - `where`: Filter condition using operators (eq, ne, gt, etc.)
 - `limit`: Maximum number of records to return
 - `offset`: Number of records to skip
+- `orderBy`: Sort order using `asc()` or `desc()`
 
-**Coming in M5:**
+**Coming in M6:**
 - `with`: Relation loading
-- `orderBy`: Sort order
 
 **Returns:** Promise resolving to array of records with inferred types
 
@@ -170,13 +169,13 @@ db(ctx).query.tableName.findFirst(
 
 Query first matching record.
 
-**Options (M1-M4):**
+**Options (M1-M5):**
 - `where`: Filter condition
 - `limit`: Limit results before taking first
+- `orderBy`: Sort order using `asc()` or `desc()`
 
-**Coming in M5:**
+**Coming in M6:**
 - `with`: Relations to load
-- `orderBy`: Sort order
 
 **Returns:** Promise resolving to first record or `null`
 
@@ -416,53 +415,188 @@ Check if field is not undefined/null.
 where: isNotNull(users.email)
 ```
 
-## Ordering Functions (🚧 Coming in M5)
+## OrderBy Functions
 
-<Callout icon={<AlertTriangle />}>
-**Not Yet Implemented**: `orderBy`, `asc`, and `desc` are planned for M5. Sort results manually after fetching for now.
-</Callout>
-
-The following APIs show the **planned design** for M5:
-
-### orderBy() (Planned)
+### asc()
 
 ```ts
-// NOT YET IMPLEMENTED
-orderBy(field: Field | Field[]): OrderByConfig
+asc<TBuilder extends ColumnBuilder>(
+  builder: TBuilder
+): OrderByClause<TBuilder>
 ```
 
-**Workaround:** Sort after fetching:
-```ts
-const users = await db(ctx).query.users.findMany();
-const sorted = users.sort((a, b) => b._creationTime - a._creationTime);
-```
+Create ascending order clause for query results.
 
-### asc() / desc() (Planned)
+**Parameters:**
+- `builder`: Column builder (from table definition)
 
-```ts
-// NOT YET IMPLEMENTED
-asc(field: Field): SortOrder
-desc(field: Field): SortOrder
-```
-
-Ascending sort order.
+**Returns:** OrderByClause for use in `orderBy` option
 
 **Example:**
 ```ts
-asc(users.name)
+import { asc } from 'better-convex/orm';
+
+const posts = await db(ctx).query.posts.findMany({
+  orderBy: asc(posts.createdAt),
+});
 ```
+
+**Index Optimization:**
+- Uses Convex index if available
+- Falls back to post-fetch Array.sort() if no index
+
+---
 
 ### desc()
 
 ```ts
-desc(field: Field): SortOrder
+desc<TBuilder extends ColumnBuilder>(
+  builder: TBuilder
+): OrderByClause<TBuilder>
 ```
 
-Descending sort order.
+Create descending order clause for query results.
+
+**Parameters:**
+- `builder`: Column builder (from table definition)
+
+**Returns:** OrderByClause for use in `orderBy` option
 
 **Example:**
 ```ts
-desc(users._creationTime)
+import { desc } from 'better-convex/orm';
+
+const posts = await db(ctx).query.posts.findMany({
+  orderBy: desc(posts._creationTime),  // Newest first
+});
+```
+
+---
+
+## String Operators (Post-Fetch)
+
+### like()
+
+```ts
+like<TBuilder extends ColumnBuilder>(
+  col: Column<TBuilder, string>,
+  pattern: string
+): BinaryExpression<string>
+```
+
+SQL-style LIKE pattern matching with `%` wildcards. Case-sensitive.
+
+**Parameters:**
+- `col`: String column to match
+- `pattern`: SQL LIKE pattern (`%` = wildcard)
+
+**Returns:** Filter expression
+
+**Pattern syntax:**
+- `%text%` - Contains substring
+- `text%` - Starts with
+- `%text` - Ends with
+- `text` - Exact match
+
+**Example:**
+```ts
+import { like } from 'better-convex/orm';
+
+// Find posts with 'JavaScript' in title
+const posts = await db(ctx).query.posts.findMany({
+  where: like(posts.title, '%JavaScript%'),
+});
+```
+
+**Note:** Implemented as post-fetch filter (JavaScript string methods)
+
+---
+
+### ilike()
+
+```ts
+ilike<TBuilder extends ColumnBuilder>(
+  col: Column<TBuilder, string>,
+  pattern: string
+): BinaryExpression<string>
+```
+
+Case-insensitive version of `like()`.
+
+**Example:**
+```ts
+import { ilike } from 'better-convex/orm';
+
+// Matches 'JavaScript', 'javascript', 'JAVASCRIPT', etc.
+const posts = await db(ctx).query.posts.findMany({
+  where: ilike(posts.title, '%javascript%'),
+});
+```
+
+---
+
+### startsWith()
+
+```ts
+startsWith<TBuilder extends ColumnBuilder>(
+  col: Column<TBuilder, string>,
+  prefix: string
+): BinaryExpression<string>
+```
+
+Match string fields that start with a specific prefix. Case-sensitive.
+
+**Example:**
+```ts
+import { startsWith } from 'better-convex/orm';
+
+const posts = await db(ctx).query.posts.findMany({
+  where: startsWith(posts.title, 'How to'),
+});
+```
+
+---
+
+### endsWith()
+
+```ts
+endsWith<TBuilder extends ColumnBuilder>(
+  col: Column<TBuilder, string>,
+  suffix: string
+): BinaryExpression<string>
+```
+
+Match string fields that end with a specific suffix. Case-sensitive.
+
+**Example:**
+```ts
+import { endsWith } from 'better-convex/orm';
+
+const posts = await db(ctx).query.posts.findMany({
+  where: endsWith(posts.title, 'Guide'),
+});
+```
+
+---
+
+### contains()
+
+```ts
+contains<TBuilder extends ColumnBuilder>(
+  col: Column<TBuilder, string>,
+  substring: string
+): BinaryExpression<string>
+```
+
+Match string fields that contain a substring. Case-sensitive. Equivalent to `like(col, '%substring%')`.
+
+**Example:**
+```ts
+import { contains } from 'better-convex/orm';
+
+const posts = await db(ctx).query.posts.findMany({
+  where: contains(posts.title, 'JavaScript'),
+});
 ```
 
 ## Type Utilities
@@ -579,6 +713,11 @@ export const getUsers = query({
 | **not** | `not(condition)` | `not(eq(users.banned, true))` | Logical |
 | **isNull** | `isNull(field)` | `isNull(users.deletedAt)` | Null Check |
 | **isNotNull** | `isNotNull(field)` | `isNotNull(users.email)` | Null Check |
+| **like** | `like(field, pattern)` | `like(posts.title, '%JavaScript%')` | String (Post-Fetch) |
+| **ilike** | `ilike(field, pattern)` | `ilike(posts.title, '%javascript%')` | String (Post-Fetch) |
+| **startsWith** | `startsWith(field, prefix)` | `startsWith(posts.title, 'How to')` | String (Post-Fetch) |
+| **endsWith** | `endsWith(field, suffix)` | `endsWith(posts.title, 'Guide')` | String (Post-Fetch) |
+| **contains** | `contains(field, substring)` | `contains(posts.title, 'JavaScript')` | String (Post-Fetch) |
 
 ## TypeScript Signatures (Complete)
 

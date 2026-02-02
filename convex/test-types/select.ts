@@ -1,6 +1,8 @@
 import {
+  asc,
   buildSchema,
   createDatabase,
+  desc,
   extractRelationsConfig,
 } from 'better-convex/orm';
 import type { GenericDatabaseReader } from 'convex/server';
@@ -120,7 +122,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test 5: orderBy asc
 {
   const result = await db.query.users.findMany({
-    orderBy: (users, { asc }) => asc(users.name),
+    orderBy: asc(schema.users.name),
   });
 
   type Expected = Array<{
@@ -139,7 +141,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test 6: orderBy desc
 {
   const result = await db.query.users.findMany({
-    orderBy: (users, { desc }) => desc(users.age),
+    orderBy: desc(schema.users.age),
   });
 
   type Expected = Array<{
@@ -201,7 +203,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 {
   const result = await db.query.users.findMany({
     where: (users, { gt }) => gt(users.age, 18),
-    orderBy: (users, { desc }) => desc(users.name),
+    orderBy: desc(schema.users.name),
     limit: 10,
     offset: 5,
   });

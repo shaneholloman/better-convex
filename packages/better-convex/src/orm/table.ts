@@ -7,6 +7,7 @@ import type {
 import type { Validator } from 'convex/values';
 import { v } from 'convex/values';
 import type { ColumnBuilder } from './builders/column-builder';
+import { createSystemFields } from './builders/system-fields';
 import { Brand, Columns, TableName } from './symbols';
 
 /**
@@ -113,12 +114,22 @@ class ConvexTableImpl<T extends TableConfig> {
     validateTableName(name);
 
     this[TableName] = name;
-    this[Columns] = columns;
+
+    // Assign column names to builders
+    const namedColumns = Object.fromEntries(
+      Object.entries(columns).map(([columnName, builder]) => {
+        // Set the column name in the builder's config
+        (builder as any).config.name = columnName;
+        return [columnName, builder];
+      })
+    ) as T['columns'];
+
+    this[Columns] = namedColumns;
     this.tableName = name;
 
     // Use factory to create validator from columns
     // This extracts .convexValidator from each builder and creates v.object({...})
-    this.validator = createValidatorFromColumns(columns as any);
+    this.validator = createValidatorFromColumns(namedColumns as any);
   }
 
   /**
@@ -140,6 +151,9 @@ class ConvexTableImpl<T extends TableConfig> {
  * ConvexTable interface with type branding
  * Extends TableDefinition for schema compatibility
  * Adds phantom types for type inference
+ *
+ * Following Drizzle pattern: columns are exposed as table properties
+ * via mapped type for type safety + Object.assign for runtime access
  */
 export interface ConvexTable<
   T extends TableConfig,
@@ -188,6 +202,18 @@ export interface ConvexTable<
 }
 
 /**
+ * ConvexTable with columns as properties
+ * Following Drizzle's PgTableWithColumns pattern
+ * Mapped type makes columns accessible: table.columnName
+ * Includes system fields (_id, _creationTime) available on all Convex documents
+ */
+export type ConvexTableWithColumns<T extends TableConfig> = ConvexTable<T> &
+  {
+    [Key in keyof T['columns']]: T['columns'][Key];
+  } &
+  ReturnType<typeof createSystemFields>;
+
+/**
  * Create a type-safe Convex table definition
  *
  * Uses Drizzle-style column builders:
@@ -223,6 +249,15 @@ export function convexTable<
 >(
   name: TName,
   columns: TColumns
-): ConvexTable<{ name: TName; columns: TColumns }> {
-  return new ConvexTableImpl(name, columns) as any;
+): ConvexTableWithColumns<{ name: TName; columns: TColumns }> {
+  // Create raw table instance
+  const rawTable = new ConvexTableImpl(name, columns);
+
+  // Create system fields (_id, _creationTime)
+  const systemFields = createSystemFields();
+
+  // Following Drizzle pattern: Object.assign to attach columns AND system fields as properties
+  const table = Object.assign(rawTable, rawTable[Columns], systemFields);
+
+  return table as any;
 }

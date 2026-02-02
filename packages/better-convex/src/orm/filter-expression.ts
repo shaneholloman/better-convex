@@ -71,7 +71,12 @@ export interface BinaryExpression<TField = any>
     | 'lt'
     | 'lte'
     | 'inArray'
-    | 'notInArray';
+    | 'notInArray'
+    | 'like'
+    | 'ilike'
+    | 'startsWith'
+    | 'endsWith'
+    | 'contains';
   /** [field, value] or [field, array] for inArray/notInArray */
   readonly operands: readonly [FieldReference<TField>, TField | TField[]];
 }
@@ -307,6 +312,98 @@ export function lte<TBuilder extends ColumnBuilder<any, any, any>>(
   value: ColumnToType<TBuilder>
 ): BinaryExpression<ColumnToType<TBuilder>> {
   return new BinaryExpressionImpl('lte', [fieldRef(col.columnName), value]);
+}
+
+// ============================================================================
+// Factory Functions - String Operators (M5)
+// ============================================================================
+
+/**
+ * LIKE operator: SQL-style pattern matching with % wildcards
+ * Note: Implemented as post-filter (Convex has no native LIKE)
+ *
+ * @example
+ * const users = await db.query.users.findMany({
+ *   where: like(users.name, '%alice%'),
+ * });
+ */
+export function like<TBuilder extends ColumnBuilder<any, any, any>>(
+  col: Column<TBuilder, string>,
+  pattern: string
+): BinaryExpression<string> {
+  return new BinaryExpressionImpl('like', [fieldRef(col.columnName), pattern]);
+}
+
+/**
+ * ILIKE operator: Case-insensitive LIKE
+ * Note: Implemented as post-filter (Convex has no native LIKE)
+ *
+ * @example
+ * const users = await db.query.users.findMany({
+ *   where: ilike(users.name, '%ALICE%'),
+ * });
+ */
+export function ilike<TBuilder extends ColumnBuilder<any, any, any>>(
+  col: Column<TBuilder, string>,
+  pattern: string
+): BinaryExpression<string> {
+  return new BinaryExpressionImpl('ilike', [fieldRef(col.columnName), pattern]);
+}
+
+/**
+ * startsWith operator: Check if string starts with prefix
+ * Optimized for prefix matching
+ *
+ * @example
+ * const users = await db.query.users.findMany({
+ *   where: startsWith(users.email, 'admin@'),
+ * });
+ */
+export function startsWith<TBuilder extends ColumnBuilder<any, any, any>>(
+  col: Column<TBuilder, string>,
+  prefix: string
+): BinaryExpression<string> {
+  return new BinaryExpressionImpl('startsWith', [
+    fieldRef(col.columnName),
+    prefix,
+  ]);
+}
+
+/**
+ * endsWith operator: Check if string ends with suffix
+ *
+ * @example
+ * const users = await db.query.users.findMany({
+ *   where: endsWith(users.email, '@example.com'),
+ * });
+ */
+export function endsWith<TBuilder extends ColumnBuilder<any, any, any>>(
+  col: Column<TBuilder, string>,
+  suffix: string
+): BinaryExpression<string> {
+  return new BinaryExpressionImpl('endsWith', [
+    fieldRef(col.columnName),
+    suffix,
+  ]);
+}
+
+/**
+ * contains operator: Check if string contains substring
+ * Can use search index for optimization when available
+ *
+ * @example
+ * const posts = await db.query.posts.findMany({
+ *   where: contains(posts.title, 'javascript'),
+ * });
+ */
+export function contains<TBuilder extends ColumnBuilder<any, any, any>>(
+  col: Column<TBuilder, string>,
+  substring: string
+): BinaryExpression<string> {
+  return new BinaryExpressionImpl('contains', [
+    fieldRef(col.columnName),
+    substring,
+  ]);
 }
 
 // ============================================================================

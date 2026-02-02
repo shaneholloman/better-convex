@@ -86,18 +86,17 @@ Install Better-Convex in your existing Convex project:
 Define your schema using Drizzle-style syntax:
 
 ```ts title="convex/schema.ts" showLineNumbers {3-9,11-14}
-import { convexTable, relations } from 'better-convex/orm';
-import { v } from 'convex/values';
+import { convexTable, relations, text, boolean } from 'better-convex/orm';
 
 const users = convexTable('users', {
-  name: v.string(),
-  email: v.string(),
+  name: text().notNull(),
+  email: text().notNull(),
 });
 
 const posts = convexTable('posts', {
-  title: v.string(),
-  content: v.string(),
-  published: v.boolean(),
+  title: text().notNull(),
+  content: text().notNull(),
+  published: boolean(),
 });
 
 const usersRelations = relations(users, ({ many }) => ({

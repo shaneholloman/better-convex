@@ -409,14 +409,14 @@ Based on categories, here's the recommended implementation order:
 | Relations | `relations()`, `one()`, `many()` | Same API | 1 | ✅ M2 |
 | Queries | `findMany()`, `findFirst()` | Same API | 1 | ✅ M3 |
 | Core Filters | `eq`, `gt`, `and`, `or` | Same API | 1 | ✅ M4 |
-| **Type Testing** | **Equal<>, @ts-expect-error** | **Mirror Drizzle tests** | **Testing** | **📋 M4.5** |
-| String Filters | `like`, `ilike`, `contains` | Post-filter workaround | 2 | 🔜 M5 |
-| Ordering | `orderBy`, `asc`, `desc` | Same API | 1 | 🔜 M5 |
+| **Type Testing** | **Equal<>, @ts-expect-error** | **Mirror Drizzle tests** | **Testing** | **✅ M4.5** |
+| String Filters | `like`, `ilike`, `contains` | Post-filter workaround | 2 | ✅ M5 |
+| Ordering | `orderBy`, `asc`, `desc` | Same API | 1 | ✅ M5 |
 | Joins | SQL LEFT/RIGHT/FULL | Relations only (inner) | 2 | ✅ M2 |
 | Pagination | `limit`/`offset` | + cursor (recommended) | 1+3 | ✅ M3 |
-| Mutations | INSERT/UPDATE/DELETE | Same, no RETURNING | 1+2 | 🔜 M6 |
+| Mutations | INSERT/UPDATE/DELETE | Same, no RETURNING | 1+2 | 🔜 M7 |
 | Real-time | None | Auto-subscribe | 3 | ✅ M3 |
-| Column Builders | `text()`, `integer()` | Same API as Drizzle | 1 | 🔜 M7 |
+| Column Builders | `text()`, `integer()` | Same API as Drizzle | 1 | ✅ M6 |
 | Subqueries | Full support | Not supported | 2 | ❌ N/A |
 
 **Legend**: ✅ Completed | 📋 In Progress | 🔜 Planned | ❌ Not Applicable
@@ -660,7 +660,7 @@ For each test failure or gap:
 - `convex/test-types/edge-cases.ts` - Nullable, GenericId, unions
 - `convex/test-types/negative-tests.ts` - All @ts-expect-error cases
 
-### Milestone 5: Query Builder - Ordering & Advanced Queries
+### Milestone 5: Query Builder - Ordering & Advanced Queries ✅ COMPLETED
 
 **Goal**: Complete query API with ordering and advanced operators
 
@@ -690,9 +690,48 @@ const result = await ctx.db.query.users.findMany({
 });
 ```
 
-### Milestone 6: Mutations
+**Status**: ✅ COMPLETED (2026-02-02)
 
-**Goal**: Drizzle-style insert/update/delete
+### Milestone 6: Drizzle-Style Column Builders ✅ COMPLETED
+
+**Goal**: Replace `v.*` validators with Drizzle-style column builders for familiar API
+
+**Scope**:
+
+- **Drizzle-style column builders** (`text()`, `integer()`, `boolean()`, etc.)
+  - Drop-in replacement for `v.*` validators
+  - Same API as Drizzle ORM (`.notNull()`, `.default()`, `.primaryKey()`)
+  - Type inference compatibility with M1 foundation
+- Default values support (`.default("draft")`)
+- Type inference with all modifiers
+- Backwards compatibility with `v.*` validators
+
+**Deliverable**: Final API matches Drizzle ergonomics + complete type test coverage
+
+**Example**:
+
+```typescript
+// Final API (M6) - Drizzle-style
+const users = convexTable("users", {
+  id: integer().primaryKey(),
+  name: text().notNull(),
+  email: text().notNull(),
+  role: text().default("user"),
+  age: integer(), // nullable
+});
+
+// Still works with M1 validators (backward compatible)
+const posts = convexTable("posts", {
+  title: v.string(),
+  content: v.string(),
+});
+```
+
+**Status**: ✅ COMPLETED (2026-02-02)
+
+### Milestone 7: Mutations (Next Up)
+
+**Goal**: Drizzle-style insert/update/delete operations
 
 **Scope**:
 
@@ -734,61 +773,6 @@ await ctx.db
   .update(users)
   .set({ name: "Alice Updated" })
   .where(eq(users.id, userId));
-```
-
-### Milestone 7: Advanced Features & Drizzle-Style Column Builders
-
-**Goal**: Polish and final API alignment with Drizzle
-
-**Scope**:
-
-- **Drizzle-style column builders** (`text()`, `integer()`, `boolean()`, etc.)
-  - Drop-in replacement for `v.*` validators
-  - Same API as Drizzle ORM (`.notNull()`, `.default()`, `.primaryKey()`)
-  - Type inference compatibility with M1 foundation
-- Default values support (`.default("draft")`)
-- Transaction support (Convex mutations are already transactional)
-- Computed fields / extras
-- Relation load strategies
-- Schema migrations helpers
-- Documentation and examples
-
-**Type Testing** (Apply M4.5 methodology):
-
-1. **Clone Drizzle**: Study `drizzle-orm/src/pg-core/columns/` for all column builders
-2. **Type inference tests**:
-   - Builder phantom type brands (NotNull, HasDefault, etc.)
-   - Column type inference with all modifiers
-   - Default value type validation
-   - Backwards compatibility with v.* validators
-3. **Negative tests**:
-   - `@ts-expect-error` - Invalid modifier combinations
-   - `@ts-expect-error` - Type mismatch in default values
-   - `@ts-expect-error` - Invalid primaryKey usage
-4. **Runtime tests**:
-   - Builder compilation to Convex validators
-   - Default value application
-   - Type coercion behavior
-
-**Deliverable**: Final API matches Drizzle ergonomics + complete type test coverage
-
-**Example**:
-
-```typescript
-// Final API (M6) - Drizzle-style
-const users = convexTable("users", {
-  id: integer().primaryKey(),
-  name: text().notNull(),
-  email: text().notNull(),
-  role: text().default("user"),
-  age: integer(), // nullable
-});
-
-// Still works with M1 validators (backward compatible)
-const posts = convexTable("posts", {
-  title: v.string(),
-  content: v.string(),
-});
 ```
 
 ## Type Mapping Reference
@@ -1485,11 +1469,308 @@ The following M3 features are **partially implemented**:
   - Workaround: Explicitly list included columns
 
 **Completed:**
+- **M1**: Schema Foundation (convexTable, type inference) ✅ COMPLETE
+- **M2**: Relations Layer (relations, one, many) ✅ COMPLETE
+- **M3**: Query Builder - Read Operations (findMany, findFirst) ✅ COMPLETE (partial - relation loading deferred)
 - **M4**: Query Builder - Where Filtering (core operators, index optimization) ✅ COMPLETE
 - **M4.5**: Type Testing Audit - Testing implemented features only (M1, M2, M4, partial M3) ✅ COMPLETE
+- **M5**: Query Builder - Ordering & Advanced Queries (orderBy, string operators) ✅ COMPLETE
+- **M6**: Column Builders (text(), integer(), boolean(), etc.) ✅ COMPLETE
 
 **Next Up:**
 - **Phase 4**: Relation Loading Implementation - Complete M3 `with` option runtime (currently stubbed)
-- **M5**: Query Builder - Ordering & Advanced Queries (`orderBy`, string operators, column exclusion)
-- **M6**: Mutations (`insert`, `update`, `delete`)
+- **M7**: Mutations (insert, update, delete)
+
+---
+
+## Documentation Maintenance Methodology
+
+**Purpose**: Systematic process for keeping ORM documentation synchronized with implementation across milestones.
+
+**Last Updated**: 2026-02-02 (M6 column builders migration)
+
+### Parity Definition
+
+**Scope**: Feature coverage only - document all Drizzle ORM features that have Better-Convex equivalents.
+
+**What to Include**:
+- Core ORM APIs (schema, queries, mutations, relations)
+- Query patterns (filtering, ordering, pagination)
+- Type inference and TypeScript integration
+- Performance characteristics unique to Convex
+- Migration guides from Drizzle
+
+**What to Exclude** (SQL-specific, not applicable):
+- Database drivers (PostgreSQL, MySQL, SQLite)
+- Migration tools (Drizzle Kit)
+- SQL-specific operators (UNION, INTERSECT, EXCEPT)
+- Connection pooling and read replicas
+- Transaction isolation levels
+
+**Category Classification**:
+- **Category 1** (✅): 100% Drizzle-compatible
+- **Category 2** (⚠️): Limited/workaround required
+- **Category 3** (🚀): Convex-native advantages
+- **Category 4** (❌): Not applicable (SQL-specific)
+
+### Per-Milestone Documentation Sync Checklist
+
+Run this checklist **after each milestone is complete** (when code is merged to main):
+
+#### 1. Identify Scope
+
+- [ ] List all new APIs added in this milestone
+- [ ] List all changed APIs (breaking changes, new options)
+- [ ] Identify affected documentation files
+- [ ] Check if new documentation files are needed
+
+#### 2. Update Code Examples
+
+**Syntax Strategy** (M6+): Show **only builder syntax** - clean break from validators.
+
+- [ ] Replace validator syntax with builder syntax in all examples
+  - `v.string()` → `text()`
+  - `v.number()` → `integer()` or `number()`
+  - `v.boolean()` → `boolean()`
+  - `v.id('table')` → `id('table')`
+  - `v.optional()` → `.notNull()` modifier (builders nullable by default)
+- [ ] Update import statements
+  - Remove: `import { v } from 'convex/values';`
+  - Add: `import { text, integer, boolean, id } from 'better-convex/orm';`
+- [ ] Handle complex validators (no direct builder equivalent):
+  - `v.union(v.literal('a'), v.literal('b'))` - Document as advanced pattern
+  - `v.object()` - Document separately if needed
+  - Keep these as validator syntax if no builder equivalent exists
+- [ ] Update inline code snippets in prose
+- [ ] Update multi-line code blocks
+- [ ] Check cross-references to other docs
+
+#### 3. Update Documentation Files
+
+**For each affected file**:
+
+- [ ] Read the file completely
+- [ ] Update code examples (see syntax rules above)
+- [ ] Update explanatory text referencing old syntax
+- [ ] Update API signatures if changed
+- [ ] Add new sections for new features
+- [ ] Update "Not Yet Implemented" lists
+- [ ] Check all internal links still work
+- [ ] Build and preview locally
+
+**Documentation Files** (current as of M6):
+- [www/content/docs/db/orm/index.mdx](www/content/docs/db/orm/index.mdx) - Overview + feature list (lines 29-56)
+- [www/content/docs/db/orm/quickstart.mdx](www/content/docs/db/orm/quickstart.mdx) - 5-min tutorial
+- [www/content/docs/db/orm/schema.mdx](www/content/docs/db/orm/schema.mdx) - Table definitions
+- [www/content/docs/db/orm/relations.mdx](www/content/docs/db/orm/relations.mdx) - Relation patterns
+- [www/content/docs/db/orm/queries.mdx](www/content/docs/db/orm/queries.mdx) - Query operations
+- [www/content/docs/db/orm/mutations.mdx](www/content/docs/db/orm/mutations.mdx) - Insert/update/delete
+- [www/content/docs/db/orm/api-reference.mdx](www/content/docs/db/orm/api-reference.mdx) - Complete API surface
+- [www/content/docs/db/orm/comparison.mdx](www/content/docs/db/orm/comparison.mdx) - Drizzle migration guide
+- [www/content/docs/db/orm/limitations.mdx](www/content/docs/db/orm/limitations.mdx) - Constraints
+- [www/content/docs/db/orm/llms-index.md](www/content/docs/db/orm/llms-index.md) - AI assistant index
+
+#### 4. Update Agent-Native Artifacts
+
+**Location**: [www/public/orm/](www/public/orm/)
+
+**Files to Update**:
+
+1. **api-catalog.json**:
+   - [ ] Bump version field (e.g., `"1.0.0-m4"` → `"1.0.0-m6"`)
+   - [ ] Update `lastUpdated` to ISO date (YYYY-MM-DD)
+   - [ ] Add new API signatures
+   - [ ] Update changed API signatures
+   - [ ] Use builder syntax in all examples
+   - [ ] Validate JSON with `cat api-catalog.json | jq .`
+
+2. **error-catalog.json**:
+   - [ ] Add new error patterns from this milestone
+   - [ ] Update error examples to use builder syntax
+   - [ ] Bump version to match milestone
+   - [ ] Update `lastUpdated` field
+   - [ ] Validate JSON with `cat error-catalog.json | jq .`
+
+3. **examples-registry.json**:
+   - [ ] Replace validator examples with builder syntax
+   - [ ] Add new examples for new features
+   - [ ] Update example categories
+   - [ ] Bump version to match milestone
+   - [ ] Update `lastUpdated` field
+   - [ ] Validate JSON with `cat examples-registry.json | jq .`
+
+**Artifact Update Process**:
+- **Method**: Manual editing by doc author
+- **Validation**: JSON schema validation (`jq` must parse without errors)
+- **Versioning**: Use milestone numbers (M4, M5, M6) in semver format (`1.0.0-m6`)
+- **Dating**: ISO 8601 format (`YYYY-MM-DD`) in `lastUpdated` field
+
+#### 5. Maintain Critical Sections
+
+**index.mdx Feature Compatibility List** (currently lines 29-56):
+
+- [ ] Update milestone status badges as features complete
+- [ ] Add new features to appropriate categories (Cat 1-4)
+- [ ] Move deferred features to correct status
+- [ ] Keep 4-category badge system consistent
+- [ ] Update feature count if changed
+
+**limitations.mdx**:
+
+- [ ] Update "Current Status" section with milestone progress
+- [ ] Remove completed features from "Not Yet Implemented"
+- [ ] Add new limitations discovered during implementation
+- [ ] Document workarounds for Category 2 features
+- [ ] Keep Category 4 (Not Applicable) list current
+
+#### 6. Validation Gates
+
+**Must pass before merging docs PR**:
+
+- [ ] **Build check**: Docs site builds without errors
+  ```bash
+  cd www
+  bun install
+  bun run build
+  # Should complete without errors
+  ```
+
+- [ ] **Link validation**: All internal links work
+  ```bash
+  grep -r "](/" www/content/docs/db/orm/
+  # Manually verify cross-references
+  ```
+
+- [ ] **Syntax verification**: No validator syntax remains (M6+)
+  ```bash
+  grep -r "v\.string\|v\.number\|v\.boolean\|v\.id" www/content/docs/db/orm/*.mdx
+  # Should return 0 matches for M6+ docs
+  ```
+
+- [ ] **Import check**: No old imports remain
+  ```bash
+  grep -r "from 'convex/values'" www/content/docs/db/orm/*.mdx
+  # Should return 0 matches (builders import from better-convex/orm)
+  ```
+
+- [ ] **JSON validation**: All artifacts parse correctly
+  ```bash
+  cat www/public/orm/api-catalog.json | jq . > /dev/null
+  cat www/public/orm/error-catalog.json | jq . > /dev/null
+  cat www/public/orm/examples-registry.json | jq . > /dev/null
+  # All should succeed without errors
+  ```
+
+- [ ] **Cross-reference check**: Verify referenced code files exist
+  ```bash
+  # Check that all file paths in docs actually exist
+  # Example: [packages/better-convex/src/orm/table.ts](packages/better-convex/src/orm/table.ts)
+  ```
+
+#### 7. Drizzle Parity Verification
+
+**Reference**: `/tmp/cc-repos/drizzle-orm/` (local clone)
+
+- [ ] Review Drizzle ORM documentation structure
+- [ ] Identify new Drizzle features since last sync
+- [ ] Determine if new features apply (Category 1-4 classification)
+- [ ] Document gaps in limitations.mdx if applicable
+- [ ] Update comparison.mdx with new mapping if needed
+- [ ] Log parity status in this brainstorm
+
+**Parity Review Cadence**: Quarterly or per-major-milestone (whichever comes first)
+
+**Parity Status Log**:
+- 2026-02-02 (M6): Core features ✅ parity, Guides ❌ missing, Integrations ❌ missing
+
+#### 8. Deployment
+
+- [ ] Create PR with all documentation changes
+- [ ] Use conventional commit format: `docs(orm): sync M6 builder syntax`
+- [ ] Include summary of changes in PR description
+- [ ] Link to milestone implementation PR
+- [ ] Merge to main (docs auto-deploy)
+
+### Syntax Migration Reference
+
+**Simple Type Mapping** (M1-M5 validators → M6+ builders):
+
+| Validator (Old) | Builder (New) | Notes |
+|----------------|---------------|-------|
+| `v.string()` | `text()` | Text field |
+| `v.number()` | `integer()` or `number()` | Use `integer()` for whole numbers, `number()` for floats |
+| `v.boolean()` | `boolean()` | Boolean field |
+| `v.id('table')` | `id('table')` | Foreign key reference |
+| `v.optional(v.string())` | `text()` (default) | Builders are nullable by default |
+| `v.string()` (required) | `text().notNull()` | Use `.notNull()` modifier for required fields |
+
+**Complex Validators** (no direct builder equivalent):
+
+| Validator | Builder Alternative | Strategy |
+|-----------|---------------------|----------|
+| `v.union(v.literal('a'), v.literal('b'))` | `text().$type<'a' \| 'b'>()` (if supported) | Document as advanced pattern or keep validator syntax |
+| `v.object({ x: v.number() })` | No builder equivalent | Keep validator syntax, document separately |
+| `v.array(v.string())` | `text().array()` (if supported) | Check builder API, or keep validator syntax |
+
+**Import Statement Migration**:
+
+```typescript
+// Before (M1-M5)
+import { convexTable } from 'better-convex/server';
+import { v } from 'convex/values';
+
+const users = convexTable('users', {
+  name: v.string(),
+  age: v.number(),
+});
+
+// After (M6+)
+import { convexTable, text, integer } from 'better-convex/orm';
+
+const users = convexTable('users', {
+  name: text().notNull(),
+  age: integer(),
+});
+```
+
+### Troubleshooting
+
+**Issue**: Docs build fails after syntax migration
+
+**Solution**:
+1. Check MDX syntax errors in error output
+2. Verify all code blocks have closing backticks
+3. Ensure import statements are correct
+4. Check for unescaped special characters
+
+**Issue**: Examples don't match implementation
+
+**Solution**:
+1. Re-read implementation code to verify API
+2. Update examples to match actual behavior
+3. Add comments explaining differences from Drizzle if applicable
+
+**Issue**: Artifact JSON parsing fails
+
+**Solution**:
+1. Run `jq .` on the file to see exact error
+2. Common issues: trailing commas, missing quotes, unescaped characters
+3. Use JSON formatter/validator to fix syntax
+
+**Issue**: Links broken after file reorganization
+
+**Solution**:
+1. Use grep to find all references to moved file
+2. Update all cross-references
+3. Verify with link checker
+
+### Maintenance Ownership
+
+**Documentation Sync**: Same person who implemented the milestone (or designated doc author)
+
+**Artifact Updates**: Doc author or assigned maintainer
+
+**Parity Review**: Quarterly review by project lead or designated reviewer
+
+**Emergency Fixes**: Anyone can submit PR for doc errors, validation required
 - **M7**: Drizzle-Style Column Builders & Polish

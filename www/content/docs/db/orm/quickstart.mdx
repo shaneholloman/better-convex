@@ -45,19 +45,18 @@ Get up and running with Better-Convex ORM in 5 minutes. This guide assumes you h
 Create tables using the Drizzle-style `convexTable()` function:
 
 ```ts title="convex/schema.ts" showLineNumbers {1-2,4-11}
-import { convexTable, relations } from 'better-convex/orm';
-import { v } from 'convex/values';
+import { convexTable, relations, text, boolean } from 'better-convex/orm';
 
 // Define tables
 const users = convexTable('users', {
-  name: v.string(),
-  email: v.string(),
+  name: text().notNull(),
+  email: text().notNull(),
 });
 
 const posts = convexTable('posts', {
-  title: v.string(),
-  content: v.string(),
-  published: v.boolean(),
+  title: text().notNull(),
+  content: text().notNull(),
+  published: boolean(),
 });
 
 export const schema = {
@@ -69,7 +68,7 @@ export default schema;
 ```
 
 <Callout icon={<InfoIcon />}>
-**Using Convex Validators**: In M1-M5, Better-Convex ORM uses Convex's `v.*` validators directly. This ensures maximum compatibility and proven type inference. M6 will add Drizzle-style column builders as syntactic sugar.
+**Column Builders**: Better-Convex ORM uses Drizzle-style column builders (`text()`, `integer()`, `boolean()`) for schema definition. This provides familiar Drizzle ergonomics with Convex's type inference.
 </Callout>
 
 ## Step 3: Define Relations
@@ -77,18 +76,17 @@ export default schema;
 Use Drizzle's `relations()` API to connect tables:
 
 ```ts title="convex/schema.ts" showLineNumbers {18-29}
-import { convexTable, relations } from 'better-convex/orm';
-import { v } from 'convex/values';
+import { convexTable, relations, text, boolean } from 'better-convex/orm';
 
 const users = convexTable('users', {
-  name: v.string(),
-  email: v.string(),
+  name: text().notNull(),
+  email: text().notNull(),
 });
 
 const posts = convexTable('posts', {
-  title: v.string(),
-  content: v.string(),
-  published: v.boolean(),
+  title: text().notNull(),
+  content: text().notNull(),
+  published: boolean(),
 });
 
 // Define 1:many relationship (user has many posts)

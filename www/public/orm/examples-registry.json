@@ -1,16 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "version": "1.0.0-m4",
-  "description": "Better-Convex ORM code examples (M1-M4) - Schema, relations definition, queries, and filtering",
-  "lastUpdated": "2026-02-01",
-  "status": "Examples for implemented features only. Mutations, relation loading (with:), and orderBy examples removed (coming in M5+)",
+  "version": "1.0.0-m6",
+  "description": "Better-Convex ORM code examples (M1-M6) - Schema with column builders, relations, queries, filtering, and mutations",
+  "lastUpdated": "2026-02-02",
+  "status": "Examples for implemented features using column builder syntax. Relation loading (with:) examples removed (coming Phase 4)",
 
   "examples": {
     "schema": {
       "basic_table": {
         "title": "Define a basic table",
         "tags": ["schema", "table", "basic"],
-        "code": "const users = convexTable('users', {\n  name: v.string(),\n  email: v.string(),\n  age: v.optional(v.number()),\n});",
+        "code": "const users = convexTable('users', {\n  name: text().notNull(),\n  email: text().notNull(),\n  age: integer(),\n});",
         "docUrl": "/docs/db/orm/schema#table-definition"
       },
       "one_to_many_relation": {
@@ -34,7 +34,7 @@
       "many_to_many_junction": {
         "title": "Many-to-many via junction table",
         "tags": ["schema", "relations", "many-to-many"],
-        "code": "const userGroups = convexTable('user_groups', {\n  userId: v.id('users'),\n  groupId: v.id('groups'),\n});\n\nconst usersRelations = relations(users, ({ many }) => ({\n  userGroups: many(userGroups),\n}));\n\nconst groupsRelations = relations(groups, ({ many }) => ({\n  userGroups: many(userGroups),\n}));",
+        "code": "const userGroups = convexTable('user_groups', {\n  userId: id('users'),\n  groupId: id('groups'),\n});\n\nconst usersRelations = relations(users, ({ many }) => ({\n  userGroups: many(userGroups),\n}));\n\nconst groupsRelations = relations(groups, ({ many }) => ({\n  userGroups: many(userGroups),\n}));",
         "docUrl": "/docs/db/orm/relations-deep-dive#many-to-many-relations"
       }
     },

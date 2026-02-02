@@ -24,15 +24,14 @@ Relations in Better-Convex ORM use the same API as Drizzle for **defining** rela
 ### One-to-One Relations
 
 ```ts title="convex/schema.ts" showLineNumbers {12-17,19-24}
-import { convexTable, relations } from 'better-convex/orm';
-import { v } from 'convex/values';
+import { convexTable, relations, text } from 'better-convex/orm';
 
 const users = convexTable('users', {
-  name: v.string(),
+  name: text().notNull(),
 });
 
 const profiles = convexTable('profiles', {
-  bio: v.string(),
+  bio: text().notNull(),
 });
 
 // Define 1:1 relation (profiles side - has foreign key)
@@ -72,17 +71,16 @@ export const schema = {
 The most common relation type - one user has many posts.
 
 ```ts title="convex/schema.ts" showLineNumbers {15-17,19-24}
-import { convexTable, relations } from 'better-convex/orm';
-import { v } from 'convex/values';
+import { convexTable, relations, text, boolean } from 'better-convex/orm';
 
 const users = convexTable('users', {
-  name: v.string(),
+  name: text().notNull(),
 });
 
 const posts = convexTable('posts', {
-  title: v.string(),
-  content: v.string(),
-  published: v.boolean(),
+  title: text().notNull(),
+  content: text().notNull(),
+  published: boolean(),
 });
 
 // "One" side: User has many posts
@@ -116,16 +114,15 @@ export const schema = {
 Define bidirectional many-to-many relationships.
 
 ```ts title="convex/schema.ts" showLineNumbers {15-17,19-21}
-import { convexTable, relations } from 'better-convex/orm';
-import { v } from 'convex/values';
+import { convexTable, relations, text } from 'better-convex/orm';
 
 const posts = convexTable('posts', {
-  title: v.string(),
-  content: v.string(),
+  title: text().notNull(),
+  content: text().notNull(),
 });
 
 const tags = convexTable('tags', {
-  name: v.string(),
+  name: text().notNull(),
 });
 
 // Posts side: A post can have many tags

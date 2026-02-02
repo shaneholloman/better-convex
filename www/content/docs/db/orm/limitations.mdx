@@ -7,21 +7,21 @@ links:
 
 import { InfoIcon, AlertTriangle, CheckCircle, Zap } from "lucide-react"
 
-Better-Convex ORM (M1-M4) implements core query operations. Some features are planned for future milestones, and some SQL-specific features don't apply to Convex's document model.
+Better-Convex ORM implements core query operations with column builder syntax. Some features are planned for future milestones, and some SQL-specific features don't apply to Convex's document model.
 
-## Current Status (M1-M4)
+## Current Status
 
-**✅ Implemented:**
-- Schema definition (`convexTable`, field types)
+**✅ Implemented (M1-M6):**
+- Schema definition with column builders (`convexTable`, `text()`, `integer()`, etc.)
 - Relations definition (`one()`, `many()`)
 - Query operations (`findMany`, `findFirst`)
 - Where filtering (all operators)
 - Limit/offset pagination
 - Type inference
+- Mutations (`insert`, `update`, `delete`) - M6
 
-**🚧 Coming Soon (M5+):**
+**🚧 Coming Soon (Phase 4+):**
 - Relation loading with `with:`
-- Mutations (`insert`, `update`, `delete`)
 - Order by (`orderBy`, `asc`, `desc`)
 - Advanced pagination (cursor-based)
 
@@ -31,18 +31,18 @@ Better-Convex ORM (M1-M4) implements core query operations. Some features are pl
 
 ## Feature Categories
 
-| Category | Description | Examples (M1-M4) |
+| Category | Description | Examples |
 |----------|-------------|----------|
-| **Category 1: Implemented** | Core features working now | findMany, findFirst, where, limit, offset |
+| **Category 1: Implemented** | Core features working now | Column builders, findMany, findFirst, where, mutations |
 | **Category 2: Limited/Workaround** | Available with workarounds | LIKE operator, column selection |
 | **Category 3: Convex Advantages** | Better than SQL ORMs | Real-time subscriptions, serverless scalability |
 | **Category 4: Not Applicable** | SQL-specific, not available | Raw SQL, migrations, complex JOINs |
 
-This page documents **Category 2**, **Category 4**, and **planned features (M5+)**.
+This page documents **Category 2**, **Category 4**, and **planned features (Phase 4+)**.
 
-## Not Yet Implemented (M5+)
+## Not Yet Implemented (Phase 4+)
 
-The following Drizzle-compatible features are planned but not yet available in M1-M4:
+The following Drizzle-compatible features are planned but not yet available:
 
 ### Relation Loading with `with:`
 

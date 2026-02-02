@@ -29,14 +29,13 @@ Schema definition in Better-Convex ORM mirrors Drizzle's approach:
 Define tables using `convexTable()` with Convex validators:
 
 ```ts title="convex/schema.ts" showLineNumbers {1-2,4-9}
-import { convexTable, relations } from 'better-convex/orm';
-import { v } from 'convex/values';
+import { convexTable, relations, text, integer } from 'better-convex/orm';
 
 const users = convexTable('users', {
-  name: v.string(),
-  email: v.string(),
-  age: v.optional(v.number()),
-  role: v.union(v.literal('user'), v.literal('admin')),
+  name: text().notNull(),
+  email: text().notNull(),
+  age: integer(),
+  role: text().$type<'user' | 'admin'>().notNull(),
 });
 ```
 
@@ -54,49 +53,50 @@ const users = convexTable('users', {
 ```
 
 <Callout icon={<InfoIcon />}>
-**Convex Validators**: In M1-M5, we use Convex's proven `v.*` validators for maximum type safety. M6 will add Drizzle-style column builders (`text()`, `integer()`, etc.) as syntactic sugar.
+**Column Builders**: Better-Convex ORM uses Drizzle-style column builders (`text()`, `integer()`, `boolean()`) for familiar ergonomics with Convex's type inference.
 </Callout>
 
 **Key Differences from Drizzle:**
 - **No manual ID field**: Convex auto-creates `_id: Id<'users'>` for every document
-- **No `.notNull()`**: Fields are required by default, use `v.optional()` for optional fields
-- **Convex validators**: Use `v.*` validators instead of column builders (`text()`, `integer()`, etc.)
+- **Nullable by default**: Fields are nullable unless you add `.notNull()` modifier
+- **Type constraints**: Use `.$type<T>()` for literal types like enums
 
-### Validator Types
+### Column Builder Types
 
-| TypeScript Type | Convex Validator | Drizzle Equivalent |
-|-----------------|------------------|---------------------|
-| `string` | `v.string()` | `text()` |
-| `number` | `v.number()` | `integer()` or `real()` |
-| `boolean` | `v.boolean()` | `boolean()` |
-| `string \| undefined` | `v.optional(v.string())` | `text()` (nullable) |
-| `'a' \| 'b'` | `v.union(v.literal('a'), v.literal('b'))` | `text().$type<'a' \| 'b'>()` |
-| `Array<string>` | `v.array(v.string())` | `text().array()` |
-| `{ x: number }` | `v.object({ x: v.number() })` | Not directly supported |
-| `Id<'users'>` | Auto-created for `_id` | `serial()` or `uuid()` |
+| TypeScript Type | Better-Convex Builder | Drizzle Equivalent |
+|-----------------|----------------------|---------------------|
+| `string \| null` | `text()` | `text()` |
+| `string` | `text().notNull()` | `text().notNull()` |
+| `number \| null` | `integer()` or `number()` | `integer()` or `real()` |
+| `number` | `integer().notNull()` | `integer().notNull()` |
+| `boolean \| null` | `boolean()` | `boolean()` |
+| `'a' \| 'b'` | `text().$type<'a' \| 'b'>().notNull()` | `text().$type<'a' \| 'b'>()` |
+| `Array<string>` | Complex validators (see below) | `text().array()` |
+| `{ x: number }` | Complex validators (see below) | Not directly supported |
+| `Id<'users'>` | `id('users')` | `serial()` or `uuid()` |
 
 ### Negative Examples
 
 ```ts
-// ❌ WRONG: Using undefined instead of v.optional()
+// ❌ WRONG: Mixing type annotations
 const users = convexTable('users', {
-  age: v.number() | undefined, // Type error!
+  age: integer() | undefined, // Type error!
 });
 
-// ✅ CORRECT: Use v.optional()
+// ✅ CORRECT: Builders are nullable by default
 const users = convexTable('users', {
-  age: v.optional(v.number()),
+  age: integer(), // Already nullable
 });
 
 // ❌ WRONG: Trying to define _id manually
 const users = convexTable('users', {
-  _id: v.id('users'), // Don't do this!
-  name: v.string(),
+  _id: id('users'), // Don't do this!
+  name: text().notNull(),
 });
 
 // ✅ CORRECT: _id is auto-created
 const users = convexTable('users', {
-  name: v.string(),
+  name: text().notNull(),
 });
 ```
 
@@ -107,15 +107,14 @@ const users = convexTable('users', {
 Define relations using Drizzle's `relations()` API:
 
 ```ts title="convex/schema.ts" showLineNumbers {12-18,20-26}
-import { convexTable, relations } from 'better-convex/orm';
-import { v } from 'convex/values';
+import { convexTable, relations, text } from 'better-convex/orm';
 
 const users = convexTable('users', {
-  name: v.string(),
+  name: text().notNull(),
 });
 
 const posts = convexTable('posts', {
-  title: v.string(),
+  title: text().notNull(),
 });
 
 // "One" side: User has many posts
@@ -146,12 +145,14 @@ export const schema = {
 ### Many-to-Many Relations
 
 ```ts title="convex/schema.ts" showLineNumbers
+import { convexTable, relations, text } from 'better-convex/orm';
+
 const posts = convexTable('posts', {
-  title: v.string(),
+  title: text().notNull(),
 });
 
 const tags = convexTable('tags', {
-  name: v.string(),
+  name: text().notNull(),
 });
 
 // Define many:many relations
@@ -174,8 +175,10 @@ const tagsRelations = relations(tags, ({ many }) => ({
 ### Self-Referencing Relations
 
 ```ts title="convex/schema.ts" showLineNumbers
+import { convexTable, relations, text } from 'better-convex/orm';
+
 const users = convexTable('users', {
-  name: v.string(),
+  name: text().notNull(),
 });
 
 const usersRelations = relations(users, ({ many }) => ({
@@ -191,10 +194,12 @@ const usersRelations = relations(users, ({ many }) => ({
 Better-Convex ORM infers types from your schema:
 
 ```ts
+import { convexTable, text, integer } from 'better-convex/orm';
+
 const users = convexTable('users', {
-  name: v.string(),
-  email: v.string(),
-  age: v.optional(v.number()),
+  name: text().notNull(),
+  email: text().notNull(),
+  age: integer(),
 });
 
 // Type is automatically inferred
@@ -204,7 +209,7 @@ type User = typeof users.$inferSelect;
 //   _id: Id<'users'>,
 //   name: string,
 //   email: string,
-//   age?: number,
+//   age: number | null,
 //   _creationTime: number
 // }
 
@@ -273,8 +278,10 @@ const users = defineEnt({
 Indexes are automatically created for relation fields:
 
 ```ts
+import { convexTable, text } from 'better-convex/orm';
+
 const posts = convexTable('posts', {
-  title: v.string(),
+  title: text().notNull(),
 });
 
 const postsRelations = relations(posts, ({ one }) => ({
@@ -305,10 +312,10 @@ const posts = defineEnt({
 | Issue | Solution |
 |-------|----------|
 | **Don't manually define `_id`** | Convex auto-creates `_id` for every table |
-| **Use `v.optional()`, not `\| undefined`** | Optional fields must use the validator |
+| **Builders are nullable by default** | Use `.notNull()` modifier for required fields |
 | **Relations need BOTH sides defined** | Define relations on both tables for many:many |
 | **Export relations in schema** | Both table AND relations object must be exported |
-| **Convex uses `undefined`, not `null`** | Missing fields return `undefined`, not `null` |
+| **Convex uses `null`, not SQL `NULL`** | Nullable fields return `null` when empty |
 | **Can't select specific columns** | Convex always returns full documents |
 
 ## Next Steps

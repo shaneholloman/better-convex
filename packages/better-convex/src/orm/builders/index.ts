@@ -44,6 +44,12 @@ export {
   integer,
   number,
 } from './number';
+// System fields
+export {
+  ConvexSystemCreationTimeBuilder,
+  ConvexSystemIdBuilder,
+  createSystemFields,
+} from './system-fields';
 // Text builder
 export {
   ConvexTextBuilder,

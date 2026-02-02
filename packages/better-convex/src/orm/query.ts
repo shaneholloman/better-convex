@@ -58,6 +58,153 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
   }
 
   /**
+   * Evaluate a filter expression against a fetched row
+   * Used for post-fetch filtering (string operators, etc.)
+   */
+  private _evaluatePostFetchFilter(
+    row: any,
+    filter: FilterExpression<boolean>
+  ): boolean {
+    if (filter.type === 'binary') {
+      const [field, value] = filter.operands;
+      if (!isFieldReference(field)) {
+        throw new Error(
+          'Binary expression must have FieldReference as first operand'
+        );
+      }
+
+      const fieldName = field.fieldName;
+      const fieldValue = row[fieldName];
+
+      switch (filter.operator) {
+        case 'like': {
+          const pattern = value as string;
+          if (typeof fieldValue !== 'string') return false;
+
+          // Pattern: %text% → includes, text% → startsWith, %text → endsWith
+          if (pattern.startsWith('%') && pattern.endsWith('%')) {
+            const substring = pattern.slice(1, -1);
+            return fieldValue.includes(substring);
+          }
+          if (pattern.startsWith('%')) {
+            const suffix = pattern.slice(1);
+            return fieldValue.endsWith(suffix);
+          }
+          if (pattern.endsWith('%')) {
+            const prefix = pattern.slice(0, -1);
+            return fieldValue.startsWith(prefix);
+          }
+          return fieldValue === pattern;
+        }
+        case 'ilike': {
+          const pattern = value as string;
+          if (typeof fieldValue !== 'string') return false;
+
+          const lowerValue = fieldValue.toLowerCase();
+          const lowerPattern = pattern.toLowerCase();
+
+          if (lowerPattern.startsWith('%') && lowerPattern.endsWith('%')) {
+            const substring = lowerPattern.slice(1, -1);
+            return lowerValue.includes(substring);
+          }
+          if (lowerPattern.startsWith('%')) {
+            const suffix = lowerPattern.slice(1);
+            return lowerValue.endsWith(suffix);
+          }
+          if (lowerPattern.endsWith('%')) {
+            const prefix = lowerPattern.slice(0, -1);
+            return lowerValue.startsWith(prefix);
+          }
+          return lowerValue === lowerPattern;
+        }
+        case 'startsWith': {
+          if (typeof fieldValue !== 'string') return false;
+          return fieldValue.startsWith(value as string);
+        }
+        case 'endsWith': {
+          if (typeof fieldValue !== 'string') return false;
+          return fieldValue.endsWith(value as string);
+        }
+        case 'contains': {
+          if (typeof fieldValue !== 'string') return false;
+          return fieldValue.includes(value as string);
+        }
+        // Basic operators fallback (shouldn't reach here normally)
+        case 'eq':
+          return fieldValue === value;
+        case 'ne':
+          return fieldValue !== value;
+        case 'gt':
+          return fieldValue > value;
+        case 'gte':
+          return fieldValue >= value;
+        case 'lt':
+          return fieldValue < value;
+        case 'lte':
+          return fieldValue <= value;
+        case 'inArray': {
+          const arr = value as any[];
+          return arr.includes(fieldValue);
+        }
+        case 'notInArray': {
+          const arr = value as any[];
+          return !arr.includes(fieldValue);
+        }
+        default:
+          throw new Error(
+            `Unsupported post-fetch operator: ${filter.operator}`
+          );
+      }
+    }
+
+    if (filter.type === 'unary') {
+      const [operand] = filter.operands;
+
+      // Handle null checks on field references
+      if (isFieldReference(operand)) {
+        const fieldName = operand.fieldName;
+        const fieldValue = row[fieldName];
+
+        switch (filter.operator) {
+          case 'isNull':
+            return fieldValue === null || fieldValue === undefined;
+          case 'isNotNull':
+            return fieldValue !== null && fieldValue !== undefined;
+          default:
+            throw new Error(`Unsupported unary operator: ${filter.operator}`);
+        }
+      }
+
+      // Handle NOT operator on nested expressions
+      if (filter.operator === 'not') {
+        return !this._evaluatePostFetchFilter(
+          row,
+          operand as FilterExpression<boolean>
+        );
+      }
+
+      throw new Error(
+        'Unary expression must have FieldReference or FilterExpression as operand'
+      );
+    }
+
+    if (filter.type === 'logical') {
+      if (filter.operator === 'and') {
+        return filter.operands.every((f) =>
+          this._evaluatePostFetchFilter(row, f)
+        );
+      }
+      if (filter.operator === 'or') {
+        return filter.operands.some((f) =>
+          this._evaluatePostFetchFilter(row, f)
+        );
+      }
+    }
+
+    throw new Error(`Unsupported filter type for post-fetch: ${filter.type}`);
+  }
+
+  /**
    * Execute the query and return results
    * Phase 4 implementation with WhereClauseCompiler integration
    */
@@ -67,7 +214,15 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
     // Start Convex query
     let query: any = this.db.query(queryConfig.table);
 
-    // Apply index if selected
+    // M5: Index-aware ordering strategy
+    // 1. If WHERE uses an index AND orderBy field matches → use .order() on that index
+    // 2. If orderBy field has index AND no WHERE index → use orderBy index with .order()
+    // 3. Otherwise → post-fetch sort (no index available)
+    let usePostFetchSort = false;
+    let postFetchOrderField: string | undefined;
+    let postFetchOrderDirection: 'asc' | 'desc' | undefined;
+
+    // Apply index if selected for WHERE filtering
     if (queryConfig.index) {
       const indexConfig = queryConfig.index;
       query = query.withIndex(indexConfig.name, (q: any) => {
@@ -78,6 +233,47 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
         }
         return indexQuery;
       });
+
+      // Check if orderBy field matches WHERE index
+      if (queryConfig.order) {
+        const orderField = queryConfig.order.field;
+        const indexFields = queryConfig.index.filters.map(
+          (f: any) => (f as any).operands[0].fieldName
+        );
+        // If ordering by same field as index, apply .order()
+        if (indexFields.includes(orderField)) {
+          query = query.order(queryConfig.order.direction);
+        } else {
+          // Different field - need post-fetch sort
+          usePostFetchSort = true;
+          postFetchOrderField = orderField;
+          postFetchOrderDirection = queryConfig.order.direction;
+        }
+      }
+    } else if (queryConfig.order) {
+      // No WHERE index - check if orderBy field has an index
+      const orderField = queryConfig.order.field;
+
+      // Special case: _creationTime uses Convex's default index
+      if (orderField === '_creationTime') {
+        // Default index on _creationTime - no withIndex() needed
+        query = query.order(queryConfig.order.direction);
+      } else {
+        const orderIndex = this.edgeMetadata.find((idx) =>
+          idx.indexFields.includes(orderField)
+        );
+
+        if (orderIndex) {
+          // Use orderBy field's index
+          query = query.withIndex(orderIndex.indexName, (q: any) => q);
+          query = query.order(queryConfig.order.direction);
+        } else {
+          // No index for orderBy field - post-fetch sort
+          usePostFetchSort = true;
+          postFetchOrderField = orderField;
+          postFetchOrderDirection = queryConfig.order.direction;
+        }
+      }
     }
 
     // Apply post-filters
@@ -93,20 +289,44 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
       });
     }
 
-    // Apply ordering if present (Phase 4.5 - deferred to M4.5)
-    if (queryConfig.order) {
-      query = query.order(queryConfig.order.direction);
-    }
-
     // Execute query with limit - .take() returns Promise<Doc[]>
     const config = this.config as any;
-    // TODO M4.5: Implement offset pagination
-    // Note: Convex doesn't have skip() - need to use cursor-based pagination
-    // if (config.offset) {
-    //   query = query.skip(config.offset);
-    // }
+    // M4.5: Offset pagination via post-fetch slicing
+    // Convex doesn't have skip() - fetch offset + limit rows, then slice
+    const offset = config.offset ?? 0;
     const limit = config.limit ?? 1000; // Default max 1000 to prevent unbounded queries
-    const rows = await query.take(limit);
+    const fetchLimit = offset > 0 ? offset + limit : limit;
+    let rows = await query.take(fetchLimit);
+
+    // Apply offset slicing if needed
+    if (offset > 0) {
+      rows = rows.slice(offset);
+    }
+
+    // M5: Apply post-fetch string operator filters
+    // String operators can't work in Convex filter context, apply after fetch
+    if (queryConfig.postFilters.length > 0) {
+      rows = rows.filter((row: any) =>
+        queryConfig.postFilters.every((filter) =>
+          this._evaluatePostFetchFilter(row, filter)
+        )
+      );
+    }
+
+    // Apply post-fetch sort if needed
+    if (usePostFetchSort && postFetchOrderField && postFetchOrderDirection) {
+      const field = postFetchOrderField;
+      const direction = postFetchOrderDirection;
+      rows = rows.sort((a: any, b: any) => {
+        const aVal = a[field];
+        const bVal = b[field];
+        if (aVal === bVal) return 0;
+        if (aVal === null || aVal === undefined) return 1; // nulls last
+        if (bVal === null || bVal === undefined) return -1;
+        const cmp = aVal < bVal ? -1 : 1;
+        return direction === 'asc' ? cmp : -cmp;
+      });
+    }
 
     // Load relations if configured
     let rowsWithRelations = rows;
@@ -136,7 +356,7 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
     table: string;
     index?: { name: string; filters: FilterExpression<boolean>[] };
     postFilters: FilterExpression<boolean>[];
-    order?: { direction: 'asc' | 'desc' };
+    order?: { direction: 'asc' | 'desc'; field: string };
   } {
     const config = this.config as any;
 
@@ -164,7 +384,7 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
       table: string;
       index?: { name: string; filters: FilterExpression<boolean>[] };
       postFilters: FilterExpression<boolean>[];
-      order?: { direction: 'asc' | 'desc' };
+      order?: { direction: 'asc' | 'desc'; field: string };
     } = {
       table: this.tableConfig.dbName,
       postFilters: compiled.postFilters,
@@ -178,15 +398,14 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
       };
     }
 
-    // Compile orderBy (Phase 4.5 - deferred to M4.5)
+    // Compile orderBy (M5 implementation)
     if (config.orderBy) {
-      const order = config.orderBy(this.tableConfig.columns, {
-        asc: (field: any) => ({ field, direction: 'asc' as const }),
-        desc: (field: any) => ({ field, direction: 'desc' as const }),
-      });
-      if (order) {
-        result.order = { direction: order.direction };
-      }
+      // orderBy is now directly an OrderByClause from asc()/desc()
+      const orderByClause = config.orderBy;
+      result.order = {
+        direction: orderByClause.direction,
+        field: orderByClause.column.columnName,
+      };
     }
 
     return result;
@@ -228,6 +447,11 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
       notInArray,
       isNull,
       isNotNull,
+      like,
+      ilike,
+      startsWith,
+      endsWith,
+      contains,
     } = require('./filter-expression');
 
     // Return operators as-is - they already expect Column wrappers
@@ -243,6 +467,11 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
       notInArray,
       isNull,
       isNotNull,
+      like,
+      ilike,
+      startsWith,
+      endsWith,
+      contains,
     };
   }
 
@@ -316,6 +545,16 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
               return conditions.reduce((acc, cond) => q.and(acc, cond));
             };
           }
+          // M5: String operators (post-filter implementation)
+          case 'like':
+          case 'ilike':
+          case 'startsWith':
+          case 'endsWith':
+          case 'contains':
+            // String operators require post-fetch filtering
+            // They can't work in Convex filter context (no JavaScript string methods on field expressions)
+            // These are handled in _evaluatePostFetchFilter after rows are fetched
+            return () => true; // No-op in Convex filter, will be applied post-fetch
           default:
             throw new Error(`Unsupported binary operator: ${expr.operator}`);
         }

@@ -88,6 +88,11 @@ const schema = defineEntSchema(
       .field('type', v.union(v.literal('text'), v.literal('video')), {
         default: 'text',
       })
+      .field('title', v.optional(v.string()))
+      .field('content', v.optional(v.string()))
+      .field('published', v.optional(v.boolean()))
+      .field('userId', v.optional(v.id('users')))
+      .field('createdAt', v.optional(v.number()))
       .index('numLikesAndType', ['type', 'numLikes'])
       .searchIndex('text', {
         searchField: 'text',
@@ -188,6 +193,7 @@ export const entDefinitions = getEntDefinitions(schema);
 // structure but uses convexTable API for Better Convex ORM testing
 
 import {
+  boolean,
   buildSchema,
   convexTable,
   id,
@@ -211,6 +217,12 @@ export const ormPosts = convexTable('posts', {
   text: text().notNull(),
   numLikes: number().notNull(),
   type: text().notNull(),
+  // Additional fields for testing ordering and string operators
+  title: text(),
+  content: text(),
+  published: boolean(),
+  userId: id('users'),
+  createdAt: number(),
 });
 
 export const ormProfiles = convexTable('profiles', {

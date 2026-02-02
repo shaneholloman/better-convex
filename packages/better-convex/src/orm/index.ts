@@ -92,23 +92,31 @@ export type {
   LogicalExpression,
   UnaryExpression,
 } from './filter-expression';
+// M5: String Operators
 export {
   and,
+  contains,
+  endsWith,
   eq,
   fieldRef,
   gt,
   gte,
+  ilike,
   inArray,
   isFieldReference,
   isNotNull,
   isNull,
+  like,
   lt,
   lte,
   ne,
   not,
   notInArray,
   or,
+  startsWith,
 } from './filter-expression';
+// M5: OrderBy
+export { asc, desc } from './order-by';
 export { GelRelationalQuery } from './query';
 // M3: Query Builder
 export { RelationalQueryBuilder } from './query-builder';
@@ -146,6 +154,7 @@ export type {
   InferModelFromColumns,
   InferRelations,
   InferSelectModel,
+  OrderByClause,
   OrderDirection,
   TableRelationalConfig,
   TablesRelationalConfig,
