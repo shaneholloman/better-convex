@@ -44,6 +44,7 @@ export interface ColumnBuilderBaseConfig<
  */
 export interface ColumnBuilderRuntimeConfig<TData> {
   name: string;
+  tableName?: string;
   notNull: boolean;
   default: TData | undefined;
   hasDefault: boolean;
@@ -194,6 +195,19 @@ export abstract class ColumnBuilder<
 export type NotNull<T extends ColumnBuilderBase> = T & {
   _: {
     notNull: true;
+  };
+};
+
+/**
+ * Brand a builder with a table name
+ * Used for relation typing (fields/references must match table)
+ */
+export type ColumnBuilderWithTableName<
+  T extends ColumnBuilderBase,
+  TTableName extends string,
+> = T & {
+  _: {
+    tableName: TTableName;
   };
 };
 

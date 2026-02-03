@@ -9,7 +9,13 @@
  * - Index-aware optimization
  */
 
-import { asc, createDatabase, desc, eq, extractRelationsConfig } from 'better-convex/orm';
+import {
+  asc,
+  createDatabase,
+  desc,
+  eq,
+  extractRelationsConfig,
+} from 'better-convex/orm';
 import { test as baseTest, describe, expect } from 'vitest';
 import schema, {
   ormPosts,
@@ -50,13 +56,49 @@ describe('M5: OrderBy - Basic Ordering', () => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
     // Create test data with different creation times
-    const user1 = await ctx.db.insert('users', { name: 'Alice', email: 'alice@example.com' });
-    const user2 = await ctx.db.insert('users', { name: 'Bob', email: 'bob@example.com' });
-    const user3 = await ctx.db.insert('users', { name: 'Charlie', email: 'charlie@example.com' });
+    const user1 = await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
+    const user2 = await ctx.db.insert('users', {
+      name: 'Bob',
+      email: 'bob@example.com',
+    });
+    const user3 = await ctx.db.insert('users', {
+      name: 'Charlie',
+      email: 'charlie@example.com',
+    });
 
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 3', content: 'Content 3', published: true, userId: user1, createdAt: 3000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 1', content: 'Content 1', published: true, userId: user2, createdAt: 1000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 2', content: 'Content 2', published: true, userId: user3, createdAt: 2000  });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 3',
+      content: 'Content 3',
+      published: true,
+      userId: user1,
+      createdAt: 3000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 1',
+      content: 'Content 1',
+      published: true,
+      userId: user2,
+      createdAt: 1000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 2',
+      content: 'Content 2',
+      published: true,
+      userId: user3,
+      createdAt: 2000,
+    });
 
     // Query with ascending order by createdAt
     const posts = await db.query.posts.findMany({
@@ -73,13 +115,49 @@ describe('M5: OrderBy - Basic Ordering', () => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
     // Create test data
-    const user1 = await ctx.db.insert('users', { name: 'Alice', email: 'alice@example.com' });
-    const user2 = await ctx.db.insert('users', { name: 'Bob', email: 'bob@example.com' });
-    const user3 = await ctx.db.insert('users', { name: 'Charlie', email: 'charlie@example.com' });
+    const user1 = await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
+    const user2 = await ctx.db.insert('users', {
+      name: 'Bob',
+      email: 'bob@example.com',
+    });
+    const user3 = await ctx.db.insert('users', {
+      name: 'Charlie',
+      email: 'charlie@example.com',
+    });
 
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 1', content: 'Content 1', published: true, userId: user1, createdAt: 1000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 2', content: 'Content 2', published: true, userId: user2, createdAt: 2000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 3', content: 'Content 3', published: true, userId: user3, createdAt: 3000  });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 1',
+      content: 'Content 1',
+      published: true,
+      userId: user1,
+      createdAt: 1000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 2',
+      content: 'Content 2',
+      published: true,
+      userId: user2,
+      createdAt: 2000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 3',
+      content: 'Content 3',
+      published: true,
+      userId: user3,
+      createdAt: 3000,
+    });
 
     // Query with descending order by createdAt
     const posts = await db.query.posts.findMany({
@@ -96,11 +174,41 @@ describe('M5: OrderBy - Basic Ordering', () => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
     // Create test data
-    const user = await ctx.db.insert('users', { name: 'Alice', email: 'alice@example.com' });
+    const user = await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
 
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'First', content: 'Content', published: true, userId: user, createdAt: 1000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Second', content: 'Content', published: true, userId: user, createdAt: 2000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Third', content: 'Content', published: true, userId: user, createdAt: 3000  });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'First',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 1000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Second',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 2000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Third',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 3000,
+    });
 
     // Query ordered by _creationTime (has default index)
     const postsAsc = await db.query.posts.findMany({
@@ -129,12 +237,51 @@ describe('M5: OrderBy - Combined with WHERE', () => {
   test('orderBy works with where filtering', async ({ ctx }) => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
-    const user = await ctx.db.insert('users', { name: 'Alice', email: 'alice@example.com' });
+    const user = await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
 
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Published 3', content: 'Content', published: true, userId: user, createdAt: 3000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Draft 1', content: 'Content', published: false, userId: user, createdAt: 1000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Published 2', content: 'Content', published: true, userId: user, createdAt: 2000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Published 1', content: 'Content', published: true, userId: user, createdAt: 1500  });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Published 3',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 3000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Draft 1',
+      content: 'Content',
+      published: false,
+      userId: user,
+      createdAt: 1000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Published 2',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 2000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Published 1',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 1500,
+    });
 
     // Query published posts ordered by createdAt
     const posts = await db.query.posts.findMany({
@@ -157,12 +304,51 @@ describe('M5: OrderBy - Combined with Pagination', () => {
   test('orderBy works with limit', async ({ ctx }) => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
-    const user = await ctx.db.insert('users', { name: 'Alice', email: 'alice@example.com' });
+    const user = await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
 
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 1', content: 'Content', published: true, userId: user, createdAt: 1000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 2', content: 'Content', published: true, userId: user, createdAt: 2000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 3', content: 'Content', published: true, userId: user, createdAt: 3000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 4', content: 'Content', published: true, userId: user, createdAt: 4000  });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 1',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 1000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 2',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 2000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 3',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 3000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 4',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 4000,
+    });
 
     // Get top 2 oldest posts
     const posts = await db.query.posts.findMany({
@@ -178,12 +364,51 @@ describe('M5: OrderBy - Combined with Pagination', () => {
   test('orderBy works with offset', async ({ ctx }) => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
-    const user = await ctx.db.insert('users', { name: 'Alice', email: 'alice@example.com' });
+    const user = await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
 
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 1', content: 'Content', published: true, userId: user, createdAt: 1000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 2', content: 'Content', published: true, userId: user, createdAt: 2000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 3', content: 'Content', published: true, userId: user, createdAt: 3000  });
-    await ctx.db.insert('posts', { text: 'test', numLikes: 0, type: 'text', title: 'Post 4', content: 'Content', published: true, userId: user, createdAt: 4000  });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 1',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 1000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 2',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 2000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 3',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 3000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Post 4',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 4000,
+    });
 
     // Get page 2 (skip first 2, take 2)
     const posts = await db.query.posts.findMany({

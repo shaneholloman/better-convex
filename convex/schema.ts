@@ -225,6 +225,8 @@ export const ormPosts = convexTable('posts', {
   createdAt: number(),
 });
 
+// Note: ormComments table only in relation-loading.test.ts schema
+
 export const ormProfiles = convexTable('profiles', {
   bio: text().notNull(),
 });
@@ -286,5 +288,11 @@ export const ormUsersRelations = relations(ormUsers, ({ many }) => ({
 }));
 
 export const ormPostsRelations = relations(ormPosts, ({ one }) => ({
-  user: one(ormUsers, { fields: ['numLikes'] }), // Dummy relation for testing
+  user: one(ormUsers, {
+    fields: [ormPosts.userId],
+    references: [ormUsers._id],
+  }), // M6.5: Fixed to use actual userId field
+  // Note: comments relation only in relation-loading.test.ts to avoid breaking other tests
 }));
+
+// Note: ormCommentsRelations only in relation-loading.test.ts schema

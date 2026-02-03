@@ -11,6 +11,7 @@ import { v } from 'convex/values';
 import {
   ColumnBuilder,
   type ColumnBuilderBaseConfig,
+  type ColumnBuilderWithTableName,
   entityKind,
 } from './column-builder';
 
@@ -82,9 +83,29 @@ export class ConvexSystemCreationTimeBuilder extends ColumnBuilder<
  * Create system field builders for a table
  * These are automatically added to every ConvexTable
  */
-export function createSystemFields() {
+export type SystemFields<TName extends string> = {
+  _id: ColumnBuilderWithTableName<ConvexSystemIdBuilder, TName>;
+  _creationTime: ColumnBuilderWithTableName<
+    ConvexSystemCreationTimeBuilder,
+    TName
+  >;
+};
+
+export function createSystemFields<TName extends string>(
+  tableName: TName
+): SystemFields<TName> {
+  const id = new ConvexSystemIdBuilder();
+  const creationTime = new ConvexSystemCreationTimeBuilder();
+
+  // Store table name for runtime introspection
+  (id as any).config.tableName = tableName;
+  (creationTime as any).config.tableName = tableName;
+
   return {
-    _id: new ConvexSystemIdBuilder(),
-    _creationTime: new ConvexSystemCreationTimeBuilder(),
+    _id: id as ColumnBuilderWithTableName<ConvexSystemIdBuilder, TName>,
+    _creationTime: creationTime as ColumnBuilderWithTableName<
+      ConvexSystemCreationTimeBuilder,
+      TName
+    >,
   };
 }

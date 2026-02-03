@@ -23,6 +23,7 @@ export {
   type ColumnBuilderBaseConfig,
   type ColumnBuilderRuntimeConfig,
   type ColumnBuilderTypeConfig,
+  type ColumnBuilderWithTableName,
   type ColumnDataType,
   type DrizzleEntity,
   entityKind,
@@ -49,6 +50,7 @@ export {
   ConvexSystemCreationTimeBuilder,
   ConvexSystemIdBuilder,
   createSystemFields,
+  type SystemFields,
 } from './system-fields';
 // Text builder
 export {

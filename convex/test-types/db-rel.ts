@@ -1,17 +1,31 @@
 /**
  * Type tests for relation loading with `with` option
  *
- * **STATUS: Tests pending Phase 4 (Relation Loading Implementation)**
+ * **STATUS: M6.5 Phase 4 Runtime Complete - Type Inference Issue**
  *
- * These tests verify type inference for relation loading, but the runtime
- * implementation is currently stubbed (_loadRelations returns rows unchanged).
+ * Runtime implementation is complete and working (26 tests passing):
+ * - Basic one-to-many and many-to-one relations
+ * - Nested relations (max depth 3)
+ * - Relation filters (where, orderBy, limit)
+ * - Cursor pagination
  *
- * Type assertions are commented out until Phase 4 implements edge traversal
- * integration. See brainstorm "Deferred Features" section for details.
+ * **Known Issue: Type Widening in DatabaseWithQuery**
+ * TypeScript widens `TSchema[K]` to union of all table types in mapped type,
+ * causing query results to be typed as `(UserType | PostType)[] | UserType | PostType | null`
+ * instead of the specific table's type. Runtime works correctly, types need fix.
+ *
+ * Attempted fixes that didn't work:
+ * - Conditional type with extends check
+ * - Helper type to distribute over union
+ * - Preserving literal dbName in buildSchema
+ *
+ * These 7 type tests are disabled until type widening issue is resolved.
  *
  * Related:
- * - packages/better-convex/src/orm/query.ts:390 (_loadRelations stub)
- * - docs/brainstorms/2026-01-31-drizzle-orm-brainstorm.md (Phase 4 plan)
+ * - packages/better-convex/src/orm/query.ts:642-946 (_loadRelations implementation)
+ * - packages/better-convex/src/orm/database.ts:24-29 (DatabaseWithQuery type)
+ * - convex/orm/relation-loading.test.ts (runtime tests - all passing)
+ * - convex/orm/pagination.test.ts (cursor pagination tests - all passing)
  */
 
 import {
@@ -49,6 +63,108 @@ const edgeMetadata = extractRelationsConfig(rawSchema);
 const mockDb = {} as GenericDatabaseReader<any>;
 const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 
+// ============================================================================
+// DRIZZLE PARITY TESTS (pg db-rel.ts)
+// ============================================================================
+
+{
+  const result = await db.query.users.findMany({
+    where: (users, { eq }) => eq(users.name, 'Alice'),
+    limit: 1,
+    orderBy: (users, { asc, desc }) => [asc(users.name), desc(users.email)],
+    with: {
+      posts: {
+        where: (posts, { eq }) => eq(posts.title, 'Hello'),
+        limit: 1,
+        columns: {
+          content: false,
+          title: undefined,
+        },
+        with: {
+          author: true,
+          comments: {
+            where: (comments, { eq }) => eq(comments.text, 'Nice'),
+            limit: 1,
+            columns: {
+              text: true,
+            },
+            with: {
+              author: {
+                columns: {
+                  name: undefined,
+                },
+                with: {
+                  city: {
+                    with: {
+                      users: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  type Expected = Array<{
+    _id: string;
+    _creationTime: number;
+    name: string;
+    email: string;
+    age: number | null;
+    cityId: GenericId<'cities'>;
+    homeCityId: GenericId<'cities'> | null;
+    posts: Array<{
+      _id: string;
+      _creationTime: number;
+      title: string;
+      authorId: GenericId<'users'> | null;
+      published: boolean | null;
+      author: {
+        _id: string;
+        _creationTime: number;
+        name: string;
+        email: string;
+        age: number | null;
+        cityId: GenericId<'cities'>;
+        homeCityId: GenericId<'cities'> | null;
+      } | null;
+      comments: Array<{
+        _id: string;
+        _creationTime: number;
+        text: string;
+        author: {
+          _id: string;
+          _creationTime: number;
+          name: string;
+          email: string;
+          age: number | null;
+          cityId: GenericId<'cities'>;
+          homeCityId: GenericId<'cities'> | null;
+          city: {
+            _id: string;
+            _creationTime: number;
+            name: string;
+            users: Array<{
+              _id: string;
+              _creationTime: number;
+              name: string;
+              email: string;
+              age: number | null;
+              cityId: GenericId<'cities'>;
+              homeCityId: GenericId<'cities'> | null;
+            }>;
+          };
+        } | null;
+      }>;
+    }>;
+  }>;
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
 // Test 1: Basic findMany with relations
 {
   const result = await db.query.users.findMany({
@@ -75,7 +191,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     }>;
   }>;
 
-  // TODO(Phase 4): Enable once relation loading implemented
+  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
   // Expect<Equal<Expected, typeof result>>;
 }
 
@@ -116,7 +232,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     }>;
   }>;
 
-  // TODO(Phase 4): Enable once relation loading implemented
+  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
   // Expect<Equal<Expected, typeof result>>;
 }
 
@@ -144,7 +260,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     }>;
   }>;
 
-  // TODO(Phase 4): Enable once relation loading implemented
+  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
   // Expect<Equal<Expected, typeof result>>;
 }
 
@@ -174,7 +290,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     } | null;
   }>;
 
-  // TODO(Phase 4): Enable once relation loading implemented
+  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
   // Expect<Equal<Expected, typeof result>>;
 }
 
@@ -204,7 +320,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     }
   >;
 
-  // TODO(Phase 4): Enable once relation loading implemented
+  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
   // Expect<Equal<Expected, typeof result>>;
 }
 
@@ -238,11 +354,11 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
         age: number | null;
         cityId: string;
         homeCityId: string | null;
-      } | null;
+      };
     }>;
   }>;
 
-  // TODO(Phase 4): Enable once relation loading implemented
+  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
   // Expect<Equal<Expected, typeof result>>;
 }
 
@@ -254,25 +370,27 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     },
   });
 
-  type Expected = {
-    _id: string;
-    _creationTime: number;
-    name: string;
-    email: string;
-    age: number | null;
-    cityId: GenericId<'cities'>;
-    homeCityId: GenericId<'cities'> | null;
-    posts: Array<{
-      _id: string;
-      _creationTime: number;
-      title: string;
-      content: string;
-      authorId: GenericId<'users'> | null;
-      published: boolean | null;
-    }>;
-  } | null;
+  type Expected =
+    | {
+        _id: string;
+        _creationTime: number;
+        name: string;
+        email: string;
+        age: number | null;
+        cityId: GenericId<'cities'>;
+        homeCityId: GenericId<'cities'> | null;
+        posts: Array<{
+          _id: string;
+          _creationTime: number;
+          title: string;
+          content: string;
+          authorId: GenericId<'users'> | null;
+          published: boolean | null;
+        }>;
+      }
+    | undefined;
 
-  // TODO(Phase 4): Enable once relation loading implemented
+  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
   // Expect<Equal<Expected, typeof result>>;
 }
 

@@ -3,7 +3,7 @@
  */
 
 import { text } from 'better-convex/orm';
-import { type Equal, Expect } from './utils';
+import { type Equal, Expect } from '../utils';
 
 // Test 1: Direct column
 {

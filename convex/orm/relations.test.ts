@@ -32,7 +32,10 @@ describe('M2 Relations Layer', () => {
       });
 
       const usersRelations = relations(users, ({ one }) => ({
-        profile: one(profiles, { fields: ['profileId'] }),
+        profile: one(profiles, {
+          fields: [users.profileId],
+          references: [profiles._id],
+        }),
       }));
 
       expect(usersRelations).toBeDefined();
@@ -72,7 +75,7 @@ describe('M2 Relations Layer', () => {
       }));
 
       const postsRelations = relations(posts, ({ one }) => ({
-        user: one(users, { fields: ['userId'] }),
+        user: one(users, { fields: [posts.userId], references: [users._id] }),
       }));
 
       expect(usersRelations).toBeDefined();
@@ -96,7 +99,7 @@ describe('M2 Relations Layer', () => {
       }));
 
       const postsRelations = relations(posts, ({ one }) => ({
-        user: one(users, { fields: ['userId'] }),
+        user: one(users, { fields: [posts.userId], references: [users._id] }),
       }));
 
       const schema = {
@@ -144,7 +147,7 @@ describe('M2 Relations Layer', () => {
       }));
 
       const postsRelations = relations(posts, ({ one }) => ({
-        user: one(users, { fields: ['userId'] }),
+        user: one(users, { fields: [posts.userId], references: [users._id] }),
       }));
 
       const schema = {
@@ -192,7 +195,7 @@ describe('M2 Relations Layer', () => {
       });
 
       const postsRelations = relations(posts, ({ one }) => ({
-        user: one(users, { fields: ['userId'] }),
+        user: one(users, { fields: [posts.userId], references: [users._id] }),
       }));
 
       const schema = {
@@ -216,8 +219,13 @@ describe('M2 Relations Layer', () => {
         bio: text().notNull(),
       });
 
+      const missingProfileId = id('profileId', 'profiles');
+
       const usersRelations = relations(users, ({ one }) => ({
-        profile: one(profiles, { fields: ['profileId'] }),
+        profile: one(profiles, {
+          fields: [missingProfileId as any],
+          references: [profiles._id],
+        }),
       }));
 
       const schema = {
@@ -238,7 +246,10 @@ describe('M2 Relations Layer', () => {
       });
 
       const usersRelations = relations(users, ({ one }) => ({
-        manager: one(users, { fields: ['managerId'] }),
+        manager: one(users, {
+          fields: [users.managerId],
+          references: [users._id],
+        }),
       }));
 
       const schema = {
@@ -267,11 +278,13 @@ describe('M2 Relations Layer', () => {
 
       const postsRelations = relations(posts, ({ one }) => ({
         author: one(users, {
-          fields: ['authorId'],
+          fields: [posts.authorId],
+          references: [users._id],
           relationName: 'authored',
         }),
         editor: one(users, {
-          fields: ['editorId'],
+          fields: [posts.editorId],
+          references: [users._id],
           relationName: 'edited',
         }),
       }));

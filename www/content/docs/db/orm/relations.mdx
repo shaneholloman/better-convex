@@ -11,20 +11,20 @@ Define relationships between tables using Drizzle's `relations()` API. Better-Co
 
 ## Overview
 
-**Category**: ✅ 100% Compatible (Definition) | ⚠️ Coming Soon (Loading with `with:`)
+**Category**: ✅ Drizzle-Compatible (Definition + Loading) | ⚠️ Limited (Nested Constraints)
 
-Relations in Better-Convex ORM use the same API as Drizzle for **defining** relationships. This milestone (M1-M4) implements relation definitions. Relation **loading** with the `with:` option is planned for M5.
+Relations in Better-Convex ORM use the same API as Drizzle for **defining** and **loading** relationships. The `with:` option is implemented and type-safe, with a few nested constraints noted below.
 
 <Callout icon={<AlertTriangle />}>
-**Current Status (M1-M4)**: You can define relations using `one()` and `many()`, but the `with:` option for loading related data is not yet implemented. Relation loading is planned for M5.
+**Current Status**: Relation loading via `with:` works end-to-end. Nested `with` has a depth limit and per-relation filters are post-fetch for `many()` relations.
 </Callout>
 
 ## Relation Types
 
 ### One-to-One Relations
 
-```ts title="convex/schema.ts" showLineNumbers {12-17,19-24}
-import { convexTable, relations, text } from 'better-convex/orm';
+```ts title="convex/schema.ts" showLineNumbers {1-3,5-23}
+import { convexTable, relations, text, id } from 'better-convex/orm';
 
 const users = convexTable('users', {
   name: text().notNull(),
@@ -32,6 +32,7 @@ const users = convexTable('users', {
 
 const profiles = convexTable('profiles', {
   bio: text().notNull(),
+  userId: id('users'),
 });
 
 // Define 1:1 relation (profiles side - has foreign key)
@@ -46,20 +47,6 @@ const profilesRelations = relations(profiles, ({ one }) => ({
 const usersRelations = relations(users, ({ one }) => ({
   profile: one(profiles),
 }));
-
-export const schema = {
-  users,
-  profiles,
-  usersRelations,
-  profilesRelations,
-};
-```
-
-**Behind the scenes:**
-```ts
-// Convex automatically:
-// - Adds userId field to profiles table
-// - Creates index on userId for fast lookups
 ```
 
 <Callout icon={<InfoIcon />}>
@@ -70,8 +57,8 @@ export const schema = {
 
 The most common relation type - one user has many posts.
 
-```ts title="convex/schema.ts" showLineNumbers {15-17,19-24}
-import { convexTable, relations, text, boolean } from 'better-convex/orm';
+```ts title="convex/schema.ts" showLineNumbers {1-3,5-21,23-31}
+import { convexTable, relations, text, boolean, id } from 'better-convex/orm';
 
 const users = convexTable('users', {
   name: text().notNull(),
@@ -81,6 +68,7 @@ const posts = convexTable('posts', {
   title: text().notNull(),
   content: text().notNull(),
   published: boolean(),
+  userId: id('users'),
 });
 
 // "One" side: User has many posts
@@ -95,129 +83,74 @@ const postsRelations = relations(posts, ({ one }) => ({
     references: [users._id],
   }),
 }));
-
-export const schema = {
-  users,
-  posts,
-  usersRelations,
-  postsRelations,
-};
 ```
 
 **Key Points:**
 - **Foreign key is on the "many" side**: `posts.userId` references `users._id`
-- **Define both sides**: Define the relation from both users and posts
+- **Define both sides**: Define relations on both users and posts
 - **Export both**: Both table and relations object must be in schema export
 
-### Many-to-Many Relations
+### Many-to-Many Relations (Join Table)
 
-Define bidirectional many-to-many relationships.
+Better-Convex does not auto-create join tables. Model many-to-many with an explicit join table:
 
-```ts title="convex/schema.ts" showLineNumbers {15-17,19-21}
-import { convexTable, relations, text } from 'better-convex/orm';
+```ts title="convex/schema.ts" showLineNumbers {1-3,5-24,26-40}
+import { convexTable, relations, text, id } from 'better-convex/orm';
 
 const posts = convexTable('posts', {
   title: text().notNull(),
-  content: text().notNull(),
 });
 
 const tags = convexTable('tags', {
   name: text().notNull(),
 });
 
-// Posts side: A post can have many tags
+const postsTags = convexTable('postsTags', {
+  postId: id('posts'),
+  tagId: id('tags'),
+});
+
 const postsRelations = relations(posts, ({ many }) => ({
-  tags: many(tags),
+  tags: many(postsTags),
 }));
 
-// Tags side: A tag can be on many posts
 const tagsRelations = relations(tags, ({ many }) => ({
-  posts: many(posts),
+  posts: many(postsTags),
 }));
 
-export const schema = {
-  posts,
-  tags,
-  postsRelations,
-  tagsRelations,
-};
+const postsTagsRelations = relations(postsTags, ({ one }) => ({
+  post: one(posts, { fields: [postsTags.postId], references: [posts._id] }),
+  tag: one(tags, { fields: [postsTags.tagId], references: [tags._id] }),
+}));
 ```
-
-**Behind the scenes:**
-```ts
-// Convex automatically creates join edges:
-// - postsTags edge (posts -> tags)
-// - tagsPosts edge (tags -> posts)
-// No manual junction table needed!
-```
-
-<Callout icon={<CheckCircle />}>
-**🚀 Convex Advantage**: Many-to-many relations use edge-based join tables, automatically indexed for fast traversal.
-</Callout>
 
 ### Self-Referencing Relations
 
 Define relations where a table references itself (e.g., user followers).
 
-```ts title="convex/schema.ts" showLineNumbers {10-13}
-import { convexTable, relations } from 'better-convex/orm';
-import { v } from 'convex/values';
+```ts title="convex/schema.ts" showLineNumbers {1-8}
+import { convexTable, relations, text } from 'better-convex/orm';
 
 const users = convexTable('users', {
-  name: v.string(),
-  username: v.string(),
+  name: text().notNull(),
+  username: text().notNull(),
 });
 
 const usersRelations = relations(users, ({ many }) => ({
   followers: many(users, { relationName: 'user_followers' }),
   following: many(users, { relationName: 'user_following' }),
 }));
-
-export const schema = {
-  users,
-  usersRelations,
-};
 ```
 
 **Important:**
-- **Use `relationName`**: Required to distinguish between different self-referencing relations
-- **Unique names**: Each relation needs a unique name (e.g., `user_followers`, `user_following`)
-
-## Composite Relations
-
-Define multiple relations on the same table.
-
-```ts title="convex/schema.ts" showLineNumbers {18-23}
-const users = convexTable('users', {
-  name: v.string(),
-});
-
-const posts = convexTable('posts', {
-  title: v.string(),
-});
-
-const comments = convexTable('comments', {
-  text: v.string(),
-});
-
-const profiles = convexTable('profiles', {
-  bio: v.string(),
-});
-
-const usersRelations = relations(users, ({ one, many }) => ({
-  // One-to-one
-  profile: one(profiles),
-  // One-to-many
-  posts: many(posts),
-  comments: many(comments),
-}));
-```
+- **Use `relationName`** to distinguish self-referencing relations
+- **Unique names** are required to disambiguate
 
 ## Relation Definition Rules
 
 ### Required Fields
 
-When defining the "many" side of a relation, specify the foreign key:
+When defining the "many" side of a relation, specify the foreign key field explicitly:
 
 ```ts
 // ✅ CORRECT: Specify fields and references
@@ -275,63 +208,38 @@ const postsRelations = relations(posts, ({ one }) => ({
 }));
 ```
 
-## Coming Soon: Relation Loading
+## Relation Loading with `with:`
 
-Relation **loading** with the `with:` option is not yet implemented (M1-M4). This feature is planned for M5.
-
-### Planned API (M5)
+Better-Convex ORM supports Drizzle-style relation loading:
 
 ```ts
-// 🚧 NOT YET IMPLEMENTED - Coming in M5
-const usersWithPosts = await db(ctx).query.users.findMany({
+import { createDatabase } from 'better-convex/orm';
+
+const db = createDatabase(ctx.db, ormSchema, ormEdges);
+
+const usersWithPosts = await db.query.users.findMany({
   with: {
-    posts: true, // Will load related posts
-  },
-});
-```
-
-### Current Workaround
-
-Use Convex's native query methods to load related data:
-
-```ts title="convex/queries.ts"
-import { query } from './_generated/server';
-
-export const getUsersWithPosts = query({
-  handler: async (ctx) => {
-    // Get all users
-    const users = await ctx.db.query('users').collect();
-
-    // For each user, get their posts
-    const usersWithPosts = await Promise.all(
-      users.map(async (user) => {
-        const posts = await ctx.db
-          .query('posts')
-          .withIndex('userId', (q) => q.eq('userId', user._id))
-          .collect();
-
-        return { ...user, posts };
-      })
-    );
-
-    return usersWithPosts;
+    posts: {
+      limit: 5,
+      orderBy: (posts, { desc }) => desc(posts._creationTime),
+    },
   },
 });
 ```
 
 <Callout icon={<InfoIcon />}>
-**M5 Milestone**: Relation loading with `with:` will provide automatic, type-safe loading of related data matching Drizzle's API exactly.
+**Note**: `limit`, `orderBy`, and `where` apply to `many()` relations. Nested `with` is supported, with a depth limit to prevent infinite recursion.
 </Callout>
 
 ## Common Gotchas
 
 | Issue | Solution |
 |-------|----------|
-| **Relations not working** | Make sure you export both the table AND the relations object |
-| **Foreign key field missing** | Convex auto-creates it from the relation definition |
-| **Type errors** | Verify `fields` array matches the table being referenced |
+| **Relations not working** | Export both the table AND the relations object |
+| **Foreign key field missing** | Define the FK column yourself (e.g., `userId: id('users')`) |
+| **Type errors in `fields`** | Ensure `fields` match the source table and `references` match the target table |
 | **Self-referencing conflicts** | Use unique `relationName` for each self-referencing relation |
-| **`with:` not working** | Relation loading not yet implemented (M5) - use workaround above |
+| **`with:` not working** | Ensure relations are defined on both tables and `ormEdges` is passed to `createDatabase` |
 
 ## Next Steps
 

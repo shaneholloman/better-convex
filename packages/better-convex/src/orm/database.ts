@@ -6,22 +6,29 @@
  */
 
 import type { GenericDatabaseReader } from 'convex/server';
-import type { ColumnBuilder } from './builders/column-builder';
 import type { EdgeMetadata } from './extractRelationsConfig';
 import { RelationalQueryBuilder } from './query-builder';
-import type { ConvexTable } from './table';
 import type { TablesRelationalConfig } from './types';
 
 /**
  * Database with query builder API
  *
  * @template TSchema - Schema configuration with tables and relations
+ *
+ * Following Drizzle's pattern: Validate schema BEFORE mapped type to prevent type widening.
+ * The conditional check outside the mapped type prevents distributive conditional behavior
+ * that causes TSchema[K] to widen to a union of all table types.
+ *
+ * Pattern from: drizzle-orm/src/pg-core/db.ts lines 50-54
+ * Key insight: TSchema[K] must be captured at mapping time, not evaluated in conditionals later.
  */
 export type DatabaseWithQuery<TSchema extends TablesRelationalConfig> =
   GenericDatabaseReader<any> & {
-    query: {
-      [K in keyof TSchema]: RelationalQueryBuilder<TSchema, TSchema[K]>;
-    };
+    query: TSchema extends Record<string, never>
+      ? { error: 'Schema is empty - did you forget to add tables?' }
+      : {
+          [K in keyof TSchema]: RelationalQueryBuilder<TSchema, TSchema[K]>;
+        };
   };
 
 /**
@@ -65,7 +72,8 @@ export function createDatabase<TSchema extends TablesRelationalConfig>(
       schema,
       tableConfig,
       tableEdges,
-      db
+      db,
+      edgeMetadata // M6.5 Phase 2: Pass all edges for nested relation loading
     );
   }
 
@@ -108,21 +116,8 @@ type ExtractTablesFromSchema<TSchema extends Record<string, any>> = {
  */
 export function buildSchema<TSchema extends Record<string, any>>(
   rawSchema: TSchema
-): ExtractTablesFromSchema<TSchema> extends Record<string, any>
-  ? {
-      [K in keyof ExtractTablesFromSchema<TSchema>]: {
-        tsName: K;
-        dbName: string;
-        columns: ExtractTablesFromSchema<TSchema>[K] extends ConvexTable<
-          infer T
-        >
-          ? T['columns']
-          : Record<string, ColumnBuilder<any, any, any>>;
-        relations: any;
-      };
-    }
-  : never {
-  const config: any = {};
+) {
+  const config: Record<string, any> = {};
 
   // Extract tables and their relations from raw schema
   for (const [key, value] of Object.entries(rawSchema)) {
@@ -143,5 +138,17 @@ export function buildSchema<TSchema extends Record<string, any>>(
     };
   }
 
-  return config;
+  return config as {
+    [K in keyof ExtractTablesFromSchema<TSchema>]: {
+      tsName: K & string;
+      dbName: TSchema[K] extends { _: { name: infer TName } } ? TName : string;
+      columns: TSchema[K] extends { _: { columns: infer C } } ? C : any;
+      relations: import('./types').ExtractTableRelationsFromSchema<
+        TSchema,
+        TSchema[K] extends { _: { name: infer TName extends string } }
+          ? TName
+          : string
+      >;
+    };
+  };
 }

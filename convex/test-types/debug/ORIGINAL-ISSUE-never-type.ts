@@ -9,7 +9,7 @@ import {
   number,
   text,
 } from 'better-convex/orm';
-import { type Equal, Expect } from './utils';
+import { type Equal, Expect } from '../utils';
 
 const users = convexTable('users', {
   name: text().notNull(),

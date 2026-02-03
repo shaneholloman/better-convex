@@ -8,6 +8,7 @@
  */
 
 import type { GenericDatabaseReader } from 'convex/server';
+import { type ColumnBuilder, entityKind } from './builders/column-builder';
 import type { EdgeMetadata } from './extractRelationsConfig';
 import type {
   BinaryExpression,
@@ -16,12 +17,34 @@ import type {
   LogicalExpression,
   UnaryExpression,
 } from './filter-expression';
-import { column, isFieldReference } from './filter-expression';
+import {
+  column,
+  contains,
+  endsWith,
+  eq,
+  gt,
+  gte,
+  ilike,
+  inArray,
+  isFieldReference,
+  isNotNull,
+  isNull,
+  like,
+  lt,
+  lte,
+  ne,
+  notInArray,
+  startsWith,
+} from './filter-expression';
+import { asc, desc } from './order-by';
 import { QueryPromise } from './query-promise';
 import type {
   DBQueryConfig,
+  OrderByClause,
+  OrderByValue,
   TableRelationalConfig,
   TablesRelationalConfig,
+  ValueOrArray,
 } from './types';
 import { WhereClauseCompiler } from './where-clause-compiler';
 
@@ -32,7 +55,11 @@ import { WhereClauseCompiler } from './where-clause-compiler';
  *
  * Pattern from Drizzle: gel-core/query-builders/query.ts:32-62
  */
-export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
+export class GelRelationalQuery<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+  TResult,
+> extends QueryPromise<TResult> {
   /**
    * Type brand for result type extraction
    * Critical for Expect<Equal<>> type tests to work correctly
@@ -43,18 +70,103 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
   };
 
   constructor(
-    _fullSchema: TablesRelationalConfig,
-    private tableConfig: TableRelationalConfig,
+    private schema: TSchema,
+    private tableConfig: TTableConfig,
     private edgeMetadata: EdgeMetadata[],
     private db: GenericDatabaseReader<any>,
     private config: DBQueryConfig<
       'one' | 'many',
-      TablesRelationalConfig,
-      TableRelationalConfig
+      boolean,
+      TSchema,
+      TTableConfig
     >,
-    private mode: 'many' | 'first'
+    private mode: 'many' | 'first' | 'paginate',
+    private _allEdges?: EdgeMetadata[], // M6.5 Phase 2: All edges for nested loading
+    private paginationOpts?: { cursor: string | null; numItems: number } // M6.5 Phase 4: Cursor pagination options
   ) {
     super();
+  }
+
+  private _isColumnBuilder(
+    value: unknown
+  ): value is ColumnBuilder<any, any, any> {
+    return (
+      !!value &&
+      typeof value === 'object' &&
+      (value as any)[entityKind] === 'ColumnBuilder'
+    );
+  }
+
+  private _isOrderByClause(value: unknown): value is OrderByClause<any> {
+    return (
+      !!value &&
+      typeof value === 'object' &&
+      'direction' in (value as any) &&
+      !!(value as any).column?.columnName
+    );
+  }
+
+  private _normalizeOrderByValue(value: OrderByValue): OrderByClause<any> {
+    if (this._isOrderByClause(value)) {
+      return value;
+    }
+    if (this._isColumnBuilder(value)) {
+      return asc(value);
+    }
+    throw new Error('Invalid orderBy value. Use a column or asc()/desc().');
+  }
+
+  private _normalizeOrderBy(
+    orderBy: ValueOrArray<OrderByValue> | undefined
+  ): OrderByClause<any>[] {
+    if (!orderBy) return [];
+    const items = Array.isArray(orderBy) ? orderBy : [orderBy];
+    return items
+      .filter((item): item is OrderByValue => item !== undefined)
+      .map((item) => this._normalizeOrderByValue(item));
+  }
+
+  private _orderBySpecs(
+    orderBy: ValueOrArray<OrderByValue> | undefined
+  ): { field: string; direction: 'asc' | 'desc' }[] {
+    return this._normalizeOrderBy(orderBy).map((clause) => ({
+      field: clause.column.columnName,
+      direction: clause.direction,
+    }));
+  }
+
+  private _compareByOrderSpecs(
+    a: any,
+    b: any,
+    orders: { field: string; direction: 'asc' | 'desc' }[]
+  ): number {
+    for (const order of orders) {
+      const aVal = a[order.field];
+      const bVal = b[order.field];
+
+      if (aVal === null || aVal === undefined) {
+        if (bVal === null || bVal === undefined) continue;
+        return 1;
+      }
+      if (bVal === null || bVal === undefined) {
+        return -1;
+      }
+
+      if (aVal < bVal) {
+        return order.direction === 'asc' ? -1 : 1;
+      }
+      if (aVal > bVal) {
+        return order.direction === 'asc' ? 1 : -1;
+      }
+    }
+    return 0;
+  }
+
+  private _getTableConfigByDbName(
+    dbName: string
+  ): TableRelationalConfig | undefined {
+    const tables = Object.values(this.schema) as TableRelationalConfig[];
+    return tables.find((table) => table.dbName === dbName);
   }
 
   /**
@@ -219,8 +331,10 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
     // 2. If orderBy field has index AND no WHERE index → use orderBy index with .order()
     // 3. Otherwise → post-fetch sort (no index available)
     let usePostFetchSort = false;
-    let postFetchOrderField: string | undefined;
-    let postFetchOrderDirection: 'asc' | 'desc' | undefined;
+    let needsPostFetchSortForPrimary = false;
+    const postFetchOrders = queryConfig.order ?? [];
+    const primaryOrder = postFetchOrders[0];
+    const hasSecondaryOrders = postFetchOrders.length > 1;
 
     // Apply index if selected for WHERE filtering
     if (queryConfig.index) {
@@ -235,29 +349,27 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
       });
 
       // Check if orderBy field matches WHERE index
-      if (queryConfig.order) {
-        const orderField = queryConfig.order.field;
+      if (primaryOrder) {
+        const orderField = primaryOrder.field;
         const indexFields = queryConfig.index.filters.map(
           (f: any) => (f as any).operands[0].fieldName
         );
         // If ordering by same field as index, apply .order()
         if (indexFields.includes(orderField)) {
-          query = query.order(queryConfig.order.direction);
+          query = query.order(primaryOrder.direction);
         } else {
           // Different field - need post-fetch sort
-          usePostFetchSort = true;
-          postFetchOrderField = orderField;
-          postFetchOrderDirection = queryConfig.order.direction;
+          needsPostFetchSortForPrimary = true;
         }
       }
-    } else if (queryConfig.order) {
+    } else if (queryConfig.order && primaryOrder) {
       // No WHERE index - check if orderBy field has an index
-      const orderField = queryConfig.order.field;
+      const orderField = primaryOrder.field;
 
       // Special case: _creationTime uses Convex's default index
       if (orderField === '_creationTime') {
         // Default index on _creationTime - no withIndex() needed
-        query = query.order(queryConfig.order.direction);
+        query = query.order(primaryOrder.direction);
       } else {
         const orderIndex = this.edgeMetadata.find((idx) =>
           idx.indexFields.includes(orderField)
@@ -266,14 +378,85 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
         if (orderIndex) {
           // Use orderBy field's index
           query = query.withIndex(orderIndex.indexName, (q: any) => q);
-          query = query.order(queryConfig.order.direction);
+          query = query.order(primaryOrder.direction);
         } else {
           // No index for orderBy field - post-fetch sort
-          usePostFetchSort = true;
-          postFetchOrderField = orderField;
-          postFetchOrderDirection = queryConfig.order.direction;
+          needsPostFetchSortForPrimary = true;
         }
       }
+    }
+
+    usePostFetchSort = needsPostFetchSortForPrimary || hasSecondaryOrders;
+
+    // M6.5 Phase 4: Handle cursor pagination separately
+    if (this.mode === 'paginate') {
+      // Apply post-filters
+      if (queryConfig.postFilters.length > 0) {
+        query = query.filter((q: any) => {
+          let result = q;
+          for (const filter of queryConfig.postFilters) {
+            const filterFn = this._toConvexExpression(filter);
+            result = filterFn(result);
+          }
+          return result;
+        });
+      }
+
+      // Apply ORDER BY for pagination (required for stable cursors)
+      if (queryConfig.order && primaryOrder) {
+        // Check if ordering was already applied via index (needsPostFetchSortForPrimary would be false)
+        if (needsPostFetchSortForPrimary) {
+          // Field has no index - pagination can't use custom orderBy
+          // Fall back to _creationTime ordering for cursor stability
+          console.warn(
+            `Pagination: Field '${primaryOrder.field}' has no index. ` +
+              'Falling back to _creationTime ordering. ' +
+              'Add an index for custom ordering in pagination.'
+          );
+          query = query.order(
+            primaryOrder.direction === 'asc' ? 'asc' : 'desc'
+          );
+        } else {
+          // Ordering already applied via index - query is ready for pagination
+          // No additional action needed
+        }
+        if (hasSecondaryOrders) {
+          console.warn(
+            'Pagination: Only the first orderBy field is used for cursor ordering. ' +
+              'Secondary orderBy fields are applied per page and may be unstable across pages.'
+          );
+        }
+      } else {
+        // Default to _creationTime desc if no orderBy specified
+        query = query.order('desc');
+      }
+
+      // Use Convex native pagination (O(1) performance)
+      const paginationResult = await query.paginate({
+        cursor: this.paginationOpts?.cursor ?? null,
+        numItems: this.paginationOpts?.numItems ?? 20,
+      });
+
+      // Load relations for page results if configured
+      let pageWithRelations = paginationResult.page;
+      if (this.config.with) {
+        pageWithRelations = await this._loadRelations(
+          paginationResult.page,
+          this.config.with
+        );
+      }
+
+      // Apply column selection if configured
+      const selectedPage = this._selectColumns(
+        pageWithRelations,
+        (this.config as any).columns
+      );
+
+      return {
+        page: selectedPage,
+        continueCursor: paginationResult.continueCursor,
+        isDone: paginationResult.isDone,
+      } as TResult;
     }
 
     // Apply post-filters
@@ -294,7 +477,13 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
     // M4.5: Offset pagination via post-fetch slicing
     // Convex doesn't have skip() - fetch offset + limit rows, then slice
     const offset = config.offset ?? 0;
+    if (typeof offset !== 'number') {
+      throw new Error('Only numeric offset is supported in Better Convex ORM.');
+    }
     const limit = config.limit ?? 1000; // Default max 1000 to prevent unbounded queries
+    if (typeof limit !== 'number') {
+      throw new Error('Only numeric limit is supported in Better Convex ORM.');
+    }
     const fetchLimit = offset > 0 ? offset + limit : limit;
     let rows = await query.take(fetchLimit);
 
@@ -314,18 +503,10 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
     }
 
     // Apply post-fetch sort if needed
-    if (usePostFetchSort && postFetchOrderField && postFetchOrderDirection) {
-      const field = postFetchOrderField;
-      const direction = postFetchOrderDirection;
-      rows = rows.sort((a: any, b: any) => {
-        const aVal = a[field];
-        const bVal = b[field];
-        if (aVal === bVal) return 0;
-        if (aVal === null || aVal === undefined) return 1; // nulls last
-        if (bVal === null || bVal === undefined) return -1;
-        const cmp = aVal < bVal ? -1 : 1;
-        return direction === 'asc' ? cmp : -cmp;
-      });
+    if (usePostFetchSort && postFetchOrders.length > 0) {
+      rows = rows.sort((a: any, b: any) =>
+        this._compareByOrderSpecs(a, b, postFetchOrders)
+      );
     }
 
     // Load relations if configured
@@ -356,7 +537,7 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
     table: string;
     index?: { name: string; filters: FilterExpression<boolean>[] };
     postFilters: FilterExpression<boolean>[];
-    order?: { direction: 'asc' | 'desc'; field: string };
+    order?: { direction: 'asc' | 'desc'; field: string }[];
   } {
     const config = this.config as any;
 
@@ -384,7 +565,7 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
       table: string;
       index?: { name: string; filters: FilterExpression<boolean>[] };
       postFilters: FilterExpression<boolean>[];
-      order?: { direction: 'asc' | 'desc'; field: string };
+      order?: { direction: 'asc' | 'desc'; field: string }[];
     } = {
       table: this.tableConfig.dbName,
       postFilters: compiled.postFilters,
@@ -400,12 +581,15 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
 
     // Compile orderBy (M5 implementation)
     if (config.orderBy) {
-      // orderBy is now directly an OrderByClause from asc()/desc()
-      const orderByClause = config.orderBy;
-      result.order = {
-        direction: orderByClause.direction,
-        field: orderByClause.column.columnName,
-      };
+      const orderByValue =
+        typeof config.orderBy === 'function'
+          ? config.orderBy(this.tableConfig.columns as any, { asc, desc })
+          : config.orderBy;
+
+      const orderSpecs = this._orderBySpecs(orderByValue);
+      if (orderSpecs.length > 0) {
+        result.order = orderSpecs;
+      }
     }
 
     return result;
@@ -422,7 +606,10 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
       this.tableConfig.columns
     )) {
       // Each column proxy is a Column wrapper with validator + name
-      proxies[columnName] = column(validator, columnName);
+      proxies[columnName] = column(
+        validator as ColumnBuilder<any, any, any>,
+        columnName
+      );
     }
     return proxies as any;
   }
@@ -435,25 +622,6 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
    * just return the raw operators from filter-expression.ts
    */
   private _createOperators(): any {
-    // Import operators dynamically to avoid circular dependency
-    const {
-      eq,
-      ne,
-      gt,
-      gte,
-      lt,
-      lte,
-      inArray,
-      notInArray,
-      isNull,
-      isNotNull,
-      like,
-      ilike,
-      startsWith,
-      endsWith,
-      contains,
-    } = require('./filter-expression');
-
     // Return operators as-is - they already expect Column wrappers
     // which _createColumnProxies() provides (cast to raw builder type)
     return {
@@ -623,17 +791,322 @@ export class GelRelationalQuery<TResult> extends QueryPromise<TResult> {
   }
 
   /**
+   * Get edge metadata for a target table
+   * Helper for recursive relation loading
+   */
+  private _getTargetTableEdges(tableName: string): EdgeMetadata[] {
+    if (!this._allEdges) {
+      return [];
+    }
+
+    // Filter all edges to find those originating from the target table
+    return this._allEdges.filter((edge) => edge.sourceTable === tableName);
+  }
+
+  /**
    * Load relations for query results
-   * Phase 4 implementation
+   * M6.5 Phase 2 implementation: Recursive relation loading with depth limiting
+   *
+   * @param rows - Array of parent records to load relations for
+   * @param withConfig - Relation configuration object
+   * @param depth - Current recursion depth (default 0)
+   * @param maxDepth - Maximum recursion depth (default 3)
+   * @param targetTableEdges - Edge metadata for nested relations (optional, defaults to this.edgeMetadata)
    */
   private async _loadRelations(
     rows: any[],
-    _withConfig: Record<string, unknown>
+    withConfig: Record<string, unknown>,
+    depth = 0,
+    maxDepth = 3,
+    targetTableEdges: EdgeMetadata[] = this.edgeMetadata
   ): Promise<any[]> {
-    // Phase 4: Full implementation coming
-    // For now, return rows unchanged
-    // TODO: Implement batch relation loading with Promise.all
+    if (!withConfig || rows.length === 0) {
+      return rows;
+    }
+
+    // Prevent infinite recursion / memory explosion
+    if (depth >= maxDepth) {
+      return rows;
+    }
+
+    // Load all relations in parallel to avoid sequential N+1 queries
+    await Promise.all(
+      Object.entries(withConfig).map(([relationName, relationConfig]) =>
+        this._loadSingleRelation(
+          rows,
+          relationName,
+          relationConfig,
+          depth,
+          maxDepth,
+          targetTableEdges
+        )
+      )
+    );
+
     return rows;
+  }
+
+  /**
+   * Load a single relation for all rows
+   * Handles both one() and many() cardinality
+   * M6.5 Phase 2: Added support for nested relations
+   */
+  private async _loadSingleRelation(
+    rows: any[],
+    relationName: string,
+    relationConfig: unknown,
+    depth: number,
+    maxDepth: number,
+    targetTableEdges: EdgeMetadata[]
+  ): Promise<void> {
+    // Find edge metadata for this relation
+    const edge = targetTableEdges.find((e) => e.edgeName === relationName);
+
+    if (!edge) {
+      throw new Error(
+        `Relation '${relationName}' not found in table '${this.tableConfig.dbName}'. ` +
+          `Available relations: ${targetTableEdges.map((e) => e.edgeName).join(', ')}`
+      );
+    }
+
+    // Load based on cardinality
+    if (edge.cardinality === 'one') {
+      await this._loadOneRelation(
+        rows,
+        relationName,
+        edge,
+        relationConfig,
+        depth,
+        maxDepth
+      );
+    } else {
+      await this._loadManyRelation(
+        rows,
+        relationName,
+        edge,
+        relationConfig,
+        depth,
+        maxDepth
+      );
+    }
+  }
+
+  /**
+   * Load one() relation (many-to-one or one-to-one)
+   * Example: posts.user where posts.userId → users._id
+   * M6.5 Phase 2: Added support for nested relations
+   */
+  private async _loadOneRelation(
+    rows: any[],
+    relationName: string,
+    edge: EdgeMetadata,
+    relationConfig: unknown,
+    depth: number,
+    maxDepth: number
+  ): Promise<void> {
+    // Collect unique target IDs
+    const targetIds = [
+      ...new Set(
+        rows
+          .map((row) => row[edge.fieldName])
+          .filter((id): id is string => id !== null)
+      ),
+    ];
+
+    if (targetIds.length === 0) {
+      // All rows have null foreign key
+      for (const row of rows) {
+        row[relationName] = null;
+      }
+      return;
+    }
+
+    // Batch load all target records
+    // TODO M6.5 Phase 3: Use withIndex for efficient lookup
+    const allTargets = await this.db.query(edge.targetTable).take(10_000);
+
+    // Filter to only targets we need (in-memory filter since Convex lacks .in() operator)
+    const targets = allTargets.filter((t) =>
+      targetIds.includes(t._id as string)
+    );
+
+    // M6.5 Phase 2: Recursively load nested relations if configured
+    if (
+      relationConfig &&
+      typeof relationConfig === 'object' &&
+      'with' in relationConfig
+    ) {
+      // Get edge metadata for the target table (not the current table)
+      const targetTableEdges = this._getTargetTableEdges(edge.targetTable);
+      await this._loadRelations(
+        targets,
+        (relationConfig as any).with,
+        depth + 1,
+        maxDepth,
+        targetTableEdges
+      );
+    }
+
+    // Create ID → record mapping for O(1) lookup
+    const targetsById = new Map(targets.map((t) => [t._id as string, t]));
+
+    // Map relations back to parent rows
+    for (const row of rows) {
+      const targetId = row[edge.fieldName] as string | null;
+      row[relationName] = targetId ? (targetsById.get(targetId) ?? null) : null;
+    }
+  }
+
+  /**
+   * Load many() relation (one-to-many)
+   * Example: users.posts where posts.userId → users._id
+   *
+   * For many() relations, the foreign key is in the target table, not source.
+   * We use the inverse edge's fieldName to find the FK field in target table.
+   * M6.5 Phase 2: Added support for nested relations
+   * M6.5 Phase 3: Added support for where filters, orderBy, and per-parent limit
+   */
+  private async _loadManyRelation(
+    rows: any[],
+    relationName: string,
+    edge: EdgeMetadata,
+    relationConfig: unknown,
+    depth: number,
+    maxDepth: number
+  ): Promise<void> {
+    // Collect all source IDs
+    const sourceIds = rows.map((row) => row._id as string);
+
+    if (sourceIds.length === 0) {
+      return;
+    }
+
+    // For many() relations, find the FK field in target table using inverse edge
+    // Edge: users.posts (many) → Inverse: posts.user (one) with fieldName="userId"
+    let targetForeignKeyField: string;
+    if (edge.inverseEdge) {
+      // Use inverse edge's fieldName (e.g., "userId" in posts table)
+      targetForeignKeyField = edge.inverseEdge.fieldName;
+    } else {
+      // Fallback: convention-based (sourceTableName + "Id")
+      // This handles unidirectional many() relations without inverse
+      targetForeignKeyField = `${edge.sourceTable.slice(0, -1)}Id`; // "users" → "userId"
+    }
+
+    // Batch load all target records that reference any source
+    // TODO M6.5 Phase 3: Use withIndex for efficient lookup
+    const allTargets = await this.db.query(edge.targetTable).take(10_000);
+
+    // Filter to only targets that reference our source IDs
+    let targets = allTargets.filter((t) =>
+      sourceIds.includes(t[targetForeignKeyField] as string)
+    );
+
+    // M6.5 Phase 3: Apply where filters if present
+    if (
+      relationConfig &&
+      typeof relationConfig === 'object' &&
+      'where' in relationConfig &&
+      typeof (relationConfig as any).where === 'function'
+    ) {
+      const whereFilter = (relationConfig as any).where;
+      // Apply filter to each target (in-memory filtering)
+      targets = targets.filter((target) => {
+        try {
+          // Create a mock query builder for filter evaluation
+          const mockQueryBuilder = {
+            eq: (field: any, value: any) => target[field] === value,
+            neq: (field: any, value: any) => target[field] !== value,
+            gt: (field: any, value: any) => target[field] > value,
+            gte: (field: any, value: any) => target[field] >= value,
+            lt: (field: any, value: any) => target[field] < value,
+            lte: (field: any, value: any) => target[field] <= value,
+            field: (name: string) => name,
+          };
+          return whereFilter(target, mockQueryBuilder);
+        } catch {
+          return true; // Keep target if filter evaluation fails
+        }
+      });
+    }
+
+    // M6.5 Phase 3: Apply orderBy if present
+    if (
+      relationConfig &&
+      typeof relationConfig === 'object' &&
+      'orderBy' in relationConfig
+    ) {
+      let orderByValue = (relationConfig as any).orderBy;
+      if (typeof orderByValue === 'function') {
+        const targetTableConfig = this._getTableConfigByDbName(
+          edge.targetTable
+        );
+        if (targetTableConfig) {
+          orderByValue = orderByValue(targetTableConfig.columns, { asc, desc });
+        } else {
+          orderByValue = undefined;
+        }
+      }
+
+      const orderSpecs = this._orderBySpecs(orderByValue);
+      if (orderSpecs.length > 0) {
+        targets.sort((a, b) => this._compareByOrderSpecs(a, b, orderSpecs));
+      }
+    }
+
+    // M6.5 Phase 2: Recursively load nested relations if configured
+    if (
+      relationConfig &&
+      typeof relationConfig === 'object' &&
+      'with' in relationConfig
+    ) {
+      // Get edge metadata for the target table (not the current table)
+      const targetTableEdges = this._getTargetTableEdges(edge.targetTable);
+      await this._loadRelations(
+        targets,
+        (relationConfig as any).with,
+        depth + 1,
+        maxDepth,
+        targetTableEdges
+      );
+    }
+
+    // M6.5 Phase 3: Extract limit for per-parent limiting
+    const perParentLimit =
+      relationConfig &&
+      typeof relationConfig === 'object' &&
+      'limit' in relationConfig
+        ? (relationConfig as any).limit
+        : undefined;
+    if (perParentLimit !== undefined && typeof perParentLimit !== 'number') {
+      throw new Error('Only numeric limit is supported in Better Convex ORM.');
+    }
+
+    // Group targets by parent ID
+    const byParentId = new Map<string, any[]>();
+    for (const target of targets) {
+      const parentId = target[targetForeignKeyField] as string;
+      if (!byParentId.has(parentId)) {
+        byParentId.set(parentId, []);
+      }
+      byParentId.get(parentId)!.push(target);
+    }
+
+    // M6.5 Phase 3: Apply per-parent limit
+    // Each parent gets up to N children, not N children total
+    if (perParentLimit !== undefined && typeof perParentLimit === 'number') {
+      for (const [parentId, children] of byParentId.entries()) {
+        if (children.length > perParentLimit) {
+          byParentId.set(parentId, children.slice(0, perParentLimit));
+        }
+      }
+    }
+
+    // Map relations back to parent rows
+    for (const row of rows) {
+      const rowId = row._id as string;
+      row[relationName] = byParentId.get(rowId) ?? [];
+    }
   }
 
   /**

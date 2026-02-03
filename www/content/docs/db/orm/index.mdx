@@ -31,34 +31,36 @@ Developers coming from SQL ORMs (Drizzle, Prisma) face a steep learning curve wi
 Better-Convex ORM features fall into four categories:
 
 **✅ Category 1: Drizzle-Compatible** - Identical or highly similar API
-- Schema definition (`convexTable()`, field types)
+- Schema definition (`convexTable()`, column builders)
 - Relations definition (`one()`, `many()`)
-- Query builder (`findMany()`, `findFirst()`)
-- Core filtering (`eq()`, `ne()`, `gt()`, `lt()`, `gte()`, `lte()`, `and()`, `or()`)
-- Type inference (`InferSelectModel`, `InferInsertModel`)
+- Query builder (`findMany()`, `findFirst()`, `paginate()`)
+- Core filtering (`eq()`, `ne()`, `gt()`, `lt()`, `gte()`, `lte()`, `inArray()`, `and()`, `or()`, `not()`, `isNull()`, `isNotNull()`)
+- Order by (`asc()`, `desc()`, multi-field ordering with post-fetch secondary sorts)
+- Relation loading (`with:`)
+- Type inference (`InferSelectModel`, `InferInsertModel`, `$inferSelect`, `$inferInsert`)
 
-**⚠️ Category 2: Limited/In Development** - Coming in future milestones
-- Relation loading with `with:` option (M5 - planned)
-- Mutations (`insert()`, `update()`, `delete()`) (M5-M6 - planned)
-- Order by (`orderBy()`) (M5 - planned)
-- String operators (`like`, `ilike`) - Use Convex search indexes instead
+**⚠️ Category 2: Limited/In Development** - Available with constraints
+- Mutations (`insert()`, `update()`, `delete()`) (planned)
+- Column selection (`columns`) - post-fetch projection
+- String operators (`like`, `ilike`, `startsWith`, `endsWith`, `contains`) - post-fetch filtering
+- Advanced relation constraints (nested `with` depth limit, post-fetch filters for `many()` relations)
 
 **🚀 Category 3: Convex-Native Advantages** - Features Drizzle doesn't have
 - Real-time subscriptions on all queries (built-in)
 - Serverless scalability (no connection pooling needed)
 - Document-based storage (denormalized, fast reads)
-- Automatic indexing
+- Cursor pagination (`paginate()`)
 
 **❌ Category 4: Not Applicable** - SQL-specific features not needed in Convex
 - Raw SQL queries (Convex uses documents)
 - Database migrations (Convex is schemaless)
-- Complex joins (Convex uses denormalized documents)
+- Complex SQL joins (Convex favors denormalized documents)
 
 ## Installation
 
 Install Better-Convex in your existing Convex project:
 
-<Tabs groupId="package-manager" items={["npm", "pnpm", "yarn", "bun"]} persist>
+<Tabs groupId="package-manager" items={['npm', 'pnpm', 'yarn', 'bun']} persist>
   <Tab value="npm">
     ```bash
     npm install better-convex
@@ -85,8 +87,16 @@ Install Better-Convex in your existing Convex project:
 
 Define your schema using Drizzle-style syntax:
 
-```ts title="convex/schema.ts" showLineNumbers {3-9,11-14}
-import { convexTable, relations, text, boolean } from 'better-convex/orm';
+```ts title="convex/schema.ts" showLineNumbers {1-3,5-21,23-30}
+import {
+  convexTable,
+  relations,
+  text,
+  boolean,
+  id,
+  buildSchema,
+  extractRelationsConfig,
+} from 'better-convex/orm';
 
 const users = convexTable('users', {
   name: text().notNull(),
@@ -97,6 +107,7 @@ const posts = convexTable('posts', {
   title: text().notNull(),
   content: text().notNull(),
   published: boolean(),
+  userId: id('users'),
 });
 
 const usersRelations = relations(users, ({ many }) => ({
@@ -109,31 +120,35 @@ const postsRelations = relations(posts, ({ one }) => ({
     references: [users._id],
   }),
 }));
+
+export const schema = {
+  users,
+  posts,
+  usersRelations,
+  postsRelations,
+};
+
+export const ormSchema = buildSchema(schema);
+export const ormEdges = extractRelationsConfig(ormSchema);
 ```
 
 Query with full type safety:
 
 ```ts title="convex/queries.ts" showLineNumbers
 import { query } from './_generated/server';
-import { db } from 'better-convex/orm';
-import { eq } from 'better-convex/orm/filter';
+import { createDatabase } from 'better-convex/orm';
+import { ormSchema, ormEdges } from './schema';
 
 export const getPublishedPosts = query({
   handler: async (ctx) => {
-    const posts = await db(ctx).query.posts.findMany({
-      where: eq(posts.published, true),
+    const db = createDatabase(ctx.db, ormSchema, ormEdges);
+    const posts = await db.query.posts.findMany({
+      where: (posts, { eq }) => eq(posts.published, true),
+      orderBy: (posts, { desc }) => desc(posts._creationTime),
       limit: 10,
     });
 
     return posts;
-    // Type: Array<{
-    //   _id: Id<'posts'>,
-    //   title: string,
-    //   content: string,
-    //   published: boolean,
-    //   userId: Id<'users'>,
-    //   _creationTime: number
-    // }>
   },
 });
 ```
@@ -189,4 +204,3 @@ export default function PostsPage() {
     Side-by-side API comparison with migration guide
   </Card>
 </Cards>
-

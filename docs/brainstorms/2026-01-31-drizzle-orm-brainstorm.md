@@ -171,6 +171,7 @@ const users = await db.query.users.findMany({
 #### Iterative API Evolution (M1 → M6)
 
 **M1-M5 (Intermediate)**: Use Convex validators directly
+
 ```typescript
 const users = convexTable("users", {
   name: v.string(),
@@ -180,6 +181,7 @@ const users = convexTable("users", {
 ```
 
 **M6 (Final)**: Drizzle-style column builders
+
 ```typescript
 const users = convexTable("users", {
   id: integer().primaryKey(),
@@ -190,6 +192,7 @@ const users = convexTable("users", {
 ```
 
 **Why Iterative**:
+
 - M1: Prove type inference with proven `v.*` validators (low risk, fast TDD)
 - M6: Add Drizzle column builders as syntactic sugar (polish API)
 - Each milestone builds on working foundation
@@ -221,6 +224,7 @@ const users = await ctx.db.query.users.findMany({
 ## Drizzle Feature Compatibility Guide
 
 **Strategy**: API-first with hybrid fallback
+
 - **API-first**: Clone Drizzle API exactly where Convex architecture permits
 - **Hybrid fallback**: Use Convex-native patterns when Drizzle API isn't feasible
 - **Documentation**: Clearly document all limitations and differences from SQL Drizzle
@@ -230,32 +234,38 @@ const users = await ctx.db.query.users.findMany({
 Features we can clone with identical API - developers get exact Drizzle ergonomics:
 
 **Relations API** (M2):
+
 - ✅ `relations(table, ({ one, many }) => ({ ... }))`
 - ✅ `one(targetTable, { fields, references })`
 - ✅ `many(targetTable, { relationName })`
 - ✅ Type inference for relation configs
 
 **Query Reads** (M3):
+
 - ✅ `db.query.table.findMany({ columns, with, limit })`
 - ✅ `db.query.table.findFirst({ where, with })`
 - ✅ Column selection via `columns: { id: true, name: true }`
 - ✅ Nested relation loading via `with: { posts: true }`
 
 **Ordering** (M4.5):
+
 - ✅ `orderBy: asc(table.createdAt)`
 - ✅ `orderBy: [desc(table.year), asc(table.price)]`
 
 **Pagination** (M3, M4.5):
+
 - ✅ `limit(10)` - Direct map to `.take()`
 - ⚠️ `offset(20)` - Works but less efficient than cursor (see Category 3)
 
 **Core Filtering** (M4):
+
 - ✅ `eq`, `ne`, `gt`, `gte`, `lt`, `lte` - Direct Convex filter support
 - ✅ `and`, `or`, `not` - Logical operators
 - ✅ `inArray`, `notInArray` - Expands to OR chain
 - ✅ `isNull`, `isNotNull` - Optional field checks
 
 **Basic Mutations** (M5):
+
 - ✅ `db.insert(table).values({ ... })`
 - ✅ `db.insert(table).values([{...}, {...}])` - Batch insert
 - ✅ `db.update(table).set({ ... }).where(...)`
@@ -266,6 +276,7 @@ Features we can clone with identical API - developers get exact Drizzle ergonomi
 Features with Convex constraints - API looks like Drizzle but has limitations:
 
 **Advanced Filtering** (Deferred to M4.5+):
+
 - ❌ `like`, `ilike` - No native SQL LIKE in Convex
   - **Workaround**: Post-filter with JavaScript regex
   - **Impact**: O(n) scan instead of index usage
@@ -275,6 +286,7 @@ Features with Convex constraints - API looks like Drizzle but has limitations:
   - **Workaround**: Use joins via relations instead
 
 **String Operators** (M4.5+):
+
 - ⚠️ `startsWith(field, prefix)` - Partial support
   - **Good**: Uses index range when field is indexed
   - **Limitation**: Limited to exact prefix matching
@@ -282,23 +294,27 @@ Features with Convex constraints - API looks like Drizzle but has limitations:
   - **Workaround**: Post-filter with JavaScript `.includes()`
 
 **Joins** (M2-M3):
+
 - ✅ Via relations: `with: { author: true }` - Works great
 - ❌ Manual SQL joins: `leftJoin`, `rightJoin`, `fullJoin` - Not applicable
   - **Convex Philosophy**: Relations defined upfront, not runtime joins
   - **Always inner join semantics** - no LEFT/RIGHT/FULL
 
 **Column Selection** (M3):
+
 - ✅ Select specific fields: `columns: { id: true, title: true }`
-- ❌ Computed expressions: `sql<string>`lower(${title})`  - No SQL
+- ❌ Computed expressions: `sql<string>`lower(${title})` - No SQL
   - **Workaround**: Use `.map()` after query for transformations
 
 **Mutation Limitations** (M5):
+
 - ❌ `returning()` clause - Convex mutations don't return values
 - ❌ `onConflictDoUpdate()`, `onConflictDoNothing()` - No native upsert
   - **Workaround**: Manual get-then-patch or insert-with-try-catch
 - ❌ Insert from select, update from joins - Not supported
 
 **Advanced Queries** (Not Planned):
+
 - ❌ Subqueries, CTEs (WITH clause), UNION/INTERSECT/EXCEPT
 - ❌ GROUP BY, HAVING, window functions, DISTINCT
 - ❌ Lateral joins, recursive queries
@@ -308,35 +324,41 @@ Features with Convex constraints - API looks like Drizzle but has limitations:
 Features better in Convex or unique to Convex - follow Drizzle philosophy but different implementation:
 
 **Edge-Based Relations** (M2):
+
 - **Drizzle**: Foreign keys + SQL JOINs
 - **Better-Convex**: Edge fields with automatic indexes
 - **Advantage**: Better performance, auto-indexing, type-safe traversal
 
 **Cursor-Based Pagination** (M3+):
+
 - **Drizzle**: `limit().offset()` (offset pagination)
 - **Better-Convex**: `.paginate({ cursor, numItems })`
 - **Advantage**: O(1) vs O(n) for large offsets, stable pagination
 - **Compatibility**: Still support `limit`/`offset` for familiarity
 
 **Real-Time Subscriptions** (M3+):
+
 - **Drizzle**: Static queries only
 - **Better-Convex**: All queries auto-subscribe to changes
 - **Advantage**: Live updates without polling or WebSockets setup
 - **API**: Same query API, reactivity is automatic
 
 **Write-Time Validation** (M1-M5):
+
 - **Drizzle**: DB constraints enforce at write
 - **Better-Convex**: Validators run on every write with TypeScript types
 - **Advantage**: Compile-time + runtime validation
 - **API**: Use Convex `v.*` validators (M1-M5) or Drizzle-style builders (M6)
 
 **Index-Aware Filtering** (M4):
+
 - **Drizzle**: Manual index hints
 - **Better-Convex**: Automatic index selection via scoring algorithm
 - **Advantage**: Optimal index usage without developer hints
 - **Fallback**: Manual hints possible if needed (M4.5+)
 
 **Server-Side vs Client-Side Filters**:
+
 - **Index filters**: `.withIndex()` - server-side, fast (O(log n))
 - **Post-filters**: `.filter()` - server-side but slower (O(n) after index)
 - **Best Practice**: M4 compiler splits filters automatically
@@ -346,21 +368,25 @@ Features better in Convex or unique to Convex - follow Drizzle philosophy but di
 Drizzle features that don't make sense for Convex - won't implement:
 
 **Database Infrastructure**:
+
 - ❌ Connection management, pooling, read replicas
 - ❌ Migrations with `drizzle-kit` - Convex has declarative schema
 - ❌ Transaction isolation levels - Convex always serializable
 - ❌ Prepared statements - Convex auto-optimizes
 
 **SQL-Specific**:
+
 - ❌ Raw SQL: `db.execute(sql`...`)`, `sql` template literals
 - ❌ Database views, materialized views, stored procedures, triggers
 - ❌ Sequences, custom types, extensions (PostGIS, vector)
 
 **Lock Management**:
+
 - ❌ `FOR UPDATE`, `FOR SHARE`, `SKIP LOCKED`
 - Convex manages locks internally
 
 **Schema Constraints** (Use validators instead):
+
 - ❌ CHECK constraints, foreign key cascade rules
 - Use Convex validators and application logic
 
@@ -368,16 +394,16 @@ Drizzle features that don't make sense for Convex - won't implement:
 
 Based on categories, here's the recommended implementation order:
 
-| Milestone | Category | Features | Rationale |
-|-----------|----------|----------|-----------|
-| M1 | Cat 1 | Schema definition with `v.*` validators | Foundation, proven patterns |
-| M2 | Cat 1 + 3 | Relations API (Drizzle) + Edges (Convex-native) | Core feature, type inference |
-| M3 | Cat 1 + 3 | Query reads + cursor pagination | Essential queries, hybrid approach |
-| M4 | Cat 1 + 2 | Core filtering (supported operators) | 90% of filter use cases |
-| **M4.5** | **Testing** | **Comprehensive type testing audit (M1-M4)** | **Validate type inference, ensure Drizzle parity** |
-| M5 | Cat 2 + 3 | String operators + ordering + advanced | Polish, edge cases |
-| M6 | Cat 1 + 2 | Mutations (insert/update/delete) | CRUD complete |
-| M7 | Cat 1 + 3 | Drizzle-style builders + polish | API refinement, final UX |
+| Milestone | Category    | Features                                        | Rationale                                          |
+| --------- | ----------- | ----------------------------------------------- | -------------------------------------------------- |
+| M1        | Cat 1       | Schema definition with `v.*` validators         | Foundation, proven patterns                        |
+| M2        | Cat 1 + 3   | Relations API (Drizzle) + Edges (Convex-native) | Core feature, type inference                       |
+| M3        | Cat 1 + 3   | Query reads + cursor pagination                 | Essential queries, hybrid approach                 |
+| M4        | Cat 1 + 2   | Core filtering (supported operators)            | 90% of filter use cases                            |
+| **M4.5**  | **Testing** | **Comprehensive type testing audit (M1-M4)**    | **Validate type inference, ensure Drizzle parity** |
+| M5        | Cat 2 + 3   | String operators + ordering + advanced          | Polish, edge cases                                 |
+| M6        | Cat 1 + 2   | Mutations (insert/update/delete)                | CRUD complete                                      |
+| M7        | Cat 1 + 3   | Drizzle-style builders + polish                 | API refinement, final UX                           |
 
 ### How This Guides Milestones
 
@@ -391,33 +417,43 @@ Based on categories, here's the recommended implementation order:
 ### Type Testing Philosophy
 
 **Test After Each Milestone** (M4.5, M5, M6, M7):
+
 1. Feature implementation first
 2. Comprehensive type testing when milestone complete
 3. Mirror Drizzle's test structure using `dig` skill
 4. Fix gaps before proceeding to next milestone
 
 **Why This Works**:
+
 - No rework - tests validate finished features
 - Systematic coverage - Drizzle's tests are comprehensive
 - Clear quality gate - all tests pass before moving forward
 - Ensures Drizzle parity - catch TypeScript pattern differences early
 
+**Complete Testing Methodology**: See [Type Testing Methodology](convex/test-types/README.md) for:
+
+- Progress calculation formula (how to calculate "88% progress toward 65% Drizzle parity")
+- 4-phase mirroring process (research → gap analysis → implementation → validation)
+- Complete Phases 0-5 workflow documentation
+- Validation checklist with bash commands
+- Example for M7 Mutations implementation
+
 ### Key Differences Summary Table
 
-| Feature | Drizzle | Better-Convex | Category | Status |
-|---------|---------|---------------|----------|--------|
-| Relations | `relations()`, `one()`, `many()` | Same API | 1 | ✅ M2 |
-| Queries | `findMany()`, `findFirst()` | Same API | 1 | ✅ M3 |
-| Core Filters | `eq`, `gt`, `and`, `or` | Same API | 1 | ✅ M4 |
-| **Type Testing** | **Equal<>, @ts-expect-error** | **Mirror Drizzle tests** | **Testing** | **✅ M4.5** |
-| String Filters | `like`, `ilike`, `contains` | Post-filter workaround | 2 | ✅ M5 |
-| Ordering | `orderBy`, `asc`, `desc` | Same API | 1 | ✅ M5 |
-| Joins | SQL LEFT/RIGHT/FULL | Relations only (inner) | 2 | ✅ M2 |
-| Pagination | `limit`/`offset` | + cursor (recommended) | 1+3 | ✅ M3 |
-| Mutations | INSERT/UPDATE/DELETE | Same, no RETURNING | 1+2 | 🔜 M7 |
-| Real-time | None | Auto-subscribe | 3 | ✅ M3 |
-| Column Builders | `text()`, `integer()` | Same API as Drizzle | 1 | ✅ M6 |
-| Subqueries | Full support | Not supported | 2 | ❌ N/A |
+| Feature          | Drizzle                          | Better-Convex            | Category    | Status      |
+| ---------------- | -------------------------------- | ------------------------ | ----------- | ----------- |
+| Relations        | `relations()`, `one()`, `many()` | Same API                 | 1           | ✅ M2       |
+| Queries          | `findMany()`, `findFirst()`      | Same API                 | 1           | ✅ M3       |
+| Core Filters     | `eq`, `gt`, `and`, `or`          | Same API                 | 1           | ✅ M4       |
+| **Type Testing** | **Equal<>, @ts-expect-error**    | **Mirror Drizzle tests** | **Testing** | **✅ M4.5** |
+| String Filters   | `like`, `ilike`, `contains`      | Post-filter workaround   | 2           | ✅ M5       |
+| Ordering         | `orderBy`, `asc`, `desc`         | Same API                 | 1           | ✅ M5       |
+| Joins            | SQL LEFT/RIGHT/FULL              | Relations only (inner)   | 2           | ✅ M2       |
+| Pagination       | `limit`/`offset`                 | + cursor (recommended)   | 1+3         | ✅ M3       |
+| Mutations        | INSERT/UPDATE/DELETE             | Same, no RETURNING       | 1+2         | 🔜 M7       |
+| Real-time        | None                             | Auto-subscribe           | 3           | ✅ M3       |
+| Column Builders  | `text()`, `integer()`            | Same API as Drizzle      | 1           | ✅ M6       |
+| Subqueries       | Full support                     | Not supported            | 2           | ❌ N/A      |
 
 **Legend**: ✅ Completed | 📋 In Progress | 🔜 Planned | ❌ Not Applicable
 
@@ -474,7 +510,7 @@ type User = InferSelectModel<typeof users>;
 const usersRelations = relations(users, ({ one, many }) => ({
   profile: one(profiles, {
     fields: [users.profileId],
-    references: [profiles.id],
+    references: [profiles._id],
   }),
   posts: many(posts),
 }));
@@ -526,6 +562,7 @@ const result = await ctx.db.query.users.findMany({
 **Deliverable**: Core filtering works with optimal index usage
 
 **Deferred to M4.5**:
+
 - `orderBy` (query feature, not filtering)
 - String operators (`like`, `startsWith`, `contains`) - advanced features
 
@@ -562,6 +599,7 @@ Skill(dig, "drizzle-orm")
 ```
 
 **Focus areas**:
+
 - Type inference patterns (InferSelectModel, InferInsertModel, query result types)
 - Phantom type branding with `declare readonly _` properties
 - Mode-based type extraction (query vs raw)
@@ -573,17 +611,18 @@ Skill(dig, "drizzle-orm")
 
 Compare Drizzle's test organization with Better-Convex structure:
 
-| Drizzle Location | Better-Convex Equivalent | Purpose |
-|------------------|-------------------------|---------|
-| `tests/pg/` | `convex/test-types/` | Type-level tests (Equal assertions) |
-| `tests/pg/*.test.ts` | `convex/*.test.ts` | Runtime behavior tests (vitest + convex-test) |
-| Type assertions in files | `@ts-expect-error` directives | Negative tests (verify invalid usage errors) |
+| Drizzle Location         | Better-Convex Equivalent      | Purpose                                       |
+| ------------------------ | ----------------------------- | --------------------------------------------- |
+| `tests/pg/`              | `convex/test-types/`          | Type-level tests (Equal assertions)           |
+| `tests/pg/*.test.ts`     | `convex/*.test.ts`            | Runtime behavior tests (vitest + convex-test) |
+| Type assertions in files | `@ts-expect-error` directives | Negative tests (verify invalid usage errors)  |
 
 #### Step 3: Create Comprehensive Test Coverage
 
 For **each M1-M4 feature**, create tests in four categories:
 
-**A. Type Inference Tests** (convex/test-types/*.ts):
+**A. Type Inference Tests** (convex/test-types/\*.ts):
+
 - InferSelectModel correctness (system fields, notNull, nullable, GenericId types)
 - InferInsertModel correctness (excludes system fields)
 - Query result types (findMany, findFirst, with relations)
@@ -592,7 +631,8 @@ For **each M1-M4 feature**, create tests in four categories:
 - GetColumnData in 'query' and 'raw' modes
 - Phantom type brand preservation (NotNull brand, GenericId brand)
 
-**B. Runtime Behavior Tests** (convex/*.test.ts):
+**B. Runtime Behavior Tests** (convex/\*.test.ts):
+
 - Query execution with convex-test harness
 - Filter operator behavior (eq, ne, gt, inArray, etc.)
 - Relation loading correctness
@@ -600,7 +640,8 @@ For **each M1-M4 feature**, create tests in four categories:
 - Edge traversal correctness
 - Null handling in queries
 
-**C. Negative Type Tests** (convex/test-types/*.ts):
+**C. Negative Type Tests** (convex/test-types/\*.ts):
+
 - `@ts-expect-error` - Invalid field access (e.g., `user.invalidField`)
 - `@ts-expect-error` - Type mismatch in operators (e.g., `eq(user.age, "string")`)
 - `@ts-expect-error` - isNull on notNull field
@@ -608,6 +649,7 @@ For **each M1-M4 feature**, create tests in four categories:
 - `@ts-expect-error` - Invalid relation config (e.g., `limit` on one() relation)
 
 **D. Edge Case Coverage** (both type and runtime):
+
 - Nullable vs notNull combinations
 - GenericId vs string (no widening to string)
 - Union types in relations (e.g., multiple table references)
@@ -627,6 +669,7 @@ For each test failure or gap:
 5. **Document limitation**: If can't match Drizzle due to Convex constraints, document in limitations.md
 
 **Reference repositories**:
+
 - **Drizzle patterns**: drizzle-team/drizzle-orm (TypeScript mastery)
 - **Convex patterns**: get-convex/convex-backend/npm-packages (Convex-specific testing)
 - **Ents patterns**: get-convex/convex-ents (edge traversal, type inference)
@@ -645,6 +688,7 @@ For each test failure or gap:
 - ⚠️ Negative tests: Updated (commented out tests for unimplemented type constraints)
 
 **Deferred Tests** (documented with TODO markers):
+
 - 7 relation loading tests in `convex/test-types/db-rel.ts` → Phase 4
 - 2 column selection tests in `convex/test-types/select.ts` (exclusion, nested relations) → M5 / Phase 4
 - 1 type widening test in `convex/test-types/debug-typeof-widening.ts` → M4.5+
@@ -653,6 +697,7 @@ For each test failure or gap:
 **Deliverable**: Type tests validate M1, M2, M4, and partial M3 (basic queries). Unimplemented features documented in brainstorm "Deferred Features" section.
 
 **Test Files Created** (examples):
+
 - `convex/test-types/schema-inference.ts` - M1 table and type inference
 - `convex/test-types/relations-inference.ts` - M2 relation types
 - `convex/test-types/query-result-types.ts` - M3 query builder types
@@ -673,6 +718,7 @@ For each test failure or gap:
 - **Search integration**: Full-text search operators (if needed)
 
 **Type Testing** (Apply M4.5 methodology):
+
 - Type tests for orderBy result types
 - Type tests for string operator signatures
 - Negative tests for invalid ordering
@@ -828,13 +874,13 @@ Drizzle-Convex maps **directly to Convex `ctx.db`**:
 
 **Why**: Full control, no external dependencies, lighter weight. Reuse proven ents patterns without the facade layer.
 
-### 2. **No Field Selection**
+### 2. **Field Selection (Post-Fetch)**
 
-Unlike Drizzle's `columns: { id: true }`, we can't select fields:
+Better-Convex supports Drizzle-style `columns: { ... }` selection, but Convex still reads full documents:
 
-- Convex always queries full documents
-- Attempting to clone this would add false complexity
-- Document this clearly as a difference
+- Convex queries full documents
+- Better-Convex trims results post-fetch for API parity
+- Documented as a performance difference vs SQL projections
 
 ### 3. **Index Strategy**
 
@@ -856,16 +902,19 @@ Study Drizzle's type system:
 **Decision**: Start with Convex validators, evolve to Drizzle-style builders
 
 **Milestones 1-5**: Use `v.string()`, `v.number()`, etc.
+
 - Proven, well-understood
 - Fast iteration for TDD
 - Type inference complexity isolated
 
 **Milestone 6**: Add `text()`, `integer()`, etc. as syntactic sugar
+
 - Maps to underlying validators
 - Drop-in Drizzle compatibility
 - Backward compatible with `v.*` syntax
 
 **Why Iterative**:
+
 - **Lower risk**: Build type inference on proven foundation
 - **Faster validation**: Don't solve two problems at once
 - **Clear migration**: M1-M5 proves core, M6 polishes API
@@ -969,23 +1018,27 @@ docs/
 ### Mapping Strategy by Category
 
 **Category 1 (100% Compatible)** - Direct translation:
+
 ```markdown
 # Drizzle Docs → Better-Convex Docs
 
 ## Same API, Same Code
+
 Show side-by-side code that's IDENTICAL:
 
 ### Drizzle (SQL)
+
 \`\`\`typescript
 const users = await db.query.users.findMany({
-  where: eq(users.role, 'admin')
+where: eq(users.role, 'admin')
 });
 \`\`\`
 
 ### Better-Convex (Convex)
+
 \`\`\`typescript
 const users = await db.query.users.findMany({
-  where: (user, { eq }) => eq(user.role, 'admin')
+where: (user, { eq }) => eq(user.role, 'admin')
 });
 \`\`\`
 
@@ -993,32 +1046,36 @@ const users = await db.query.users.findMany({
 ```
 
 **Category 2 (Limited)** - Show workarounds:
+
 ```markdown
 # Drizzle Feature → Better-Convex Adaptation
 
 ## Pattern Matching (LIKE)
 
 ### Drizzle
+
 \`\`\`typescript
 const users = await db.query.users.findMany({
-  where: like(users.email, '%@example.com')
+where: like(users.email, '%@example.com')
 });
 \`\`\`
 
 ### Better-Convex - Option 1: Post-filter (Simple)
+
 \`\`\`typescript
 const users = await db.query.users.findMany();
 const filtered = users.filter(u => u.email.endsWith('@example.com'));
 \`\`\`
 
 ### Better-Convex - Option 2: Index range (Fast)
+
 \`\`\`typescript
 // For startsWith only - uses Convex index
 const users = await db.query.users.findMany({
-  where: (user, { gte, lt, and }) => and(
-    gte(user.email, prefix),
-    lt(user.email, prefix + '\uffff')
-  )
+where: (user, { gte, lt, and }) => and(
+gte(user.email, prefix),
+lt(user.email, prefix + '\uffff')
+)
 });
 \`\`\`
 
@@ -1028,21 +1085,24 @@ const users = await db.query.users.findMany({
 ```
 
 **Category 3 (Convex-Native)** - Highlight advantages:
+
 ```markdown
 # Convex-Specific Features
 
 ## Real-Time Subscriptions (Not in Drizzle)
 
 ### Drizzle - Manual Polling
+
 \`\`\`typescript
 // Poll every 5 seconds
 setInterval(async () => {
-  const users = await db.query.users.findMany();
-  updateUI(users);
+const users = await db.query.users.findMany();
+updateUI(users);
 }, 5000);
 \`\`\`
 
 ### Better-Convex - Auto-Subscribe
+
 \`\`\`typescript
 // Automatically updates when data changes
 const users = useQuery(api.users.list);
@@ -1055,26 +1115,32 @@ const users = useQuery(api.users.list);
 ```
 
 **Category 4 (Not Applicable)** - Explain why not needed:
+
 ```markdown
 # Not Needed in Convex
 
 ## Database Migrations
 
 ### Drizzle
+
 \`\`\`bash
+
 # Generate migration
+
 drizzle-kit generate:pg
 
 # Apply migration
+
 drizzle-kit push:pg
 \`\`\`
 
 ### Better-Convex - Declarative Schema
+
 \`\`\`typescript
 // Just update your schema - Convex handles the rest
 const users = convexTable('users', {
-  name: v.string(),
-  email: v.string(), // Add new field - auto-migrated
+name: v.string(),
+email: v.string(), // Add new field - auto-migrated
 });
 \`\`\`
 
@@ -1088,6 +1154,7 @@ const users = convexTable('users', {
 Priority order based on categories and milestones:
 
 #### Phase 1: Core Features (M1-M3) - Category 1
+
 1. **Getting Started** - Installation, setup, first query
 2. **Schema Definition** - `convexTable()`, validators, type inference
 3. **Relations** - `relations()`, `one()`, `many()`, inverse relations
@@ -1095,6 +1162,7 @@ Priority order based on categories and milestones:
 5. **Loading Relations** - `with` option, nested relations, type safety
 
 #### Phase 2: Filtering & Mutations (M4-M5) - Category 1 + 2
+
 6. **Core Filtering** - `eq`, `ne`, `gt`, `and`, `or` - identical to Drizzle
 7. **Advanced Filtering** - `like`, `startsWith`, `inArray` - with workarounds
 8. **Ordering** - `orderBy`, `asc`, `desc` - identical to Drizzle
@@ -1104,6 +1172,7 @@ Priority order based on categories and milestones:
 12. **Delete** - `delete().where()`
 
 #### Phase 3: Migration & Advanced (M6+) - All Categories
+
 13. **Migration from Drizzle** - Complete guide with gotchas
 14. **Migration from Prisma** - Similar concepts, different syntax
 15. **Limitations** - Category 2 & 4 features, workarounds
@@ -1119,39 +1188,48 @@ Each page follows this structure:
 # [Feature Name]
 
 ## Overview
+
 Brief description of the feature and when to use it.
 
 ## Drizzle Comparison
-| Aspect | Drizzle | Better-Convex | Notes |
-|--------|---------|---------------|-------|
-| API | `example()` | `example()` | Identical/Different |
-| Category | 1/2/3/4 | - | Compatibility level |
+
+| Aspect   | Drizzle     | Better-Convex | Notes               |
+| -------- | ----------- | ------------- | ------------------- |
+| API      | `example()` | `example()`   | Identical/Different |
+| Category | 1/2/3/4     | -             | Compatibility level |
 
 ## Basic Usage
 
 ### Drizzle
+
 \`\`\`typescript
 // Drizzle code example
 \`\`\`
 
 ### Better-Convex
+
 \`\`\`typescript
 // Better-Convex equivalent
 \`\`\`
 
 ## Type Safety
+
 Show TypeScript inference, autocomplete, error examples.
 
 ## Advanced Patterns
+
 Real-world use cases, edge cases.
 
 ## Limitations & Workarounds
+
 (Category 2 only) - What doesn't work, how to adapt.
 
 ## Performance Considerations
+
 Index usage, optimization tips.
 
 ## See Also
+
 - Related pages
 - API reference links
 ```
@@ -1166,6 +1244,7 @@ Index usage, optimization tips.
 Better-Convex ORM brings Drizzle's familiar ergonomics to Convex. If you know Drizzle, you already know Better-Convex ORM.
 
 **Key Benefits:**
+
 - ✅ 100% type-safe queries and mutations
 - ✅ Drizzle-style API for zero learning curve
 - ✅ Real-time subscriptions built-in
@@ -1180,45 +1259,49 @@ npm install better-convex
 ## Define Your Schema
 
 ### Drizzle (PostgreSQL)
+
 \`\`\`typescript
 import { pgTable, serial, text } from 'drizzle-orm/pg-core';
 
 const users = pgTable('users', {
-  id: serial('id').primaryKey(),
-  name: text('name').notNull(),
-  email: text('email').notNull(),
+id: serial('id').primaryKey(),
+name: text('name').notNull(),
+email: text('email').notNull(),
 });
 \`\`\`
 
 ### Better-Convex (Convex)
+
 \`\`\`typescript
 import { convexTable } from 'better-convex/orm';
 import { v } from 'convex/values';
 
 const users = convexTable('users', {
-  name: v.string(),
-  email: v.string(),
+name: v.string(),
+email: v.string(),
 });
-// Note: _id and _creationTime auto-added by Convex
+// Note: \_id and \_creationTime auto-added by Convex
 \`\`\`
 
 ## Define Relations
 
 ### Drizzle
+
 \`\`\`typescript
 import { relations } from 'drizzle-orm';
 
 const usersRelations = relations(users, ({ many }) => ({
-  posts: many(posts),
+posts: many(posts),
 }));
 \`\`\`
 
 ### Better-Convex
+
 \`\`\`typescript
 import { relations } from 'better-convex/orm';
 
 const usersRelations = relations(users, ({ many }) => ({
-  posts: many(posts),
+posts: many(posts),
 }));
 // Identical API! ✨
 \`\`\`
@@ -1226,33 +1309,35 @@ const usersRelations = relations(users, ({ many }) => ({
 ## Query Your Data
 
 ### Drizzle
+
 \`\`\`typescript
 const allUsers = await db.query.users.findMany({
-  with: { posts: true },
-  where: eq(users.role, 'admin'),
-  limit: 10,
+with: { posts: true },
+where: eq(users.role, 'admin'),
+limit: 10,
 });
 \`\`\`
 
 ### Better-Convex
+
 \`\`\`typescript
 const allUsers = await db.query.users.findMany({
-  with: { posts: true },
-  where: (user, { eq }) => eq(user.role, 'admin'),
-  limit: 10,
+with: { posts: true },
+where: (user, { eq }) => eq(user.role, 'admin'),
+limit: 10,
 });
 // Almost identical - just wrap where in callback for type safety
 \`\`\`
 
 ## What's Different?
 
-| Feature | Drizzle | Better-Convex |
-|---------|---------|---------------|
-| Schema | Column builders | Convex validators (M1-M5) |
-| Where clause | Direct operators | Callback with operators |
-| Real-time | Not available | Built-in ✨ |
-| Migrations | Manual files | Automatic |
-| Pagination | offset only | offset + cursor |
+| Feature      | Drizzle          | Better-Convex             |
+| ------------ | ---------------- | ------------------------- |
+| Schema       | Column builders  | Convex validators (M1-M5) |
+| Where clause | Direct operators | Callback with operators   |
+| Real-time    | Not available    | Built-in ✨               |
+| Migrations   | Manual files     | Automatic                 |
+| Pagination   | offset only      | offset + cursor           |
 
 ## Next Steps
 
@@ -1288,12 +1373,14 @@ Track coverage by category:
 ### ✅ Milestone 1: Schema Foundation (COMPLETED 2026-01-31)
 
 **Deliverables:**
+
 - ✅ `convexTable()` function with Convex validators (`v.string()`, `v.number()`)
 - ✅ Type inference (`InferSelectModel`, `InferInsertModel`)
 - ✅ Symbol-based metadata storage (Drizzle pattern)
 - ✅ Basic validation and type safety
 
 **Files Created:**
+
 - [packages/better-convex/src/orm/table.ts](packages/better-convex/src/orm/table.ts) - ConvexTable implementation
 - [packages/better-convex/src/orm/symbols.ts](packages/better-convex/src/orm/symbols.ts) - Metadata symbols
 - [packages/better-convex/src/orm/types.ts](packages/better-convex/src/orm/types.ts) - Type utilities
@@ -1303,6 +1390,7 @@ Track coverage by category:
 ### ✅ Milestone 2: Relations Layer (COMPLETED 2026-01-31)
 
 **Deliverables:**
+
 - ✅ `relations()` function (Drizzle API)
 - ✅ `one()` and `many()` helpers with type inference
 - ✅ Schema extraction via `extractRelationsConfig()`
@@ -1312,6 +1400,7 @@ Track coverage by category:
 - ✅ Data integrity: field existence, cardinality compatibility, circular dependency detection
 
 **Files Created:**
+
 - [packages/better-convex/src/orm/relations.ts](packages/better-convex/src/orm/relations.ts:1-327) - Relations API (Drizzle pattern verified)
 - [packages/better-convex/src/orm/extractRelationsConfig.ts](packages/better-convex/src/orm/extractRelationsConfig.ts:1-284) - Schema extraction (O(n) algorithm)
 - [convex/relations.test.ts](convex/relations.test.ts:1-328) - 11 test cases
@@ -1319,6 +1408,7 @@ Track coverage by category:
 **Test Coverage:** 126 tests passing (11 new relations tests + 115 existing)
 
 **Key Implementation Details:**
+
 - Dual-storage pattern: runtime table instances + compile-time string generics
 - `withFieldName()` deferred binding pattern (verified from Drizzle source)
 - Higher-order factory functions (`createOne`, `createMany`)
@@ -1326,6 +1416,7 @@ Track coverage by category:
 - Only `one()` relations checked for circular dependencies (not bidirectional `many()`)
 
 **Package Integration:**
+
 - ✅ Export added: `better-convex/orm`
 - ✅ Build configuration updated (tsdown.config.ts)
 - ✅ TypeScript compilation: ✅ passing
@@ -1333,19 +1424,19 @@ Track coverage by category:
 - ✅ All tests: ✅ passing (126 total)
 
 **Example Usage:**
+
 ```typescript
-import { convexTable, relations } from 'better-convex/orm';
-import { v } from 'convex/values';
+import { convexTable, relations, text, id } from "better-convex/orm";
 
 // M1: Tables
-const users = convexTable('users', {
-  name: v.string(),
-  email: v.string(),
+const users = convexTable("users", {
+  name: text().notNull(),
+  email: text().notNull(),
 });
 
-const posts = convexTable('posts', {
-  title: v.string(),
-  userId: v.id('users'),
+const posts = convexTable("posts", {
+  title: text().notNull(),
+  userId: id("users").notNull(),
 });
 
 // M2: Relations
@@ -1354,7 +1445,10 @@ const usersRelations = relations(users, ({ many }) => ({
 }));
 
 const postsRelations = relations(posts, ({ one }) => ({
-  user: one(users, { fields: ['userId'] }),
+  user: one(users, {
+    fields: [posts.userId],
+    references: [users._id],
+  }),
 }));
 
 // Type inference works
@@ -1370,6 +1464,7 @@ type UserRelations = InferRelations<typeof usersRelations>;
 ### ✅ Milestone 3: Query Builder - Read Operations (COMPLETED 2026-01-31)
 
 **Deliverables:**
+
 - ✅ Query builder infrastructure with promise-based lazy execution
 - ✅ `findMany()` and `findFirst()` methods
 - ✅ Type inference for query results with column selection and relations
@@ -1378,6 +1473,7 @@ type UserRelations = InferRelations<typeof usersRelations>;
 - ✅ Basic filtering, ordering, limit, and offset support
 
 **Files Created:**
+
 - [packages/better-convex/src/orm/query-promise.ts](packages/better-convex/src/orm/query-promise.ts) - QueryPromise base class for lazy execution
 - [packages/better-convex/src/orm/query.ts](packages/better-convex/src/orm/query.ts) - GelRelationalQuery with execute() implementation
 - [packages/better-convex/src/orm/query-builder.ts](packages/better-convex/src/orm/query-builder.ts) - RelationalQueryBuilder entry point
@@ -1386,12 +1482,14 @@ type UserRelations = InferRelations<typeof usersRelations>;
 - [convex/query-builder.test.ts](convex/query-builder.test.ts) - 7 test cases
 
 **Files Modified:**
+
 - [packages/better-convex/src/orm/types.ts](packages/better-convex/src/orm/types.ts) - Added M3 query builder types (DBQueryConfig, BuildQueryResult, etc.)
 - [packages/better-convex/src/orm/index.ts](packages/better-convex/src/orm/index.ts) - Added M3 exports
 
 **Test Coverage:** 29 tests passing (22 M1+M2 + 7 new M3)
 
 **Key Implementation Details:**
+
 - Promise-based lazy execution pattern (query only executes on await)
 - QueryPromise implements Promise interface via thenable delegation
 - Convex API: `GenericDatabaseReader<any>`, `.take()` returns Promise directly (no `.collect()`)
@@ -1402,25 +1500,34 @@ type UserRelations = InferRelations<typeof usersRelations>;
 - 9 intentional lint warnings (Drizzle patterns: noParameterProperties, noThenProperty)
 
 **Package Integration:**
+
 - ✅ Export added: query builder classes and types
 - ✅ TypeScript compilation: ✅ passing
 - ✅ Linting: ✅ passing (9 intentional warnings documented)
 - ✅ All tests: ✅ passing (29 total)
 
 **Example Usage:**
+
 ```typescript
-import { convexTable, relations, createDatabase, buildSchema, extractRelationsConfig } from 'better-convex/orm';
-import { v } from 'convex/values';
+import {
+  convexTable,
+  relations,
+  createDatabase,
+  buildSchema,
+  extractRelationsConfig,
+  text,
+  id,
+} from "better-convex/orm";
 
 // M1: Tables
-const users = convexTable('users', {
-  name: v.string(),
-  email: v.string(),
+const users = convexTable("users", {
+  name: text().notNull(),
+  email: text().notNull(),
 });
 
-const posts = convexTable('posts', {
-  title: v.string(),
-  userId: v.id('users'),
+const posts = convexTable("posts", {
+  title: text().notNull(),
+  userId: id("users").notNull(),
 });
 
 // M2: Relations
@@ -1429,12 +1536,16 @@ const usersRelations = relations(users, ({ many }) => ({
 }));
 
 const postsRelations = relations(posts, ({ one }) => ({
-  user: one(users, { fields: ['userId'] }),
+  user: one(users, {
+    fields: [posts.userId],
+    references: [users._id],
+  }),
 }));
 
 // M3: Setup query builder
-const schema = buildSchema({ users, posts }, { usersRelations, postsRelations });
-const edges = extractRelationsConfig(schema);
+const rawSchema = { users, posts, usersRelations, postsRelations };
+const schema = buildSchema(rawSchema);
+const edges = extractRelationsConfig(rawSchema);
 const db = createDatabase(ctx.db, schema, edges);
 
 // M3: Query with relations (lazy execution)
@@ -1448,7 +1559,7 @@ const usersWithPosts = await db.query.users.findMany({
 
 // M3: Find first with filtering
 const user = await db.query.users.findFirst({
-  where: (cols, { eq }) => eq(cols.email, 'alice@example.com'),
+  where: (cols, { eq }) => eq(cols.email, "alice@example.com"),
 });
 // Type: User | undefined
 ```
@@ -1456,6 +1567,7 @@ const user = await db.query.users.findFirst({
 **Deferred Features** (documented during M4.5 audit):
 
 The following M3 features are **type-only** (runtime stubbed) and deferred to **Phase 4** (relation loading implementation):
+
 - ❌ **Relation loading with `with` option** - Type inference works, runtime stubbed
   - Types: `BuildQueryResult` and `BuildRelationResult` fully implemented
   - Runtime: `_loadRelations()` currently returns rows unchanged
@@ -1463,12 +1575,14 @@ The following M3 features are **type-only** (runtime stubbed) and deferred to **
   - Plan: Implement in separate milestone focused on edge traversal integration
 
 The following M3 features are **partially implemented**:
+
 - ✅ **Column inclusion** (`columns: { name: true, email: true }`) - Fully working
 - ❌ **Column exclusion** (`columns: { age: false }`) - Not implemented, deferred to M5
   - Type support exists but runtime only handles `include === true`
   - Workaround: Explicitly list included columns
 
 **Completed:**
+
 - **M1**: Schema Foundation (convexTable, type inference) ✅ COMPLETE
 - **M2**: Relations Layer (relations, one, many) ✅ COMPLETE
 - **M3**: Query Builder - Read Operations (findMany, findFirst) ✅ COMPLETE (partial - relation loading deferred)
@@ -1478,6 +1592,7 @@ The following M3 features are **partially implemented**:
 - **M6**: Column Builders (text(), integer(), boolean(), etc.) ✅ COMPLETE
 
 **Next Up:**
+
 - **Phase 4**: Relation Loading Implementation - Complete M3 `with` option runtime (currently stubbed)
 - **M7**: Mutations (insert, update, delete)
 
@@ -1494,6 +1609,7 @@ The following M3 features are **partially implemented**:
 **Scope**: Feature coverage only - document all Drizzle ORM features that have Better-Convex equivalents.
 
 **What to Include**:
+
 - Core ORM APIs (schema, queries, mutations, relations)
 - Query patterns (filtering, ordering, pagination)
 - Type inference and TypeScript integration
@@ -1501,6 +1617,7 @@ The following M3 features are **partially implemented**:
 - Migration guides from Drizzle
 
 **What to Exclude** (SQL-specific, not applicable):
+
 - Database drivers (PostgreSQL, MySQL, SQLite)
 - Migration tools (Drizzle Kit)
 - SQL-specific operators (UNION, INTERSECT, EXCEPT)
@@ -1508,6 +1625,7 @@ The following M3 features are **partially implemented**:
 - Transaction isolation levels
 
 **Category Classification**:
+
 - **Category 1** (✅): 100% Drizzle-compatible
 - **Category 2** (⚠️): Limited/workaround required
 - **Category 3** (🚀): Convex-native advantages
@@ -1559,6 +1677,7 @@ Run this checklist **after each milestone is complete** (when code is merged to 
 - [ ] Build and preview locally
 
 **Documentation Files** (current as of M6):
+
 - [www/content/docs/db/orm/index.mdx](www/content/docs/db/orm/index.mdx) - Overview + feature list (lines 29-56)
 - [www/content/docs/db/orm/quickstart.mdx](www/content/docs/db/orm/quickstart.mdx) - 5-min tutorial
 - [www/content/docs/db/orm/schema.mdx](www/content/docs/db/orm/schema.mdx) - Table definitions
@@ -1600,6 +1719,7 @@ Run this checklist **after each milestone is complete** (when code is merged to 
    - [ ] Validate JSON with `cat examples-registry.json | jq .`
 
 **Artifact Update Process**:
+
 - **Method**: Manual editing by doc author
 - **Validation**: JSON schema validation (`jq` must parse without errors)
 - **Versioning**: Use milestone numbers (M4, M5, M6) in semver format (`1.0.0-m6`)
@@ -1628,6 +1748,7 @@ Run this checklist **after each milestone is complete** (when code is merged to 
 **Must pass before merging docs PR**:
 
 - [ ] **Build check**: Docs site builds without errors
+
   ```bash
   cd www
   bun install
@@ -1636,24 +1757,28 @@ Run this checklist **after each milestone is complete** (when code is merged to 
   ```
 
 - [ ] **Link validation**: All internal links work
+
   ```bash
   grep -r "](/" www/content/docs/db/orm/
   # Manually verify cross-references
   ```
 
 - [ ] **Syntax verification**: No validator syntax remains (M6+)
+
   ```bash
   grep -r "v\.string\|v\.number\|v\.boolean\|v\.id" www/content/docs/db/orm/*.mdx
   # Should return 0 matches for M6+ docs
   ```
 
 - [ ] **Import check**: No old imports remain
+
   ```bash
   grep -r "from 'convex/values'" www/content/docs/db/orm/*.mdx
   # Should return 0 matches (builders import from better-convex/orm)
   ```
 
 - [ ] **JSON validation**: All artifacts parse correctly
+
   ```bash
   cat www/public/orm/api-catalog.json | jq . > /dev/null
   cat www/public/orm/error-catalog.json | jq . > /dev/null
@@ -1681,6 +1806,7 @@ Run this checklist **after each milestone is complete** (when code is merged to 
 **Parity Review Cadence**: Quarterly or per-major-milestone (whichever comes first)
 
 **Parity Status Log**:
+
 - 2026-02-02 (M6): Core features ✅ parity, Guides ❌ missing, Integrations ❌ missing
 
 #### 8. Deployment
@@ -1695,39 +1821,39 @@ Run this checklist **after each milestone is complete** (when code is merged to 
 
 **Simple Type Mapping** (M1-M5 validators → M6+ builders):
 
-| Validator (Old) | Builder (New) | Notes |
-|----------------|---------------|-------|
-| `v.string()` | `text()` | Text field |
-| `v.number()` | `integer()` or `number()` | Use `integer()` for whole numbers, `number()` for floats |
-| `v.boolean()` | `boolean()` | Boolean field |
-| `v.id('table')` | `id('table')` | Foreign key reference |
-| `v.optional(v.string())` | `text()` (default) | Builders are nullable by default |
-| `v.string()` (required) | `text().notNull()` | Use `.notNull()` modifier for required fields |
+| Validator (Old)          | Builder (New)             | Notes                                                    |
+| ------------------------ | ------------------------- | -------------------------------------------------------- |
+| `v.string()`             | `text()`                  | Text field                                               |
+| `v.number()`             | `integer()` or `number()` | Use `integer()` for whole numbers, `number()` for floats |
+| `v.boolean()`            | `boolean()`               | Boolean field                                            |
+| `v.id('table')`          | `id('table')`             | Foreign key reference                                    |
+| `v.optional(v.string())` | `text()` (default)        | Builders are nullable by default                         |
+| `v.string()` (required)  | `text().notNull()`        | Use `.notNull()` modifier for required fields            |
 
 **Complex Validators** (no direct builder equivalent):
 
-| Validator | Builder Alternative | Strategy |
-|-----------|---------------------|----------|
+| Validator                                 | Builder Alternative                         | Strategy                                              |
+| ----------------------------------------- | ------------------------------------------- | ----------------------------------------------------- |
 | `v.union(v.literal('a'), v.literal('b'))` | `text().$type<'a' \| 'b'>()` (if supported) | Document as advanced pattern or keep validator syntax |
-| `v.object({ x: v.number() })` | No builder equivalent | Keep validator syntax, document separately |
-| `v.array(v.string())` | `text().array()` (if supported) | Check builder API, or keep validator syntax |
+| `v.object({ x: v.number() })`             | No builder equivalent                       | Keep validator syntax, document separately            |
+| `v.array(v.string())`                     | `text().array()` (if supported)             | Check builder API, or keep validator syntax           |
 
 **Import Statement Migration**:
 
 ```typescript
 // Before (M1-M5)
-import { convexTable } from 'better-convex/server';
-import { v } from 'convex/values';
+import { convexTable } from "better-convex/server";
+import { v } from "convex/values";
 
-const users = convexTable('users', {
+const users = convexTable("users", {
   name: v.string(),
   age: v.number(),
 });
 
 // After (M6+)
-import { convexTable, text, integer } from 'better-convex/orm';
+import { convexTable, text, integer } from "better-convex/orm";
 
-const users = convexTable('users', {
+const users = convexTable("users", {
   name: text().notNull(),
   age: integer(),
 });
@@ -1738,6 +1864,7 @@ const users = convexTable('users', {
 **Issue**: Docs build fails after syntax migration
 
 **Solution**:
+
 1. Check MDX syntax errors in error output
 2. Verify all code blocks have closing backticks
 3. Ensure import statements are correct
@@ -1746,6 +1873,7 @@ const users = convexTable('users', {
 **Issue**: Examples don't match implementation
 
 **Solution**:
+
 1. Re-read implementation code to verify API
 2. Update examples to match actual behavior
 3. Add comments explaining differences from Drizzle if applicable
@@ -1753,6 +1881,7 @@ const users = convexTable('users', {
 **Issue**: Artifact JSON parsing fails
 
 **Solution**:
+
 1. Run `jq .` on the file to see exact error
 2. Common issues: trailing commas, missing quotes, unescaped characters
 3. Use JSON formatter/validator to fix syntax
@@ -1760,6 +1889,7 @@ const users = convexTable('users', {
 **Issue**: Links broken after file reorganization
 
 **Solution**:
+
 1. Use grep to find all references to moved file
 2. Update all cross-references
 3. Verify with link checker
@@ -1773,4 +1903,5 @@ const users = convexTable('users', {
 **Parity Review**: Quarterly review by project lead or designated reviewer
 
 **Emergency Fixes**: Anyone can submit PR for doc errors, validation required
+
 - **M7**: Drizzle-Style Column Builders & Polish

@@ -88,4 +88,3 @@ yarn-error.log*
 .cache/
 
 *.local*
-.codex

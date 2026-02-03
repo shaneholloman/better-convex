@@ -7,8 +7,13 @@
  * - Field names set via withFieldName() after construction
  */
 
+import type {
+  ColumnBuilder,
+  ColumnBuilderWithTableName,
+} from './builders/column-builder';
 import { Relations as RelationsSymbol, TableName } from './symbols';
 import type { ConvexTable } from './table';
+import type { Equal } from './types';
 
 /**
  * Valid relation name pattern: same as table names
@@ -99,11 +104,35 @@ export abstract class Relation<
 /**
  * Configuration for one() relation (one-to-one or many-to-one)
  */
-export interface OneConfig {
-  /** Optional explicit field specification */
-  fields?: string[];
-  /** Optional explicit reference specification */
-  references?: string[];
+type NonEmptyArray<T> = [T, ...T[]];
+
+type ColumnsWithTable<
+  TTableName extends string,
+  TForeignTableName extends string,
+  TColumns extends ColumnBuilderWithTableName<
+    ColumnBuilder<any, any, any>,
+    TTableName
+  >[],
+> = {
+  [K in keyof TColumns]: ColumnBuilderWithTableName<
+    ColumnBuilder<any, any, any>,
+    TForeignTableName
+  >;
+};
+
+export interface OneConfig<
+  TTableName extends string,
+  TForeignTableName extends string,
+  TFields extends NonEmptyArray<
+    ColumnBuilderWithTableName<ColumnBuilder<any, any, any>, TTableName>
+  > = NonEmptyArray<
+    ColumnBuilderWithTableName<ColumnBuilder<any, any, any>, TTableName>
+  >,
+> {
+  /** Explicit field specification (Drizzle pattern) */
+  fields: TFields;
+  /** Explicit reference specification (Drizzle pattern) */
+  references: ColumnsWithTable<TTableName, TForeignTableName, TFields>;
   /** Relation name for disambiguation */
   relationName?: string;
   /** Cascade deletion behavior */
@@ -130,19 +159,19 @@ export class One<
    * Optional config - only needed for explicit field/reference specification
    * If omitted, field name inferred from relation name + 'Id'
    */
-  readonly config?: OneConfig;
+  readonly config?: OneConfig<any, any, any>;
 
   /**
    * Computed from field nullability
    * Used for type inference (T | null vs T)
    */
-  readonly isNullable?: TIsNullable;
+  readonly isNullable: TIsNullable;
 
   constructor(
     sourceTable: ConvexTable<any>,
     referencedTable: TTable,
-    config?: OneConfig,
-    isNullable?: TIsNullable
+    config: OneConfig<any, any, any> | undefined,
+    isNullable: TIsNullable
   ) {
     super(sourceTable, referencedTable, config?.relationName);
     this.config = config;
@@ -211,6 +240,10 @@ export class Relations<
    * Allows TypeScript to extract TConfig without confusion
    */
   declare readonly _config: TConfig;
+  /**
+   * Phantom table name for type matching
+   */
+  declare readonly _tableName: TTable['_']['name'];
 
   /**
    * Symbol-based storage for runtime access
@@ -218,17 +251,17 @@ export class Relations<
   [RelationsSymbol]: any;
 
   readonly table: TTable;
-  readonly config: (helpers: RelationHelpers) => TConfig;
+  readonly config: (helpers: RelationHelpers<TTable>) => TConfig;
 
-  constructor(table: TTable, config: (helpers: RelationHelpers) => TConfig) {
+  constructor(
+    table: TTable,
+    config: (helpers: RelationHelpers<TTable>) => TConfig
+  ) {
     this.table = table;
     this.config = config;
 
     // Evaluate the config callback and store in symbol for runtime access
-    const helpers: RelationHelpers = {
-      one: createOne(table),
-      many: createMany(table),
-    };
+    const helpers = createRelationHelpers(table);
     this[RelationsSymbol] = config(helpers);
   }
 }
@@ -236,10 +269,18 @@ export class Relations<
 /**
  * Helper type for relation helper functions
  */
-export interface RelationHelpers {
-  one: ReturnType<typeof createOne>;
-  many: ReturnType<typeof createMany>;
+export function createRelationHelpers<TTable extends ConvexTable<any>>(
+  table: TTable
+) {
+  return {
+    one: createOne(table),
+    many: createMany(table),
+  };
 }
+
+export type RelationHelpers<TTable extends ConvexTable<any>> = ReturnType<
+  typeof createRelationHelpers<TTable>
+>;
 
 /**
  * Create a one() helper factory with source table context
@@ -248,23 +289,60 @@ export interface RelationHelpers {
  * @param sourceTable - The table that owns this relation
  * @returns one() helper function with source table injected
  */
-export function createOne(sourceTable: ConvexTable<any>) {
-  return function one<TTargetTable extends ConvexTable<any>>(
+export function createOne<TSourceTable extends ConvexTable<any>>(
+  sourceTable: TSourceTable
+) {
+  function one<TTargetTable extends ConvexTable<any>>(
+    targetTable: TTargetTable
+  ): One<TTargetTable, false>;
+  function one<
+    TTargetTable extends ConvexTable<any>,
+    TFields extends NonEmptyArray<
+      ColumnBuilderWithTableName<
+        ColumnBuilder<any, any, any>,
+        TSourceTable['_']['name']
+      >
+    >,
+  >(
     targetTable: TTargetTable,
-    config?: OneConfig
-  ): One<TTargetTable, boolean> {
+    config: OneConfig<
+      TSourceTable['_']['name'],
+      TTargetTable['_']['name'],
+      TFields
+    >
+  ): One<TTargetTable, Equal<TFields[number]['_']['notNull'], true>>;
+  function one<
+    TTargetTable extends ConvexTable<any>,
+    TFields extends NonEmptyArray<
+      ColumnBuilderWithTableName<
+        ColumnBuilder<any, any, any>,
+        TSourceTable['_']['name']
+      >
+    >,
+  >(
+    targetTable: TTargetTable,
+    config?: OneConfig<
+      TSourceTable['_']['name'],
+      TTargetTable['_']['name'],
+      TFields
+    >
+  ): One<TTargetTable, any> {
     // SECURITY: Validate relation name if provided
     if (config?.relationName) {
       validateRelationName(config.relationName);
     }
 
-    // Compute nullability from config.fields if provided
-    // TODO: Check each field's notNull property from validator
-    // For now, always nullable until we implement field introspection
-    const isNullable = true;
+    // Compute nullability from config.fields when available (Drizzle pattern)
+    const isNotNull =
+      config?.fields?.reduce<boolean>(
+        (res, field) => res && Boolean((field as any).config?.notNull),
+        true
+      ) ?? false;
 
-    return new One(sourceTable, targetTable, config, isNullable);
-  };
+    return new One(sourceTable, targetTable, config, isNotNull as any);
+  }
+
+  return one;
 }
 
 /**
@@ -274,7 +352,9 @@ export function createOne(sourceTable: ConvexTable<any>) {
  * @param sourceTable - The table that owns this relation
  * @returns many() helper function with source table injected
  */
-export function createMany(sourceTable: ConvexTable<any>) {
+export function createMany<TSourceTable extends ConvexTable<any>>(
+  sourceTable: TSourceTable
+) {
   return function many<TTargetTable extends ConvexTable<any>>(
     targetTable: TTargetTable,
     config?: { relationName?: string }
@@ -309,11 +389,13 @@ export function relations<
   TConfig extends Record<string, Relation<any>>,
 >(
   table: TTable,
-  callback: (helpers: RelationHelpers) => TConfig
+  callback: (helpers: RelationHelpers<TTable>) => TConfig
 ): Relations<TTable, TConfig> {
   // Following Drizzle's pattern: wrap the callback to add withFieldName() calls
   // while preserving the generic type TConfig through explicit type assertion
-  const wrappedCallback: (helpers: RelationHelpers) => TConfig = (helpers) => {
+  const wrappedCallback: (helpers: RelationHelpers<TTable>) => TConfig = (
+    helpers
+  ) => {
     const rawConfig = callback(helpers);
 
     // Call withFieldName() on each relation and validate names

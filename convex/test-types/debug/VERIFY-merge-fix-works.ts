@@ -5,7 +5,7 @@
 
 import { convexTable, type InferSelectModel, text } from 'better-convex/orm';
 import type { GenericId } from 'convex/values';
-import { type Equal, Expect } from './utils';
+import { type Equal, Expect } from '../utils';
 
 // Test: InferSelectModel with notNull column
 {

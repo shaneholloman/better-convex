@@ -6,7 +6,7 @@
  */
 
 import type { ColumnBuilder } from './builders/column-builder';
-import type { Column } from './filter-expression';
+import { column } from './filter-expression';
 import type { OrderByClause } from './types';
 
 /**
@@ -24,14 +24,8 @@ export function asc<TBuilder extends ColumnBuilder<any, any, any>>(
   // Extract column name from builder's config
   const columnName = (builder as any).config?.name || '';
 
-  // Create Column wrapper with extracted name
-  const column: Column<TBuilder, string> = {
-    columnName,
-    validator: (builder as any).convexValidator,
-  } as any;
-
   return {
-    column,
+    column: column(builder, columnName),
     direction: 'asc',
   };
 }
@@ -51,14 +45,8 @@ export function desc<TBuilder extends ColumnBuilder<any, any, any>>(
   // Extract column name from builder's config
   const columnName = (builder as any).config?.name || '';
 
-  // Create Column wrapper with extracted name
-  const column: Column<TBuilder, string> = {
-    columnName,
-    validator: (builder as any).convexValidator,
-  } as any;
-
   return {
-    column,
+    column: column(builder, columnName),
     direction: 'desc',
   };
 }

@@ -6,8 +6,15 @@ import type {
 } from 'convex/server';
 import type { Validator } from 'convex/values';
 import { v } from 'convex/values';
-import type { ColumnBuilder } from './builders/column-builder';
-import { createSystemFields } from './builders/system-fields';
+import type {
+  ColumnBuilder,
+  ColumnBuilderBase,
+  ColumnBuilderWithTableName,
+} from './builders/column-builder';
+import {
+  createSystemFields,
+  type SystemFields,
+} from './builders/system-fields';
 import { Brand, Columns, TableName } from './symbols';
 
 /**
@@ -63,13 +70,16 @@ function createValidatorFromColumns(
  *
  * CRITICAL: No extends constraint on TColumns to avoid type widening (convex-ents pattern)
  */
-export interface TableConfig<
-  TName extends string = string,
-  TColumns = Record<string, ColumnBuilder<any, any, any>>,
-> {
+export interface TableConfig<TName extends string = string, TColumns = any> {
   name: TName;
   columns: TColumns;
 }
+
+type ColumnsWithTableName<TColumns, TName extends string> = {
+  [K in keyof TColumns]: TColumns[K] extends ColumnBuilderBase
+    ? ColumnBuilderWithTableName<TColumns[K], TName>
+    : TColumns[K];
+};
 
 /**
  * ConvexTable implementation class
@@ -108,7 +118,7 @@ class ConvexTableImpl<T extends TableConfig> {
   /**
    * Public tableName for convenience
    */
-  tableName: string;
+  tableName: T['name'];
 
   constructor(name: T['name'], columns: T['columns']) {
     validateTableName(name);
@@ -120,6 +130,8 @@ class ConvexTableImpl<T extends TableConfig> {
       Object.entries(columns).map(([columnName, builder]) => {
         // Set the column name in the builder's config
         (builder as any).config.name = columnName;
+        // Track table name for relation typing and runtime introspection
+        (builder as any).config.tableName = name;
         return [columnName, builder];
       })
     ) as T['columns'];
@@ -196,7 +208,7 @@ export interface ConvexTable<
    * Convex schema validator
    */
   validator: Validator<any, any, any>;
-  tableName: string;
+  tableName: T['name'];
 
   // Note: index(), searchIndex(), vectorIndex() methods inherited from TableDefinition
 }
@@ -207,11 +219,9 @@ export interface ConvexTable<
  * Mapped type makes columns accessible: table.columnName
  * Includes system fields (_id, _creationTime) available on all Convex documents
  */
-export type ConvexTableWithColumns<T extends TableConfig> = ConvexTable<T> &
-  {
-    [Key in keyof T['columns']]: T['columns'][Key];
-  } &
-  ReturnType<typeof createSystemFields>;
+export type ConvexTableWithColumns<T extends TableConfig> = ConvexTable<T> & {
+  [Key in keyof T['columns']]: T['columns'][Key];
+} & SystemFields<T['name']>;
 
 /**
  * Create a type-safe Convex table definition
@@ -243,18 +253,18 @@ export type ConvexTableWithColumns<T extends TableConfig> = ConvexTable<T> &
  * const usersWithIndex = convexTable('users', { email: text() })
  *   .index('by_email', ['email']);
  */
-export function convexTable<
-  TName extends string,
-  TColumns extends Record<string, ColumnBuilder<any, any, any>>,
->(
+export function convexTable<TName extends string, TColumns>(
   name: TName,
   columns: TColumns
-): ConvexTableWithColumns<{ name: TName; columns: TColumns }> {
+): ConvexTableWithColumns<{
+  name: TName;
+  columns: ColumnsWithTableName<TColumns, TName>;
+}> {
   // Create raw table instance
-  const rawTable = new ConvexTableImpl(name, columns);
+  const rawTable = new ConvexTableImpl(name, columns as any);
 
   // Create system fields (_id, _creationTime)
-  const systemFields = createSystemFields();
+  const systemFields = createSystemFields(name);
 
   // Following Drizzle pattern: Object.assign to attach columns AND system fields as properties
   const table = Object.assign(rawTable, rawTable[Columns], systemFields);

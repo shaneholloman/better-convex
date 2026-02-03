@@ -235,7 +235,14 @@ function detectCircularDependencies(edges: EdgeMetadata[]): void {
  */
 function inferFieldName(relation: Relation<any>, relationName: string): string {
   if (isOne(relation) && relation.config?.fields?.[0]) {
-    return relation.config.fields[0];
+    const field = relation.config.fields[0];
+    const resolved =
+      typeof field === 'string'
+        ? field
+        : ((field as any)?.config?.name ?? (field as any)?.name);
+    if (typeof resolved === 'string' && resolved.length > 0) {
+      return resolved;
+    }
   }
   // Convention: relationName + 'Id'
   return `${relationName}Id`;

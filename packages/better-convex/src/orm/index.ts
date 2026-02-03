@@ -51,6 +51,7 @@ export type {
   ColumnBuilderBaseConfig,
   ColumnBuilderRuntimeConfig,
   ColumnBuilderTypeConfig,
+  ColumnBuilderWithTableName,
   ColumnDataType,
   ConvexBigIntBuilder,
   ConvexBigIntBuilderInitial,
@@ -66,6 +67,7 @@ export type {
   HasDefault,
   IsPrimaryKey,
   NotNull,
+  SystemFields,
 } from './builders';
 export {
   bigint,

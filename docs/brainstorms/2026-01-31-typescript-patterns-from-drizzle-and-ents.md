@@ -658,7 +658,7 @@ import { relations } from './drizzle-convex';
 export const usersRelations = relations(users, ({ one, many }) => ({
   profile: one(profiles, {
     fields: [users.profileId],
-    references: [profiles.id]
+    references: [profiles._id]
   }),
   posts: many(posts),
 }));
