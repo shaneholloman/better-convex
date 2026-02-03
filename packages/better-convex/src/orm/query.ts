@@ -18,9 +18,11 @@ import type {
   UnaryExpression,
 } from './filter-expression';
 import {
+  and,
+  arrayContained,
+  arrayContains,
+  arrayOverlaps,
   column,
-  contains,
-  endsWith,
   eq,
   gt,
   gte,
@@ -33,11 +35,16 @@ import {
   lt,
   lte,
   ne,
+  not,
+  notIlike,
   notInArray,
-  startsWith,
+  notLike,
+  or,
 } from './filter-expression';
 import { asc, desc } from './order-by';
 import { QueryPromise } from './query-promise';
+import type { RelationsFieldFilter, RelationsFilter } from './relations';
+import { Columns } from './symbols';
 import type {
   DBQueryConfig,
   OrderByClause,
@@ -127,9 +134,29 @@ export class GelRelationalQuery<
   }
 
   private _orderBySpecs(
-    orderBy: ValueOrArray<OrderByValue> | undefined
+    orderBy:
+      | ValueOrArray<OrderByValue>
+      | Record<string, 'asc' | 'desc' | undefined>
+      | undefined
   ): { field: string; direction: 'asc' | 'desc' }[] {
-    return this._normalizeOrderBy(orderBy).map((clause) => ({
+    if (
+      orderBy &&
+      typeof orderBy === 'object' &&
+      !Array.isArray(orderBy) &&
+      !this._isOrderByClause(orderBy) &&
+      !this._isColumnBuilder(orderBy)
+    ) {
+      return Object.entries(orderBy)
+        .filter(([, direction]) => direction === 'asc' || direction === 'desc')
+        .map(([field, direction]) => ({
+          field,
+          direction: direction as 'asc' | 'desc',
+        }));
+    }
+
+    return this._normalizeOrderBy(
+      orderBy as ValueOrArray<OrderByValue> | undefined
+    ).map((clause) => ({
       field: clause.column.columnName,
       direction: clause.direction,
     }));
@@ -166,7 +193,30 @@ export class GelRelationalQuery<
     dbName: string
   ): TableRelationalConfig | undefined {
     const tables = Object.values(this.schema) as TableRelationalConfig[];
-    return tables.find((table) => table.dbName === dbName);
+    return tables.find((table) => table.name === dbName);
+  }
+
+  private _matchLike(
+    value: string,
+    pattern: string,
+    caseInsensitive: boolean
+  ): boolean {
+    const targetValue = caseInsensitive ? value.toLowerCase() : value;
+    const targetPattern = caseInsensitive ? pattern.toLowerCase() : pattern;
+
+    if (targetPattern.startsWith('%') && targetPattern.endsWith('%')) {
+      const substring = targetPattern.slice(1, -1);
+      return targetValue.includes(substring);
+    }
+    if (targetPattern.startsWith('%')) {
+      const suffix = targetPattern.slice(1);
+      return targetValue.endsWith(suffix);
+    }
+    if (targetPattern.endsWith('%')) {
+      const prefix = targetPattern.slice(0, -1);
+      return targetValue.startsWith(prefix);
+    }
+    return targetValue === targetPattern;
   }
 
   /**
@@ -192,42 +242,22 @@ export class GelRelationalQuery<
         case 'like': {
           const pattern = value as string;
           if (typeof fieldValue !== 'string') return false;
-
-          // Pattern: %text% → includes, text% → startsWith, %text → endsWith
-          if (pattern.startsWith('%') && pattern.endsWith('%')) {
-            const substring = pattern.slice(1, -1);
-            return fieldValue.includes(substring);
-          }
-          if (pattern.startsWith('%')) {
-            const suffix = pattern.slice(1);
-            return fieldValue.endsWith(suffix);
-          }
-          if (pattern.endsWith('%')) {
-            const prefix = pattern.slice(0, -1);
-            return fieldValue.startsWith(prefix);
-          }
-          return fieldValue === pattern;
+          return this._matchLike(fieldValue, pattern, false);
         }
         case 'ilike': {
           const pattern = value as string;
           if (typeof fieldValue !== 'string') return false;
-
-          const lowerValue = fieldValue.toLowerCase();
-          const lowerPattern = pattern.toLowerCase();
-
-          if (lowerPattern.startsWith('%') && lowerPattern.endsWith('%')) {
-            const substring = lowerPattern.slice(1, -1);
-            return lowerValue.includes(substring);
-          }
-          if (lowerPattern.startsWith('%')) {
-            const suffix = lowerPattern.slice(1);
-            return lowerValue.endsWith(suffix);
-          }
-          if (lowerPattern.endsWith('%')) {
-            const prefix = lowerPattern.slice(0, -1);
-            return lowerValue.startsWith(prefix);
-          }
-          return lowerValue === lowerPattern;
+          return this._matchLike(fieldValue, pattern, true);
+        }
+        case 'notLike': {
+          const pattern = value as string;
+          if (typeof fieldValue !== 'string') return false;
+          return !this._matchLike(fieldValue, pattern, false);
+        }
+        case 'notIlike': {
+          const pattern = value as string;
+          if (typeof fieldValue !== 'string') return false;
+          return !this._matchLike(fieldValue, pattern, true);
         }
         case 'startsWith': {
           if (typeof fieldValue !== 'string') return false;
@@ -261,6 +291,21 @@ export class GelRelationalQuery<
         case 'notInArray': {
           const arr = value as any[];
           return !arr.includes(fieldValue);
+        }
+        case 'arrayContains': {
+          if (!Array.isArray(fieldValue)) return false;
+          const arr = value as any[];
+          return arr.every((item) => fieldValue.includes(item));
+        }
+        case 'arrayContained': {
+          if (!Array.isArray(fieldValue)) return false;
+          const arr = value as any[];
+          return fieldValue.every((item) => arr.includes(item));
+        }
+        case 'arrayOverlaps': {
+          if (!Array.isArray(fieldValue)) return false;
+          const arr = value as any[];
+          return arr.some((item) => fieldValue.includes(item));
         }
         default:
           throw new Error(
@@ -314,6 +359,688 @@ export class GelRelationalQuery<
     }
 
     throw new Error(`Unsupported filter type for post-fetch: ${filter.type}`);
+  }
+
+  private _isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  private _isPlaceholder(value: unknown): boolean {
+    return this._isRecord(value) && '__placeholder' in value;
+  }
+
+  private _isSQLWrapper(value: unknown): boolean {
+    return this._isRecord(value) && '__sqlWrapper' in value;
+  }
+
+  private _evaluateFieldFilter(
+    fieldValue: any,
+    filter: RelationsFieldFilter
+  ): boolean {
+    if (filter === undefined) return true;
+
+    if (this._isPlaceholder(filter) || this._isSQLWrapper(filter)) {
+      throw new Error('SQL placeholders are not supported in Convex filters.');
+    }
+
+    if (
+      filter === null ||
+      typeof filter !== 'object' ||
+      Array.isArray(filter)
+    ) {
+      return fieldValue === filter;
+    }
+
+    const entries = Object.entries(filter as Record<string, any>);
+    if (!entries.length) return true;
+
+    const results: boolean[] = [];
+
+    for (const [op, value] of entries) {
+      if (value === undefined) continue;
+
+      switch (op) {
+        case 'NOT': {
+          results.push(!this._evaluateFieldFilter(fieldValue, value));
+          continue;
+        }
+        case 'OR': {
+          if (!Array.isArray(value) || value.length === 0) continue;
+          results.push(
+            value.some((sub) => this._evaluateFieldFilter(fieldValue, sub))
+          );
+          continue;
+        }
+        case 'AND': {
+          if (!Array.isArray(value) || value.length === 0) continue;
+          results.push(
+            value.every((sub) => this._evaluateFieldFilter(fieldValue, sub))
+          );
+          continue;
+        }
+        case 'isNull': {
+          if (!value) continue;
+          results.push(fieldValue === null || fieldValue === undefined);
+          continue;
+        }
+        case 'isNotNull': {
+          if (!value) continue;
+          results.push(fieldValue !== null && fieldValue !== undefined);
+          continue;
+        }
+        case 'in': {
+          if (!Array.isArray(value)) {
+            results.push(false);
+            continue;
+          }
+          results.push(value.includes(fieldValue));
+          continue;
+        }
+        case 'notIn': {
+          if (!Array.isArray(value)) {
+            results.push(false);
+            continue;
+          }
+          results.push(!value.includes(fieldValue));
+          continue;
+        }
+        case 'arrayContains': {
+          if (!Array.isArray(fieldValue) || !Array.isArray(value)) {
+            results.push(false);
+            continue;
+          }
+          results.push(value.every((item) => fieldValue.includes(item)));
+          continue;
+        }
+        case 'arrayContained': {
+          if (!Array.isArray(fieldValue) || !Array.isArray(value)) {
+            results.push(false);
+            continue;
+          }
+          results.push(fieldValue.every((item) => value.includes(item)));
+          continue;
+        }
+        case 'arrayOverlaps': {
+          if (!Array.isArray(fieldValue) || !Array.isArray(value)) {
+            results.push(false);
+            continue;
+          }
+          results.push(value.some((item) => fieldValue.includes(item)));
+          continue;
+        }
+        case 'like': {
+          if (typeof fieldValue !== 'string' || typeof value !== 'string') {
+            results.push(false);
+            continue;
+          }
+          results.push(this._matchLike(fieldValue, value, false));
+          continue;
+        }
+        case 'ilike': {
+          if (typeof fieldValue !== 'string' || typeof value !== 'string') {
+            results.push(false);
+            continue;
+          }
+          results.push(this._matchLike(fieldValue, value, true));
+          continue;
+        }
+        case 'notLike': {
+          if (typeof fieldValue !== 'string' || typeof value !== 'string') {
+            results.push(false);
+            continue;
+          }
+          results.push(!this._matchLike(fieldValue, value, false));
+          continue;
+        }
+        case 'notIlike': {
+          if (typeof fieldValue !== 'string' || typeof value !== 'string') {
+            results.push(false);
+            continue;
+          }
+          results.push(!this._matchLike(fieldValue, value, true));
+          continue;
+        }
+        case 'eq':
+          results.push(fieldValue === value);
+          continue;
+        case 'ne':
+          results.push(fieldValue !== value);
+          continue;
+        case 'gt':
+          results.push(fieldValue > value);
+          continue;
+        case 'gte':
+          results.push(fieldValue >= value);
+          continue;
+        case 'lt':
+          results.push(fieldValue < value);
+          continue;
+        case 'lte':
+          results.push(fieldValue <= value);
+          continue;
+        default:
+          throw new Error(`Unsupported field operator: ${op}`);
+      }
+    }
+
+    return results.every(Boolean);
+  }
+
+  private _evaluateTableFilter(
+    row: any,
+    tableConfig: TableRelationalConfig,
+    filter: Record<string, unknown>
+  ): boolean {
+    if (!this._isRecord(filter)) return true;
+
+    const entries = Object.entries(filter);
+    if (!entries.length) return true;
+
+    const columns = this._getColumns(tableConfig);
+    const results: boolean[] = [];
+
+    for (const [key, value] of entries) {
+      if (value === undefined) continue;
+
+      switch (key) {
+        case 'RAW':
+          throw new Error('RAW filters are not supported in Convex.');
+        case 'OR':
+          if (!Array.isArray(value) || value.length === 0) continue;
+          {
+            const subFilters = value.filter((sub) => this._isRecord(sub));
+            if (!subFilters.length) continue;
+            results.push(
+              subFilters.some((sub) =>
+                this._evaluateTableFilter(row, tableConfig, sub)
+              )
+            );
+          }
+          continue;
+        case 'AND':
+          if (!Array.isArray(value) || value.length === 0) continue;
+          {
+            const subFilters = value.filter((sub) => this._isRecord(sub));
+            if (!subFilters.length) continue;
+            results.push(
+              subFilters.every((sub) =>
+                this._evaluateTableFilter(row, tableConfig, sub)
+              )
+            );
+          }
+          continue;
+        case 'NOT':
+          results.push(
+            !this._evaluateTableFilter(row, tableConfig, value as any)
+          );
+          continue;
+        default:
+          if (!(key in columns)) {
+            throw new Error(`Unknown filter column: "${key}"`);
+          }
+          results.push(this._evaluateFieldFilter(row[key], value as any));
+      }
+    }
+
+    return results.every(Boolean);
+  }
+
+  private _evaluateRelationsFilter(
+    row: any,
+    tableConfig: TableRelationalConfig,
+    filter: RelationsFilter<any, any>
+  ): boolean {
+    if (!this._isRecord(filter)) return true;
+
+    const entries = Object.entries(filter);
+    if (!entries.length) return true;
+
+    const columns = this._getColumns(tableConfig);
+    const results: boolean[] = [];
+
+    for (const [key, value] of entries) {
+      if (value === undefined) continue;
+
+      switch (key) {
+        case 'RAW':
+          throw new Error('RAW filters are not supported in Convex.');
+        case 'OR':
+          if (!Array.isArray(value) || value.length === 0) continue;
+          {
+            const subFilters = value.filter((sub) => this._isRecord(sub));
+            if (!subFilters.length) continue;
+            results.push(
+              subFilters.some((sub) =>
+                this._evaluateRelationsFilter(row, tableConfig, sub)
+              )
+            );
+          }
+          continue;
+        case 'AND':
+          if (!Array.isArray(value) || value.length === 0) continue;
+          {
+            const subFilters = value.filter((sub) => this._isRecord(sub));
+            if (!subFilters.length) continue;
+            results.push(
+              subFilters.every((sub) =>
+                this._evaluateRelationsFilter(row, tableConfig, sub)
+              )
+            );
+          }
+          continue;
+        case 'NOT':
+          results.push(
+            !this._evaluateRelationsFilter(row, tableConfig, value as any)
+          );
+          continue;
+        default: {
+          if (key in columns) {
+            results.push(this._evaluateFieldFilter(row[key], value as any));
+            continue;
+          }
+
+          const relation = tableConfig.relations[key];
+          if (!relation) {
+            throw new Error(`Unknown relational filter field: "${key}"`);
+          }
+
+          const targetTableConfig = this._getTableConfigByDbName(
+            relation.targetTableName
+          );
+          if (!targetTableConfig) {
+            throw new Error(
+              `Missing table config for relation "${key}" -> "${relation.targetTableName}"`
+            );
+          }
+
+          const relatedValue = row[key];
+          if (typeof value === 'boolean') {
+            if (relation.relationType === 'one') {
+              results.push(value ? !!relatedValue : !relatedValue);
+            } else {
+              results.push(
+                value
+                  ? Array.isArray(relatedValue) && relatedValue.length > 0
+                  : !Array.isArray(relatedValue) || relatedValue.length === 0
+              );
+            }
+            continue;
+          }
+
+          if (relation.relationType === 'one') {
+            if (!relatedValue) {
+              results.push(false);
+              continue;
+            }
+            results.push(
+              this._evaluateRelationsFilter(
+                relatedValue,
+                targetTableConfig,
+                value as any
+              )
+            );
+            continue;
+          }
+
+          if (!Array.isArray(relatedValue) || relatedValue.length === 0) {
+            results.push(false);
+            continue;
+          }
+
+          results.push(
+            relatedValue.some((target) =>
+              this._evaluateRelationsFilter(
+                target,
+                targetTableConfig,
+                value as any
+              )
+            )
+          );
+        }
+      }
+    }
+
+    return results.every(Boolean);
+  }
+
+  private _buildFieldFilterExpression(
+    fieldName: string,
+    tableConfig: TableRelationalConfig,
+    filter: RelationsFieldFilter
+  ): FilterExpression<boolean> | undefined {
+    if (filter === undefined) return;
+
+    if (this._isPlaceholder(filter) || this._isSQLWrapper(filter)) {
+      throw new Error('SQL placeholders are not supported in Convex filters.');
+    }
+
+    const columns = this._getColumns(tableConfig);
+    const columnBuilder = columns[fieldName];
+    if (!columnBuilder) {
+      throw new Error(`Unknown filter column: "${fieldName}"`);
+    }
+
+    const columnRef = column(columnBuilder, fieldName);
+
+    if (
+      filter === null ||
+      typeof filter !== 'object' ||
+      Array.isArray(filter)
+    ) {
+      return eq(columnRef, filter);
+    }
+
+    const entries = Object.entries(filter as Record<string, any>);
+    if (!entries.length) return;
+
+    const parts: FilterExpression<boolean>[] = [];
+
+    for (const [op, value] of entries) {
+      if (value === undefined) continue;
+
+      switch (op) {
+        case 'NOT': {
+          const expr = this._buildFieldFilterExpression(
+            fieldName,
+            tableConfig,
+            value
+          );
+          if (expr) parts.push(not(expr));
+          continue;
+        }
+        case 'OR': {
+          if (!Array.isArray(value) || value.length === 0) continue;
+          const subs = value
+            .map((sub) =>
+              this._buildFieldFilterExpression(fieldName, tableConfig, sub)
+            )
+            .filter(Boolean) as FilterExpression<boolean>[];
+          if (subs.length) {
+            parts.push(or(...subs)!);
+          }
+          continue;
+        }
+        case 'AND': {
+          if (!Array.isArray(value) || value.length === 0) continue;
+          const subs = value
+            .map((sub) =>
+              this._buildFieldFilterExpression(fieldName, tableConfig, sub)
+            )
+            .filter(Boolean) as FilterExpression<boolean>[];
+          if (subs.length) {
+            parts.push(and(...subs)!);
+          }
+          continue;
+        }
+        case 'isNull':
+          if (value) parts.push(isNull(columnRef));
+          continue;
+        case 'isNotNull':
+          if (value) parts.push(isNotNull(columnRef));
+          continue;
+        case 'in':
+          if (Array.isArray(value)) {
+            parts.push(inArray(columnRef, value));
+          }
+          continue;
+        case 'notIn':
+          if (Array.isArray(value)) {
+            parts.push(notInArray(columnRef, value));
+          }
+          continue;
+        case 'arrayContains':
+          parts.push(arrayContains(columnRef, value));
+          continue;
+        case 'arrayContained':
+          parts.push(arrayContained(columnRef, value));
+          continue;
+        case 'arrayOverlaps':
+          parts.push(arrayOverlaps(columnRef, value));
+          continue;
+        case 'like':
+          parts.push(like(columnRef, value));
+          continue;
+        case 'ilike':
+          parts.push(ilike(columnRef, value));
+          continue;
+        case 'notLike':
+          parts.push(notLike(columnRef, value));
+          continue;
+        case 'notIlike':
+          parts.push(notIlike(columnRef, value));
+          continue;
+        case 'eq':
+          parts.push(eq(columnRef, value));
+          continue;
+        case 'ne':
+          parts.push(ne(columnRef, value));
+          continue;
+        case 'gt':
+          parts.push(gt(columnRef, value));
+          continue;
+        case 'gte':
+          parts.push(gte(columnRef, value));
+          continue;
+        case 'lt':
+          parts.push(lt(columnRef, value));
+          continue;
+        case 'lte':
+          parts.push(lte(columnRef, value));
+          continue;
+        default:
+          throw new Error(`Unsupported field operator: ${op}`);
+      }
+    }
+
+    if (!parts.length) return;
+    return and(...parts);
+  }
+
+  private _buildFilterExpression(
+    filter: RelationsFilter<any, any>,
+    tableConfig: TableRelationalConfig
+  ): FilterExpression<boolean> | undefined {
+    if (!this._isRecord(filter)) return;
+
+    const entries = Object.entries(filter);
+    if (!entries.length) return;
+
+    const columns = this._getColumns(tableConfig);
+    const parts: FilterExpression<boolean>[] = [];
+
+    for (const [key, value] of entries) {
+      if (value === undefined) continue;
+
+      switch (key) {
+        case 'RAW':
+          throw new Error('RAW filters are not supported in Convex.');
+        case 'OR': {
+          if (!Array.isArray(value) || value.length === 0) continue;
+          const subs = value
+            .map((sub) => this._buildFilterExpression(sub, tableConfig))
+            .filter(Boolean) as FilterExpression<boolean>[];
+          if (subs.length) parts.push(or(...subs)!);
+          continue;
+        }
+        case 'AND': {
+          if (!Array.isArray(value) || value.length === 0) continue;
+          const subs = value
+            .map((sub) => this._buildFilterExpression(sub, tableConfig))
+            .filter(Boolean) as FilterExpression<boolean>[];
+          if (subs.length) parts.push(and(...subs)!);
+          continue;
+        }
+        case 'NOT': {
+          const sub = this._buildFilterExpression(
+            value as RelationsFilter<any, any>,
+            tableConfig
+          );
+          if (sub) parts.push(not(sub));
+          continue;
+        }
+        default: {
+          if (!(key in columns)) {
+            // Relation filter - skip in expression compilation
+            continue;
+          }
+          const expr = this._buildFieldFilterExpression(
+            key,
+            tableConfig,
+            value as RelationsFieldFilter
+          );
+          if (expr) parts.push(expr);
+        }
+      }
+    }
+
+    if (!parts.length) return;
+    return and(...parts);
+  }
+
+  private _mergeWithConfig(
+    target: Record<string, unknown>,
+    source: Record<string, unknown>
+  ): void {
+    for (const [key, value] of Object.entries(source)) {
+      if (!(key in target)) {
+        target[key] = value;
+        continue;
+      }
+
+      const existing = target[key];
+      if (existing === true) {
+        target[key] = value;
+        continue;
+      }
+      if (value === true) {
+        continue;
+      }
+      if (this._isRecord(existing) && this._isRecord(value)) {
+        const existingWith = (existing as any).with;
+        const valueWith = (value as any).with;
+        if (this._isRecord(existingWith) && this._isRecord(valueWith)) {
+          this._mergeWithConfig(existingWith, valueWith);
+        } else if (this._isRecord(valueWith)) {
+          (existing as any).with = valueWith;
+        }
+      }
+    }
+  }
+
+  private _buildFilterWithConfig(
+    filter: RelationsFilter<any, any>,
+    tableConfig: TableRelationalConfig
+  ): Record<string, unknown> {
+    if (!this._isRecord(filter)) return {};
+
+    const result: Record<string, unknown> = {};
+    const entries = Object.entries(filter);
+    if (!entries.length) return result;
+
+    for (const [key, value] of entries) {
+      if (value === undefined) continue;
+
+      if (key === 'OR' || key === 'AND') {
+        if (!Array.isArray(value) || value.length === 0) continue;
+        for (const sub of value) {
+          const nested = this._buildFilterWithConfig(
+            sub as RelationsFilter<any, any>,
+            tableConfig
+          );
+          this._mergeWithConfig(result, nested);
+        }
+        continue;
+      }
+
+      if (key === 'NOT') {
+        const nested = this._buildFilterWithConfig(
+          value as RelationsFilter<any, any>,
+          tableConfig
+        );
+        this._mergeWithConfig(result, nested);
+        continue;
+      }
+
+      const relation = tableConfig.relations[key];
+      if (!relation) continue;
+
+      if (typeof value === 'boolean') {
+        result[key] = true;
+        continue;
+      }
+
+      const targetTableConfig = this._getTableConfigByDbName(
+        relation.targetTableName
+      );
+      if (!targetTableConfig) {
+        continue;
+      }
+
+      const nested = this._buildFilterWithConfig(
+        value as RelationsFilter<any, any>,
+        targetTableConfig
+      );
+      result[key] = Object.keys(nested).length > 0 ? { with: nested } : true;
+    }
+
+    return result;
+  }
+
+  private _stripFilterRelations(
+    rows: any[],
+    filterWith: Record<string, unknown>,
+    requestedWith?: Record<string, unknown>
+  ): void {
+    if (!rows.length) return;
+
+    const filterKeys = Object.keys(filterWith);
+    if (filterKeys.length === 0) return;
+
+    for (const row of rows) {
+      for (const key of filterKeys) {
+        if (requestedWith && key in requestedWith) {
+          continue;
+        }
+        delete row[key];
+      }
+    }
+  }
+
+  private async _applyRelationsFilterToRows(
+    rows: any[],
+    tableConfig: TableRelationalConfig,
+    filter: RelationsFilter<any, any>,
+    targetTableEdges: EdgeMetadata[],
+    depth: number,
+    maxDepth: number,
+    requestedWith?: Record<string, unknown>
+  ): Promise<any[]> {
+    if (!rows.length) return rows;
+    if (!this._isRecord(filter)) return rows;
+
+    const filterWith = this._buildFilterWithConfig(filter, tableConfig);
+    const hasFilterWith = Object.keys(filterWith).length > 0;
+
+    if (hasFilterWith) {
+      await this._loadRelations(
+        rows,
+        filterWith,
+        depth,
+        maxDepth,
+        targetTableEdges,
+        tableConfig
+      );
+    }
+
+    const filtered = rows.filter((row) =>
+      this._evaluateRelationsFilter(row, tableConfig, filter)
+    );
+
+    if (hasFilterWith) {
+      this._stripFilterRelations(filtered, filterWith, requestedWith);
+    }
+
+    return filtered;
   }
 
   /**
@@ -387,6 +1114,8 @@ export class GelRelationalQuery<
     }
 
     usePostFetchSort = needsPostFetchSortForPrimary || hasSecondaryOrders;
+    const config = this.config as any;
+    const whereFilter = config.where as RelationsFilter<any, any> | undefined;
 
     // M6.5 Phase 4: Handle cursor pagination separately
     if (this.mode === 'paginate') {
@@ -437,12 +1166,30 @@ export class GelRelationalQuery<
         numItems: this.paginationOpts?.numItems ?? 20,
       });
 
+      let pageRows = paginationResult.page;
+
+      if (whereFilter) {
+        pageRows = await this._applyRelationsFilterToRows(
+          pageRows,
+          this.tableConfig,
+          whereFilter,
+          this.edgeMetadata,
+          0,
+          3,
+          this.config.with as Record<string, unknown> | undefined
+        );
+      }
+
       // Load relations for page results if configured
-      let pageWithRelations = paginationResult.page;
+      let pageWithRelations = pageRows;
       if (this.config.with) {
         pageWithRelations = await this._loadRelations(
-          paginationResult.page,
-          this.config.with
+          pageRows,
+          this.config.with,
+          0,
+          3,
+          this.edgeMetadata,
+          this.tableConfig
         );
       }
 
@@ -473,7 +1220,6 @@ export class GelRelationalQuery<
     }
 
     // Execute query with limit - .take() returns Promise<Doc[]>
-    const config = this.config as any;
     // M4.5: Offset pagination via post-fetch slicing
     // Convex doesn't have skip() - fetch offset + limit rows, then slice
     const offset = config.offset ?? 0;
@@ -502,6 +1248,18 @@ export class GelRelationalQuery<
       );
     }
 
+    if (whereFilter) {
+      rows = await this._applyRelationsFilterToRows(
+        rows,
+        this.tableConfig,
+        whereFilter,
+        this.edgeMetadata,
+        0,
+        3,
+        this.config.with as Record<string, unknown> | undefined
+      );
+    }
+
     // Apply post-fetch sort if needed
     if (usePostFetchSort && postFetchOrders.length > 0) {
       rows = rows.sort((a: any, b: any) =>
@@ -512,7 +1270,14 @@ export class GelRelationalQuery<
     // Load relations if configured
     let rowsWithRelations = rows;
     if (this.config.with) {
-      rowsWithRelations = await this._loadRelations(rows, this.config.with);
+      rowsWithRelations = await this._loadRelations(
+        rows,
+        this.config.with,
+        0,
+        3,
+        this.edgeMetadata,
+        this.tableConfig
+      );
     }
 
     // Apply column selection if configured
@@ -543,17 +1308,21 @@ export class GelRelationalQuery<
 
     // Initialize compiler for this table
     const compiler = new WhereClauseCompiler(
-      this.tableConfig.dbName,
+      this.tableConfig.table.tableName,
       this.edgeMetadata
     );
 
     // Compile where clause to FilterExpression (if present)
     let whereExpression: FilterExpression<boolean> | undefined;
     if (config.where) {
-      // Call user's where function to get FilterExpression
-      whereExpression = config.where(
-        this._createColumnProxies(),
-        this._createOperators()
+      if (typeof config.where === 'function') {
+        throw new Error(
+          'Function-style where clauses are not supported in Drizzle v1 mode.'
+        );
+      }
+      whereExpression = this._buildFilterExpression(
+        config.where as RelationsFilter<any, any>,
+        this.tableConfig
       );
     }
 
@@ -567,7 +1336,7 @@ export class GelRelationalQuery<
       postFilters: FilterExpression<boolean>[];
       order?: { direction: 'asc' | 'desc'; field: string }[];
     } = {
-      table: this.tableConfig.dbName,
+      table: this.tableConfig.table.tableName,
       postFilters: compiled.postFilters,
     };
 
@@ -583,7 +1352,7 @@ export class GelRelationalQuery<
     if (config.orderBy) {
       const orderByValue =
         typeof config.orderBy === 'function'
-          ? config.orderBy(this.tableConfig.columns as any, { asc, desc })
+          ? config.orderBy(this.tableConfig.table as any, { asc, desc })
           : config.orderBy;
 
       const orderSpecs = this._orderBySpecs(orderByValue);
@@ -595,52 +1364,37 @@ export class GelRelationalQuery<
     return result;
   }
 
-  /**
-   * Create column wrappers for where clause
-   * Used by where() function to pass columns to operators
-   * Following Drizzle pattern: pass raw columns (validator + name) to operators
-   */
-  private _createColumnProxies(): typeof this.tableConfig.columns {
-    const proxies: Record<string, any> = {};
-    for (const [columnName, validator] of Object.entries(
-      this.tableConfig.columns
-    )) {
-      // Each column proxy is a Column wrapper with validator + name
-      proxies[columnName] = column(
-        validator as ColumnBuilder<any, any, any>,
-        columnName
-      );
+  private _buildRelationKey(row: any, fields: string[]): string | null {
+    if (!fields.length) return null;
+    const values = fields.map((field) => row[field]);
+    if (values.some((value) => value === null || value === undefined)) {
+      return null;
     }
-    return proxies as any;
+    return JSON.stringify(values);
   }
 
-  /**
-   * Create operator functions that build FilterExpression trees
-   * Used by where() function to construct filter expressions
-   *
-   * Since _createColumnProxies() already wraps columns with column(),
-   * just return the raw operators from filter-expression.ts
-   */
-  private _createOperators(): any {
-    // Return operators as-is - they already expect Column wrappers
-    // which _createColumnProxies() provides (cast to raw builder type)
-    return {
-      eq,
-      ne,
-      gt,
-      gte,
-      lt,
-      lte,
-      inArray,
-      notInArray,
-      isNull,
-      isNotNull,
-      like,
-      ilike,
-      startsWith,
-      endsWith,
-      contains,
-    };
+  private _getColumns(
+    tableConfig: TableRelationalConfig = this.tableConfig
+  ): Record<string, ColumnBuilder<any, any, any>> {
+    const columns = tableConfig.table[Columns] as Record<
+      string,
+      ColumnBuilder<any, any, any>
+    >;
+    const system: Record<string, ColumnBuilder<any, any, any>> = {};
+
+    if ((tableConfig.table as any)._id) {
+      system._id = (tableConfig.table as any)._id as ColumnBuilder<
+        any,
+        any,
+        any
+      >;
+    }
+    if ((tableConfig.table as any)._creationTime) {
+      system._creationTime = (tableConfig.table as any)
+        ._creationTime as ColumnBuilder<any, any, any>;
+    }
+
+    return { ...columns, ...system };
   }
 
   /**
@@ -716,9 +1470,14 @@ export class GelRelationalQuery<
           // M5: String operators (post-filter implementation)
           case 'like':
           case 'ilike':
+          case 'notLike':
+          case 'notIlike':
           case 'startsWith':
           case 'endsWith':
           case 'contains':
+          case 'arrayContains':
+          case 'arrayContained':
+          case 'arrayOverlaps':
             // String operators require post-fetch filtering
             // They can't work in Convex filter context (no JavaScript string methods on field expressions)
             // These are handled in _evaluatePostFetchFilter after rows are fetched
@@ -818,7 +1577,8 @@ export class GelRelationalQuery<
     withConfig: Record<string, unknown>,
     depth = 0,
     maxDepth = 3,
-    targetTableEdges: EdgeMetadata[] = this.edgeMetadata
+    targetTableEdges: EdgeMetadata[] = this.edgeMetadata,
+    tableConfig: TableRelationalConfig = this.tableConfig
   ): Promise<any[]> {
     if (!withConfig || rows.length === 0) {
       return rows;
@@ -838,7 +1598,8 @@ export class GelRelationalQuery<
           relationConfig,
           depth,
           maxDepth,
-          targetTableEdges
+          targetTableEdges,
+          tableConfig
         )
       )
     );
@@ -857,14 +1618,15 @@ export class GelRelationalQuery<
     relationConfig: unknown,
     depth: number,
     maxDepth: number,
-    targetTableEdges: EdgeMetadata[]
+    targetTableEdges: EdgeMetadata[],
+    tableConfig: TableRelationalConfig
   ): Promise<void> {
     // Find edge metadata for this relation
     const edge = targetTableEdges.find((e) => e.edgeName === relationName);
 
     if (!edge) {
       throw new Error(
-        `Relation '${relationName}' not found in table '${this.tableConfig.dbName}'. ` +
+        `Relation '${relationName}' not found in table '${tableConfig.name}'. ` +
           `Available relations: ${targetTableEdges.map((e) => e.edgeName).join(', ')}`
       );
     }
@@ -877,7 +1639,8 @@ export class GelRelationalQuery<
         edge,
         relationConfig,
         depth,
-        maxDepth
+        maxDepth,
+        tableConfig
       );
     } else {
       await this._loadManyRelation(
@@ -886,7 +1649,8 @@ export class GelRelationalQuery<
         edge,
         relationConfig,
         depth,
-        maxDepth
+        maxDepth,
+        tableConfig
       );
     }
   }
@@ -902,18 +1666,22 @@ export class GelRelationalQuery<
     edge: EdgeMetadata,
     relationConfig: unknown,
     depth: number,
-    maxDepth: number
+    maxDepth: number,
+    tableConfig: TableRelationalConfig
   ): Promise<void> {
-    // Collect unique target IDs
-    const targetIds = [
-      ...new Set(
-        rows
-          .map((row) => row[edge.fieldName])
-          .filter((id): id is string => id !== null)
-      ),
-    ];
+    const sourceFields =
+      edge.sourceFields.length > 0 ? edge.sourceFields : [edge.fieldName];
+    const targetFields =
+      edge.targetFields.length > 0 ? edge.targetFields : ['_id'];
 
-    if (targetIds.length === 0) {
+    // Collect unique source keys
+    const sourceKeys = new Set<string>();
+    for (const row of rows) {
+      const key = this._buildRelationKey(row, sourceFields);
+      if (key) sourceKeys.add(key);
+    }
+
+    if (sourceKeys.size === 0) {
       // All rows have null foreign key
       for (const row of rows) {
         row[relationName] = null;
@@ -926,9 +1694,49 @@ export class GelRelationalQuery<
     const allTargets = await this.db.query(edge.targetTable).take(10_000);
 
     // Filter to only targets we need (in-memory filter since Convex lacks .in() operator)
-    const targets = allTargets.filter((t) =>
-      targetIds.includes(t._id as string)
-    );
+    let targets = allTargets.filter((t) => {
+      const key = this._buildRelationKey(t, targetFields);
+      return key ? sourceKeys.has(key) : false;
+    });
+
+    const targetTableConfig = this._getTableConfigByDbName(edge.targetTable);
+    const relationDefinition = tableConfig.relations[relationName];
+
+    if (relationDefinition?.where && targetTableConfig) {
+      targets = targets.filter((target) =>
+        this._evaluateTableFilter(
+          target,
+          targetTableConfig,
+          relationDefinition.where as any
+        )
+      );
+    }
+
+    if (
+      relationConfig &&
+      typeof relationConfig === 'object' &&
+      'where' in relationConfig &&
+      targetTableConfig
+    ) {
+      const whereFilter = (relationConfig as any).where;
+      if (typeof whereFilter === 'function') {
+        throw new Error(
+          'Function-style where clauses are not supported in Drizzle v1 mode.'
+        );
+      }
+      if (whereFilter) {
+        const targetEdges = this._getTargetTableEdges(edge.targetTable);
+        targets = await this._applyRelationsFilterToRows(
+          targets,
+          targetTableConfig,
+          whereFilter,
+          targetEdges,
+          depth + 1,
+          maxDepth,
+          (relationConfig as any).with
+        );
+      }
+    }
 
     // M6.5 Phase 2: Recursively load nested relations if configured
     if (
@@ -943,17 +1751,24 @@ export class GelRelationalQuery<
         (relationConfig as any).with,
         depth + 1,
         maxDepth,
-        targetTableEdges
+        targetTableEdges,
+        targetTableConfig ?? this.tableConfig
       );
     }
 
-    // Create ID → record mapping for O(1) lookup
-    const targetsById = new Map(targets.map((t) => [t._id as string, t]));
+    // Create key → record mapping for O(1) lookup
+    const targetsByKey = new Map<string, any>();
+    for (const target of targets) {
+      const key = this._buildRelationKey(target, targetFields);
+      if (key) {
+        targetsByKey.set(key, target);
+      }
+    }
 
     // Map relations back to parent rows
     for (const row of rows) {
-      const targetId = row[edge.fieldName] as string | null;
-      row[relationName] = targetId ? (targetsById.get(targetId) ?? null) : null;
+      const key = this._buildRelationKey(row, sourceFields);
+      row[relationName] = key ? (targetsByKey.get(key) ?? null) : null;
     }
   }
 
@@ -961,8 +1776,8 @@ export class GelRelationalQuery<
    * Load many() relation (one-to-many)
    * Example: users.posts where posts.userId → users._id
    *
-   * For many() relations, the foreign key is in the target table, not source.
-   * We use the inverse edge's fieldName to find the FK field in target table.
+   * For many() relations, use the configured from/to fields to match rows.
+   * Supports .through() for many-to-many relations via a junction table.
    * M6.5 Phase 2: Added support for nested relations
    * M6.5 Phase 3: Added support for where filters, orderBy, and per-parent limit
    */
@@ -972,62 +1787,117 @@ export class GelRelationalQuery<
     edge: EdgeMetadata,
     relationConfig: unknown,
     depth: number,
-    maxDepth: number
+    maxDepth: number,
+    tableConfig: TableRelationalConfig
   ): Promise<void> {
-    // Collect all source IDs
-    const sourceIds = rows.map((row) => row._id as string);
+    const sourceFields =
+      edge.sourceFields.length > 0 ? edge.sourceFields : ['_id'];
+    const targetFields =
+      edge.targetFields.length > 0 ? edge.targetFields : [edge.fieldName];
 
-    if (sourceIds.length === 0) {
+    // Collect all source keys
+    const sourceKeys = new Set<string>();
+    for (const row of rows) {
+      const key = this._buildRelationKey(row, sourceFields);
+      if (key) sourceKeys.add(key);
+    }
+
+    if (sourceKeys.size === 0) {
       return;
     }
 
-    // For many() relations, find the FK field in target table using inverse edge
-    // Edge: users.posts (many) → Inverse: posts.user (one) with fieldName="userId"
-    let targetForeignKeyField: string;
-    if (edge.inverseEdge) {
-      // Use inverse edge's fieldName (e.g., "userId" in posts table)
-      targetForeignKeyField = edge.inverseEdge.fieldName;
+    let targets: any[] = [];
+    let targetKeys = new Set<string>();
+    let throughBySourceKey: Map<string, any[]> | undefined;
+
+    if (edge.through) {
+      const throughTable = edge.through.table;
+      const throughRows = await this.db.query(throughTable).take(10_000);
+
+      const throughMatches = throughRows.filter((row) => {
+        const key = this._buildRelationKey(row, edge.through!.sourceFields);
+        return key ? sourceKeys.has(key) : false;
+      });
+
+      for (const row of throughMatches) {
+        const key = this._buildRelationKey(row, edge.through!.targetFields);
+        if (key) targetKeys.add(key);
+      }
+
+      const allTargets = await this.db.query(edge.targetTable).take(10_000);
+      targets = allTargets.filter((t) => {
+        const key = this._buildRelationKey(t, targetFields);
+        return key ? targetKeys.has(key) : false;
+      });
+
+      throughBySourceKey = new Map<string, any[]>();
+      for (const row of throughMatches) {
+        const sourceKey = this._buildRelationKey(
+          row,
+          edge.through!.sourceFields
+        );
+        if (!sourceKey) continue;
+        if (!throughBySourceKey.has(sourceKey)) {
+          throughBySourceKey.set(sourceKey, []);
+        }
+        throughBySourceKey.get(sourceKey)!.push(row);
+      }
+
+      targetKeys = new Set(
+        targets
+          .map((target) => this._buildRelationKey(target, targetFields))
+          .filter((key): key is string => !!key)
+      );
     } else {
-      // Fallback: convention-based (sourceTableName + "Id")
-      // This handles unidirectional many() relations without inverse
-      targetForeignKeyField = `${edge.sourceTable.slice(0, -1)}Id`; // "users" → "userId"
+      // Batch load all target records that reference any source
+      // TODO M6.5 Phase 3: Use withIndex for efficient lookup
+      const allTargets = await this.db.query(edge.targetTable).take(10_000);
+
+      // Filter to only targets that reference our source IDs
+      targets = allTargets.filter((t) => {
+        const key = this._buildRelationKey(t, targetFields);
+        return key ? sourceKeys.has(key) : false;
+      });
     }
 
-    // Batch load all target records that reference any source
-    // TODO M6.5 Phase 3: Use withIndex for efficient lookup
-    const allTargets = await this.db.query(edge.targetTable).take(10_000);
+    const targetTableConfig = this._getTableConfigByDbName(edge.targetTable);
+    const relationDefinition = tableConfig.relations[relationName];
 
-    // Filter to only targets that reference our source IDs
-    let targets = allTargets.filter((t) =>
-      sourceIds.includes(t[targetForeignKeyField] as string)
-    );
+    if (relationDefinition?.where && targetTableConfig) {
+      targets = targets.filter((target) =>
+        this._evaluateTableFilter(
+          target,
+          targetTableConfig,
+          relationDefinition.where as any
+        )
+      );
+    }
 
     // M6.5 Phase 3: Apply where filters if present
     if (
       relationConfig &&
       typeof relationConfig === 'object' &&
       'where' in relationConfig &&
-      typeof (relationConfig as any).where === 'function'
+      targetTableConfig
     ) {
       const whereFilter = (relationConfig as any).where;
-      // Apply filter to each target (in-memory filtering)
-      targets = targets.filter((target) => {
-        try {
-          // Create a mock query builder for filter evaluation
-          const mockQueryBuilder = {
-            eq: (field: any, value: any) => target[field] === value,
-            neq: (field: any, value: any) => target[field] !== value,
-            gt: (field: any, value: any) => target[field] > value,
-            gte: (field: any, value: any) => target[field] >= value,
-            lt: (field: any, value: any) => target[field] < value,
-            lte: (field: any, value: any) => target[field] <= value,
-            field: (name: string) => name,
-          };
-          return whereFilter(target, mockQueryBuilder);
-        } catch {
-          return true; // Keep target if filter evaluation fails
-        }
-      });
+      if (typeof whereFilter === 'function') {
+        throw new Error(
+          'Function-style where clauses are not supported in Drizzle v1 mode.'
+        );
+      }
+      if (whereFilter) {
+        const targetEdges = this._getTargetTableEdges(edge.targetTable);
+        targets = await this._applyRelationsFilterToRows(
+          targets,
+          targetTableConfig,
+          whereFilter,
+          targetEdges,
+          depth + 1,
+          maxDepth,
+          (relationConfig as any).with
+        );
+      }
     }
 
     // M6.5 Phase 3: Apply orderBy if present
@@ -1038,11 +1908,11 @@ export class GelRelationalQuery<
     ) {
       let orderByValue = (relationConfig as any).orderBy;
       if (typeof orderByValue === 'function') {
-        const targetTableConfig = this._getTableConfigByDbName(
-          edge.targetTable
-        );
         if (targetTableConfig) {
-          orderByValue = orderByValue(targetTableConfig.columns, { asc, desc });
+          orderByValue = orderByValue(targetTableConfig.table as any, {
+            asc,
+            desc,
+          });
         } else {
           orderByValue = undefined;
         }
@@ -1067,7 +1937,8 @@ export class GelRelationalQuery<
         (relationConfig as any).with,
         depth + 1,
         maxDepth,
-        targetTableEdges
+        targetTableEdges,
+        targetTableConfig ?? this.tableConfig
       );
     }
 
@@ -1082,30 +1953,79 @@ export class GelRelationalQuery<
       throw new Error('Only numeric limit is supported in Better Convex ORM.');
     }
 
-    // Group targets by parent ID
-    const byParentId = new Map<string, any[]>();
-    for (const target of targets) {
-      const parentId = target[targetForeignKeyField] as string;
-      if (!byParentId.has(parentId)) {
-        byParentId.set(parentId, []);
-      }
-      byParentId.get(parentId)!.push(target);
-    }
+    if (edge.through) {
+      const targetOrder = new Map<string, number>();
+      targets.forEach((target, index) => {
+        const key = this._buildRelationKey(target, targetFields);
+        if (key) targetOrder.set(key, index);
+      });
 
-    // M6.5 Phase 3: Apply per-parent limit
-    // Each parent gets up to N children, not N children total
-    if (perParentLimit !== undefined && typeof perParentLimit === 'number') {
-      for (const [parentId, children] of byParentId.entries()) {
-        if (children.length > perParentLimit) {
-          byParentId.set(parentId, children.slice(0, perParentLimit));
+      const targetsByKey = new Map<string, any>();
+      for (const target of targets) {
+        const key = this._buildRelationKey(target, targetFields);
+        if (key) targetsByKey.set(key, target);
+      }
+
+      // Map targets per source row using through table
+      for (const row of rows) {
+        const sourceKey = this._buildRelationKey(row, sourceFields);
+        if (!sourceKey || !throughBySourceKey) {
+          row[relationName] = [];
+          continue;
+        }
+        const throughRowsForSource = throughBySourceKey.get(sourceKey) ?? [];
+        const relatedTargets = throughRowsForSource
+          .map((throughRow) => {
+            const key = this._buildRelationKey(
+              throughRow,
+              edge.through!.targetFields
+            );
+            return key ? targetsByKey.get(key) : undefined;
+          })
+          .filter((t): t is any => !!t)
+          .sort((a, b) => {
+            const aKey = this._buildRelationKey(a, targetFields) ?? '';
+            const bKey = this._buildRelationKey(b, targetFields) ?? '';
+            return (targetOrder.get(aKey) ?? 0) - (targetOrder.get(bKey) ?? 0);
+          });
+        row[relationName] = relatedTargets;
+      }
+
+      // For through relations, apply per-parent limit after mapping
+      if (perParentLimit !== undefined && typeof perParentLimit === 'number') {
+        for (const row of rows) {
+          if (Array.isArray(row[relationName])) {
+            row[relationName] = row[relationName].slice(0, perParentLimit);
+          }
         }
       }
-    }
+    } else {
+      // Group targets by parent key
+      const byParentKey = new Map<string, any[]>();
+      for (const target of targets) {
+        const parentKey = this._buildRelationKey(target, targetFields);
+        if (!parentKey) continue;
+        if (!byParentKey.has(parentKey)) {
+          byParentKey.set(parentKey, []);
+        }
+        byParentKey.get(parentKey)!.push(target);
+      }
 
-    // Map relations back to parent rows
-    for (const row of rows) {
-      const rowId = row._id as string;
-      row[relationName] = byParentId.get(rowId) ?? [];
+      // M6.5 Phase 3: Apply per-parent limit
+      // Each parent gets up to N children, not N children total
+      if (perParentLimit !== undefined && typeof perParentLimit === 'number') {
+        for (const [parentKey, children] of byParentKey.entries()) {
+          if (children.length > perParentLimit) {
+            byParentKey.set(parentKey, children.slice(0, perParentLimit));
+          }
+        }
+      }
+
+      // Map relations back to parent rows
+      for (const row of rows) {
+        const rowKey = this._buildRelationKey(row, sourceFields);
+        row[relationName] = rowKey ? (byParentKey.get(rowKey) ?? []) : [];
+      }
     }
   }
 

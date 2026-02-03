@@ -126,7 +126,7 @@ Current coverage (Phases 0-5 complete):
 
 ### Core Principles
 
-1. **Mirror Drizzle** - Copy all applicable test patterns from drizzle-orm
+1. **Mirror Drizzle** - Copy all applicable test patterns from `drizzle-v1`
 2. **Use Equal<>/Expect<>** - Industry standard pattern (Drizzle, Zod, TanStack Query, tRPC, MUI)
 3. **Test public API only** - Don't test internal implementation details
 4. **Negative tests** - Use @ts-expect-error to prevent common mistakes
@@ -136,8 +136,8 @@ Current coverage (Phases 0-5 complete):
 ### How to Calculate Progress & Parity
 
 **Step 1: Baseline Count**
-- Clone Drizzle ORM: `git clone https://github.com/drizzle-team/drizzle-orm.git /tmp/cc-repos/drizzle-orm`
-- Count their PostgreSQL type assertions: `grep -r "Expect<Equal<" /tmp/cc-repos/drizzle-orm/type-tests/pg/ | wc -l`
+- Use local clone: `/tmp/cc-repos/drizzle-v1`
+- Count their PostgreSQL type assertions: `grep -r "Expect<Equal<" /tmp/cc-repos/drizzle-v1/drizzle-orm/type-tests/pg/ | wc -l`
 - Result: ~220 assertions for PostgreSQL
 
 **Step 2: Set Target Parity**
@@ -163,7 +163,7 @@ Progress = (Current / Target) × 100
 ### How to Mirror Drizzle for New Milestones
 
 **Phase 1: Research** (2-3 hours)
-1. **Explore Drizzle's type tests**: Browse `/tmp/cc-repos/drizzle-orm/type-tests/pg/`
+1. **Explore Drizzle's type tests**: Browse `/tmp/cc-repos/drizzle-v1/drizzle-orm/type-tests/pg/`
 2. **Identify relevant files**: Focus on files matching your milestone (e.g., `insert.ts` for M7 Mutations)
 3. **Count test patterns**: `grep -c "Expect<Equal<" [filename]` to understand scope
 4. **Read test structure**: Study how Drizzle organizes tests (sections, comments, patterns)
@@ -194,7 +194,7 @@ Progress = (Current / Target) × 100
 
 ```bash
 # 1. Research Drizzle's insert patterns
-cd /tmp/cc-repos/drizzle-orm
+cd /tmp/cc-repos/drizzle-v1/drizzle-orm
 cat type-tests/pg/insert.ts | grep "// Test" | head -20
 
 # 2. Count scope
@@ -240,7 +240,7 @@ bun typecheck
 ### Maintaining Parity Over Time
 
 **When Drizzle adds new tests**:
-1. Watch Drizzle releases: https://github.com/drizzle-team/drizzle-orm/releases
+1. Watch Drizzle releases: https://github.com/drizzle-team/drizzle-orm/releases (upstream)
 2. Check `type-tests/` changes: `git diff v0.x.0..v0.y.0 type-tests/`
 3. Evaluate applicability to Convex
 4. Add corresponding tests if applicable
@@ -445,7 +445,7 @@ git commit -m "feat(types): add [milestone] type tests (Phase X)"
 
 ## References
 
-- [Drizzle ORM Type Tests](https://github.com/drizzle-team/drizzle-orm/tree/main/drizzle-orm/type-tests/pg)
+- [Drizzle ORM Type Tests](https://github.com/drizzle-team/drizzle-orm/tree/main/drizzle-orm/type-tests/pg) (upstream reference)
 - [Implementation Plan](../../docs/plans/2026-02-02-query-type-testing-audit-plan.md)
 - [Task Plan](../../task_plan.md)
 - [Institutional Learnings](../../docs/solutions/typescript-patterns/)

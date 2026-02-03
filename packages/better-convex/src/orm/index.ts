@@ -14,13 +14,14 @@
  * type User = InferSelectModel<typeof users>;
  * type NewUser = InferInsertModel<typeof users>;
  *
- * Milestone 2 (M2): Relations Layer
+ * Milestone 2 (M2): Relations Layer (v1)
  * @example
- * import { relations } from 'better-convex/orm';
+ * import { defineRelations } from 'better-convex/orm';
  *
- * const usersRelations = relations(users, ({ one, many }) => ({
- *   profile: one(profiles),
- *   posts: many(posts),
+ * const relations = defineRelations({ users, posts }, (r) => ({
+ *   posts: {
+ *     author: r.one.users({ from: r.posts.userId, to: r.users._id }),
+ *   },
  * }));
  *
  * Milestone 3 (M3): Query Builder - Read Operations
@@ -34,14 +35,11 @@
  *
  * Milestone 4 (M4): Query Builder - Where Filtering
  * @example
- * import { eq, and, gt, inArray } from 'better-convex/orm';
- *
  * const activeAdults = await db.query.users.findMany({
- *   where: (cols, { eq, gt, inArray }) =>
- *     and(
- *       inArray(cols.status, ['active', 'pending']),
- *       gt(cols.age, 18)
- *     )
+ *   where: {
+ *     status: { in: ['active', 'pending'] },
+ *     age: { gt: 18 },
+ *   },
  * });
  */
 
@@ -123,18 +121,18 @@ export { GelRelationalQuery } from './query';
 // M3: Query Builder
 export { RelationalQueryBuilder } from './query-builder';
 export { QueryPromise } from './query-promise';
-export type { OneConfig, RelationHelpers } from './relations';
-// M2: Relations Layer
-export {
-  createMany,
-  createOne,
-  Many,
-  One,
-  Relation,
-  Relations,
-  relations,
-  validateRelationName,
+export type {
+  ExtractTablesWithRelations,
+  ManyConfig,
+  OneConfig,
+  RelationsBuilder,
+  RelationsBuilderColumnBase,
+  RelationsBuilderColumnConfig,
+  TableRelationalConfig,
+  TablesRelationalConfig,
 } from './relations';
+// M2: Relations Layer (v1)
+export { defineRelations, defineRelationsPart } from './relations';
 // M1: Schema Foundation
 export {
   Brand,
@@ -149,17 +147,13 @@ export type {
   BuildQueryResult,
   BuildRelationResult,
   DBQueryConfig,
-  ExtractTablesWithRelations,
   FilterOperators,
   GetColumnData,
   InferInsertModel,
   InferModelFromColumns,
-  InferRelations,
   InferSelectModel,
   OrderByClause,
   OrderDirection,
-  TableRelationalConfig,
-  TablesRelationalConfig,
 } from './types';
 // M4: Where Clause Compiler
 export type { WhereClauseResult } from './where-clause-compiler';

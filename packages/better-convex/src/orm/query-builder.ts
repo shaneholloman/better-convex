@@ -64,7 +64,7 @@ export class RelationalQueryBuilder<
    * const users = await ctx.db.query.users.findMany({
    *   columns: { id: true, name: true },
    *   with: { posts: { limit: 5 } },
-   *   where: (cols, { eq }) => eq(cols.name, 'Alice'),
+   *   where: { name: 'Alice' },
    *   limit: 10
    * });
    */
@@ -102,7 +102,7 @@ export class RelationalQueryBuilder<
    *
    * @example
    * const user = await ctx.db.query.users.findFirst({
-   *   where: (cols, { eq }) => eq(cols.email, 'alice@example.com'),
+   *   where: { email: 'alice@example.com' },
    *   with: { profile: true }
    * });
    */
@@ -148,7 +148,7 @@ export class RelationalQueryBuilder<
    *
    * @example
    * const result = await ctx.db.query.users.paginate(
-   *   { where: (cols, { eq }) => eq(cols.active, true) },
+   *   { where: { active: true } },
    *   { cursor: null, numItems: 20 }
    * );
    * // result = { page: [...], continueCursor: "...", isDone: false }

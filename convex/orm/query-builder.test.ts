@@ -10,13 +10,7 @@
 
 import { createDatabase, extractRelationsConfig } from 'better-convex/orm';
 import { it as baseIt, describe, expect } from 'vitest';
-import schema, {
-  ormPosts,
-  ormPostsRelations,
-  ormSchema,
-  ormUsers,
-  ormUsersRelations,
-} from '../schema';
+import schema, { ormSchema } from '../schema';
 import { convexTest } from '../setup.testing';
 
 // Test setup with convexTest
@@ -31,12 +25,7 @@ const it = baseIt.extend<{ ctx: any }>({
 
 // Test schema and edges
 const testSchema = ormSchema;
-const edges = extractRelationsConfig({
-  users: ormUsers,
-  posts: ormPosts,
-  usersRelations: ormUsersRelations,
-  postsRelations: ormPostsRelations,
-});
+const edges = extractRelationsConfig(ormSchema);
 
 describe('M3 Query Builder', () => {
   describe('Builder Creation', () => {

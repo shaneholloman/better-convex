@@ -1,25 +1,17 @@
 /**
- * M2 Relations Layer - Basic Validation Tests
- *
- * Tests core functionality:
- * - Relation definition with one() and many()
- * - Type inference
- * - Schema extraction
- * - Validation errors
+ * M2 Relations Layer - v1 Validation Tests
  */
 
 import {
   convexTable,
-  type ExtractTablesWithRelations,
+  defineRelations,
   extractRelationsConfig,
-  type InferRelations,
   id,
-  relations,
   text,
 } from 'better-convex/orm';
 import { describe, expect, it } from 'vitest';
 
-describe('M2 Relations Layer', () => {
+describe('M2 Relations Layer (v1)', () => {
   describe('Relation Definition', () => {
     it('should create one() relation', () => {
       const users = convexTable('users', {
@@ -31,15 +23,18 @@ describe('M2 Relations Layer', () => {
         bio: text().notNull(),
       });
 
-      const usersRelations = relations(users, ({ one }) => ({
-        profile: one(profiles, {
-          fields: [users.profileId],
-          references: [profiles._id],
-        }),
+      const relations = defineRelations({ users, profiles }, (r) => ({
+        users: {
+          profile: r.one.profiles({
+            from: r.users.profileId,
+            to: r.profiles._id,
+          }),
+        },
       }));
 
-      expect(usersRelations).toBeDefined();
-      expect(usersRelations.table).toBe(users);
+      expect(relations).toBeDefined();
+      expect(relations.users.table).toBe(users);
+      expect(relations.users.relations.profile).toBeDefined();
     });
 
     it('should create many() relation', () => {
@@ -52,12 +47,18 @@ describe('M2 Relations Layer', () => {
         userId: id('users').notNull(),
       });
 
-      const usersRelations = relations(users, ({ many }) => ({
-        posts: many(posts),
+      const relations = defineRelations({ users, posts }, (r) => ({
+        users: {
+          posts: r.many.posts({
+            from: r.users._id,
+            to: r.posts.userId,
+          }),
+        },
       }));
 
-      expect(usersRelations).toBeDefined();
-      expect(usersRelations.table).toBe(users);
+      expect(relations).toBeDefined();
+      expect(relations.users.table).toBe(users);
+      expect(relations.users.relations.posts).toBeDefined();
     });
 
     it('should create bidirectional relations', () => {
@@ -70,16 +71,20 @@ describe('M2 Relations Layer', () => {
         userId: id('users').notNull(),
       });
 
-      const usersRelations = relations(users, ({ many }) => ({
-        posts: many(posts),
+      const relations = defineRelations({ users, posts }, (r) => ({
+        users: {
+          posts: r.many.posts(),
+        },
+        posts: {
+          user: r.one.users({
+            from: r.posts.userId,
+            to: r.users._id,
+          }),
+        },
       }));
 
-      const postsRelations = relations(posts, ({ one }) => ({
-        user: one(users, { fields: [posts.userId], references: [users._id] }),
-      }));
-
-      expect(usersRelations).toBeDefined();
-      expect(postsRelations).toBeDefined();
+      expect(relations.users.relations.posts).toBeDefined();
+      expect(relations.posts.relations.user).toBeDefined();
     });
   });
 
@@ -94,22 +99,22 @@ describe('M2 Relations Layer', () => {
         userId: id('users').notNull(),
       });
 
-      const usersRelations = relations(users, ({ many }) => ({
-        posts: many(posts),
+      const relations = defineRelations({ users, posts }, (r) => ({
+        users: {
+          posts: r.many.posts({
+            from: r.users._id,
+            to: r.posts.userId,
+          }),
+        },
+        posts: {
+          user: r.one.users({
+            from: r.posts.userId,
+            to: r.users._id,
+          }),
+        },
       }));
 
-      const postsRelations = relations(posts, ({ one }) => ({
-        user: one(users, { fields: [posts.userId], references: [users._id] }),
-      }));
-
-      const schema = {
-        users,
-        posts,
-        usersRelations,
-        postsRelations,
-      };
-
-      const edges = extractRelationsConfig(schema);
+      const edges = extractRelationsConfig(relations);
 
       expect(edges).toHaveLength(2);
 
@@ -119,7 +124,8 @@ describe('M2 Relations Layer', () => {
         edgeName: 'posts',
         targetTable: 'posts',
         cardinality: 'many',
-        fieldName: 'postsId',
+        sourceFields: ['_id'],
+        targetFields: ['userId'],
       });
 
       const userEdge = edges.find((e) => e.edgeName === 'user');
@@ -128,7 +134,8 @@ describe('M2 Relations Layer', () => {
         edgeName: 'user',
         targetTable: 'users',
         cardinality: 'one',
-        fieldName: 'userId',
+        sourceFields: ['userId'],
+        targetFields: ['_id'],
       });
     });
 
@@ -142,22 +149,19 @@ describe('M2 Relations Layer', () => {
         userId: id('users').notNull(),
       });
 
-      const usersRelations = relations(users, ({ many }) => ({
-        posts: many(posts),
+      const relations = defineRelations({ users, posts }, (r) => ({
+        users: {
+          posts: r.many.posts(),
+        },
+        posts: {
+          user: r.one.users({
+            from: r.posts.userId,
+            to: r.users._id,
+          }),
+        },
       }));
 
-      const postsRelations = relations(posts, ({ one }) => ({
-        user: one(users, { fields: [posts.userId], references: [users._id] }),
-      }));
-
-      const schema = {
-        users,
-        posts,
-        usersRelations,
-        postsRelations,
-      };
-
-      const edges = extractRelationsConfig(schema);
+      const edges = extractRelationsConfig(relations);
 
       const postsEdge = edges.find((e) => e.edgeName === 'posts');
       const userEdge = edges.find((e) => e.edgeName === 'user');
@@ -168,20 +172,23 @@ describe('M2 Relations Layer', () => {
   });
 
   describe('Validation', () => {
-    it('should reject invalid relation names', () => {
+    it('should reject relation name that collides with column', () => {
       const users = convexTable('users', {
         name: text().notNull(),
       });
 
       const posts = convexTable('posts', {
         title: text().notNull(),
+        userId: id('users').notNull(),
       });
 
       expect(() => {
-        relations(users, ({ many }) => ({
-          'invalid-name': many(posts),
+        defineRelations({ users, posts }, (r) => ({
+          users: {
+            name: r.many.posts(),
+          },
         }));
-      }).toThrow(/Invalid relation name/);
+      }).toThrow(/relation name collides/);
     });
 
     it('should reject undefined target table', () => {
@@ -194,49 +201,44 @@ describe('M2 Relations Layer', () => {
         userId: id('users').notNull(),
       });
 
-      const postsRelations = relations(posts, ({ one }) => ({
-        user: one(users, { fields: [posts.userId], references: [users._id] }),
+      const relations = defineRelations({ users, posts }, (r) => ({
+        posts: {
+          user: r.one.users({
+            from: r.posts.userId,
+            to: r.users._id,
+          }),
+        },
       }));
 
-      const schema = {
-        posts,
-        postsRelations,
-        // Missing 'users' table
-      };
+      const invalidRelations = {
+        posts: relations.posts,
+      } as any;
 
       expect(() => {
-        extractRelationsConfig(schema);
+        extractRelationsConfig(invalidRelations);
       }).toThrow(/references undefined table/);
     });
 
-    it('should reject missing field in table schema', () => {
+    it('should reject columns from the wrong table', () => {
       const users = convexTable('users', {
         name: text().notNull(),
-        // Missing 'profileId' field
       });
 
       const profiles = convexTable('profiles', {
         bio: text().notNull(),
       });
 
-      const missingProfileId = id('profileId', 'profiles');
-
-      const usersRelations = relations(users, ({ one }) => ({
-        profile: one(profiles, {
-          fields: [missingProfileId as any],
-          references: [profiles._id],
-        }),
-      }));
-
-      const schema = {
-        users,
-        profiles,
-        usersRelations,
-      };
-
       expect(() => {
-        extractRelationsConfig(schema);
-      }).toThrow(/Field 'profileId' does not exist/);
+        defineRelations({ users, profiles }, (r) => ({
+          users: {
+            profile: r.one.profiles({
+              // Wrong table: using profiles._id as source
+              from: r.profiles._id,
+              to: r.profiles._id,
+            }),
+          },
+        }));
+      }).toThrow(/from\" columns must belong/);
     });
 
     it('should reject circular dependencies', () => {
@@ -245,27 +247,23 @@ describe('M2 Relations Layer', () => {
         managerId: id('users').notNull(),
       });
 
-      const usersRelations = relations(users, ({ one }) => ({
-        manager: one(users, {
-          fields: [users.managerId],
-          references: [users._id],
-        }),
+      const relations = defineRelations({ users }, (r) => ({
+        users: {
+          manager: r.one.users({
+            from: r.users.managerId,
+            to: r.users._id,
+          }),
+        },
       }));
 
-      const schema = {
-        users,
-        usersRelations,
-      };
-
-      // This should throw because of circular dependency
       expect(() => {
-        extractRelationsConfig(schema);
+        extractRelationsConfig(relations);
       }).toThrow(/Circular dependency/);
     });
   });
 
-  describe('Relation Name Disambiguation', () => {
-    it('should use relationName for disambiguation', () => {
+  describe('Alias Disambiguation', () => {
+    it('should use alias for disambiguation', () => {
       const users = convexTable('users', {
         name: text().notNull(),
       });
@@ -276,34 +274,34 @@ describe('M2 Relations Layer', () => {
         editorId: id('users').notNull(),
       });
 
-      const postsRelations = relations(posts, ({ one }) => ({
-        author: one(users, {
-          fields: [posts.authorId],
-          references: [users._id],
-          relationName: 'authored',
-        }),
-        editor: one(users, {
-          fields: [posts.editorId],
-          references: [users._id],
-          relationName: 'edited',
-        }),
+      const relations = defineRelations({ users, posts }, (r) => ({
+        posts: {
+          author: r.one.users({
+            from: r.posts.authorId,
+            to: r.users._id,
+            alias: 'authored',
+          }),
+          editor: r.one.users({
+            from: r.posts.editorId,
+            to: r.users._id,
+            alias: 'edited',
+          }),
+        },
+        users: {
+          authoredPosts: r.many.posts({
+            from: r.users._id,
+            to: r.posts.authorId,
+            alias: 'authored',
+          }),
+          editedPosts: r.many.posts({
+            from: r.users._id,
+            to: r.posts.editorId,
+            alias: 'edited',
+          }),
+        },
       }));
 
-      const usersRelations = relations(users, ({ many }) => ({
-        authoredPosts: many(posts, { relationName: 'authored' }),
-        editedPosts: many(posts, { relationName: 'edited' }),
-      }));
-
-      const schema = {
-        users,
-        posts,
-        usersRelations,
-        postsRelations,
-      };
-
-      const edges = extractRelationsConfig(schema);
-
-      expect(edges).toHaveLength(4);
+      const edges = extractRelationsConfig(relations);
 
       const authorEdge = edges.find((e) => e.edgeName === 'author');
       const authoredPostsEdge = edges.find(

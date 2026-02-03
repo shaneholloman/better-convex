@@ -16,26 +16,12 @@ import {
   createDatabase,
   eq,
   extractRelationsConfig,
-  gt,
-  gte,
   inArray,
-  isNotNull,
-  isNull,
-  lt,
-  lte,
-  ne,
-  not,
   notInArray,
   or,
 } from 'better-convex/orm';
 import { test as baseTest, describe, expect } from 'vitest';
-import schema, {
-  ormPosts,
-  ormPostsRelations,
-  ormSchema,
-  ormUsers,
-  ormUsersRelations,
-} from '../schema';
+import schema, { ormSchema } from '../schema';
 import { convexTest } from '../setup.testing';
 
 // ============================================================================
@@ -58,12 +44,7 @@ const test = baseTest.extend<{ ctx: any }>({
 // M4 testing uses the shared ORM schema from schema.ts
 // This ensures tests use the same schema structure as production
 const testSchema = ormSchema;
-const edges = extractRelationsConfig({
-  users: ormUsers,
-  posts: ormPosts,
-  usersRelations: ormUsersRelations,
-  postsRelations: ormPostsRelations,
-});
+const edges = extractRelationsConfig(ormSchema);
 
 // ============================================================================
 // Binary Operators
@@ -89,7 +70,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { eq }) => eq(cols.name, 'Alice'),
+      where: { name: 'Alice' },
     });
 
     expect(result).toHaveLength(1);
@@ -115,7 +96,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { ne }) => ne(cols.status, 'deleted'),
+      where: { status: { ne: 'deleted' } },
     });
 
     expect(result).toHaveLength(1);
@@ -141,7 +122,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { gt }) => gt(cols.age, 18),
+      where: { age: { gt: 18 } },
     });
 
     expect(result).toHaveLength(1);
@@ -174,7 +155,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { gte }) => gte(cols.age, 21),
+      where: { age: { gte: 21 } },
     });
 
     expect(result).toHaveLength(2);
@@ -200,7 +181,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { lt }) => lt(cols.age, 65),
+      where: { age: { lt: 65 } },
     });
 
     expect(result).toHaveLength(1);
@@ -233,7 +214,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { lte }) => lte(cols.age, 100),
+      where: { age: { lte: 100 } },
     });
 
     expect(result).toHaveLength(2);
@@ -272,8 +253,10 @@ describe('M4 Where Filtering - Logical Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { eq, gt }) =>
-        and(eq(cols.status, 'active'), gt(cols.age, 18)),
+      where: {
+        status: 'active',
+        age: { gt: 18 },
+      },
     });
 
     expect(result).toHaveLength(1);
@@ -306,8 +289,9 @@ describe('M4 Where Filtering - Logical Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { eq }) =>
-        or(eq(cols.status, 'active'), eq(cols.status, 'pending')),
+      where: {
+        status: { OR: ['active', 'pending'] },
+      },
     });
 
     expect(result).toHaveLength(2);
@@ -333,7 +317,9 @@ describe('M4 Where Filtering - Logical Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { eq }) => not(eq(cols.status, 'deleted')),
+      where: {
+        NOT: { status: 'deleted' },
+      },
     });
 
     expect(result).toHaveLength(1);
@@ -366,11 +352,10 @@ describe('M4 Where Filtering - Logical Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { eq, gt, lt }) =>
-        and(
-          or(eq(cols.status, 'active'), eq(cols.status, 'pending')),
-          and(gt(cols.age, 18), lt(cols.age, 65))
-        ),
+      where: {
+        OR: [{ status: 'active' }, { status: 'pending' }],
+        age: { gt: 18, lt: 65 },
+      },
     });
 
     expect(result).toHaveLength(1);
@@ -398,11 +383,10 @@ describe('M4 Where Filtering - Logical Operators', () => {
     const condition = false;
 
     const result = await db.query.users.findMany({
-      where: (cols, { eq }) =>
-        and(
-          eq(cols.status, 'active'),
-          condition ? eq(cols.age, 25) : undefined
-        ),
+      where: {
+        status: 'active',
+        ...(condition ? { age: 25 } : {}),
+      },
     });
 
     expect(result).toHaveLength(1);
@@ -429,12 +413,15 @@ describe('M4 Where Filtering - Logical Operators', () => {
 
     const condition = false;
 
+    const orFilters = [
+      { status: 'active' },
+      ...(condition ? [{ status: 'pending' }] : []),
+    ];
+
     const result = await db.query.users.findMany({
-      where: (cols, { eq }) =>
-        or(
-          eq(cols.status, 'active'),
-          condition ? eq(cols.status, 'pending') : undefined
-        ),
+      where: {
+        OR: orFilters,
+      },
     });
 
     expect(result).toHaveLength(1);
@@ -473,7 +460,7 @@ describe('M4 Where Filtering - Array Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { inArray }) => inArray(cols.status, ['active', 'pending']),
+      where: { status: { in: ['active', 'pending'] } },
     });
 
     expect(result).toHaveLength(2);
@@ -499,7 +486,7 @@ describe('M4 Where Filtering - Array Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { notInArray }) => notInArray(cols.status, ['deleted']),
+      where: { status: { notIn: ['deleted'] } },
     });
 
     expect(result).toHaveLength(1);
@@ -543,7 +530,7 @@ describe('M4 Where Filtering - Null Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { isNull }) => isNull(cols.deletedAt),
+      where: { deletedAt: { isNull: true } },
     });
 
     expect(result).toHaveLength(1);
@@ -569,7 +556,7 @@ describe('M4 Where Filtering - Null Operators', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { isNotNull }) => isNotNull(cols.deletedAt),
+      where: { deletedAt: { isNotNull: true } },
     });
 
     expect(result).toHaveLength(1);
@@ -733,13 +720,12 @@ describe('M4 Where Filtering - Edge Cases', () => {
     });
 
     const result = await db.query.users.findMany({
-      where: (cols, { eq, gt, lt, inArray, isNotNull }) =>
-        and(
-          inArray(cols.status, ['active', 'pending']),
-          or(gt(cols.age, 18), lt(cols.age, 65)),
-          isNotNull(cols.deletedAt),
-          eq(cols.name, 'Alice')
-        ),
+      where: {
+        status: { in: ['active', 'pending'] },
+        OR: [{ age: { gt: 18 } }, { age: { lt: 65 } }],
+        deletedAt: { isNotNull: true },
+        name: 'Alice',
+      },
     });
 
     expect(result).toHaveLength(1);
@@ -759,11 +745,11 @@ describe('M4 Where Filtering - Type Safety', () => {
 
     // TypeScript should allow accessing valid columns
     await db.query.users.findMany({
-      where: (cols, { eq }) => eq(cols.name, 'Alice'),
+      where: { name: 'Alice' },
     });
 
     await db.query.users.findMany({
-      where: (cols, { gt }) => gt(cols.age, 18),
+      where: { age: { gt: 18 } },
     });
 
     // TODO M4.5: Properly type column proxies for compile-time safety
@@ -772,7 +758,7 @@ describe('M4 Where Filtering - Type Safety', () => {
     // TODO(M4.5): Uncomment when column proxy typing implemented
     // // @ts-expect-error - 'invalidColumn' does not exist
     // await db.query.users.findMany({
-    //   where: (cols, { eq }) => eq(cols.invalidColumn, 'value'),
+    //   where: { invalidColumn: 'value' },
     // });
   });
 });

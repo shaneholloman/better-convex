@@ -2,22 +2,14 @@
  * M5 String Operators - Comprehensive Test Suite
  *
  * Tests string matching operators:
- * - like() with % wildcards
+ * - like() with % wildcards (prefix/suffix/substring)
  * - ilike() case-insensitive
- * - startsWith() prefix matching
- * - endsWith() suffix matching
- * - contains() substring matching
+ * - notLike() and notIlike() negation
  */
 
 import { createDatabase, extractRelationsConfig } from 'better-convex/orm';
 import { test as baseTest, describe, expect } from 'vitest';
-import schema, {
-  ormPosts,
-  ormPostsRelations,
-  ormSchema,
-  ormUsers,
-  ormUsersRelations,
-} from '../schema';
+import schema, { ormSchema } from '../schema';
 import { convexTest } from '../setup.testing';
 
 // ============================================================================
@@ -35,12 +27,7 @@ const test = baseTest.extend<{ ctx: any }>({
 
 // Extract edges once for all tests
 const testSchema = ormSchema;
-const edges = extractRelationsConfig({
-  users: ormUsers,
-  posts: ormPosts,
-  usersRelations: ormUsersRelations,
-  postsRelations: ormPostsRelations,
-});
+const edges = extractRelationsConfig(ormSchema);
 
 // ============================================================================
 // LIKE Operator Tests
@@ -88,7 +75,7 @@ describe('M5: like() operator', () => {
 
     // Find posts with 'JavaScript' in title
     const posts = await db.query.posts.findMany({
-      where: (cols, { like }) => like(cols.title, '%JavaScript%'),
+      where: { title: { like: '%JavaScript%' } },
     });
 
     expect(posts).toHaveLength(2);
@@ -137,7 +124,7 @@ describe('M5: like() operator', () => {
 
     // Find posts starting with 'Java'
     const posts = await db.query.posts.findMany({
-      where: (cols, { like }) => like(cols.title, 'Java%'),
+      where: { title: { like: 'Java%' } },
     });
 
     expect(posts).toHaveLength(2);
@@ -186,7 +173,7 @@ describe('M5: like() operator', () => {
 
     // Find posts ending with 'Guide'
     const posts = await db.query.posts.findMany({
-      where: (cols, { like }) => like(cols.title, '%Guide'),
+      where: { title: { like: '%Guide' } },
     });
 
     expect(posts).toHaveLength(2);
@@ -225,11 +212,48 @@ describe('M5: like() operator', () => {
 
     // Find exact match
     const posts = await db.query.posts.findMany({
-      where: (cols, { like }) => like(cols.title, 'Exact Title'),
+      where: { title: { like: 'Exact Title' } },
     });
 
     expect(posts).toHaveLength(1);
     expect(posts[0].title).toBe('Exact Title');
+  });
+
+  test('notLike excludes pattern matches', async ({ ctx }) => {
+    const db = createDatabase(ctx.db, testSchema, edges);
+
+    const user = await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
+
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'JavaScript Guide',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 1000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Python Tutorial',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 2000,
+    });
+
+    const posts = await db.query.posts.findMany({
+      where: { title: { notLike: '%JavaScript%' } },
+    });
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].title).toBe('Python Tutorial');
   });
 });
 
@@ -279,21 +303,58 @@ describe('M5: ilike() operator', () => {
 
     // Find posts with 'javascript' (any case)
     const posts = await db.query.posts.findMany({
-      where: (cols, { ilike }) => ilike(cols.title, '%javascript%'),
+      where: { title: { ilike: '%javascript%' } },
     });
 
     expect(posts).toHaveLength(2);
     expect(posts.map((p) => p.title)).toContain('JAVASCRIPT Guide');
     expect(posts.map((p) => p.title)).toContain('javascript basics');
   });
+
+  test('notIlike excludes case-insensitive matches', async ({ ctx }) => {
+    const db = createDatabase(ctx.db, testSchema, edges);
+
+    const user = await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
+
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'JavaScript Guide',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 1000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'Python Tutorial',
+      content: 'Content',
+      published: true,
+      userId: user,
+      createdAt: 2000,
+    });
+
+    const posts = await db.query.posts.findMany({
+      where: { title: { notIlike: '%javascript%' } },
+    });
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0].title).toBe('Python Tutorial');
+  });
 });
 
 // ============================================================================
-// startsWith Operator Tests
+// LIKE Prefix Pattern Tests
 // ============================================================================
 
-describe('M5: startsWith() operator', () => {
-  test('startsWith matches prefix', async ({ ctx }) => {
+describe('M5: like() prefix pattern', () => {
+  test('like matches prefix', async ({ ctx }) => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
     const user = await ctx.db.insert('users', {
@@ -332,9 +393,9 @@ describe('M5: startsWith() operator', () => {
       createdAt: 3000,
     });
 
-    // Find posts starting with 'Java'
+    // Find posts with prefix 'Java'
     const posts = await db.query.posts.findMany({
-      where: (cols, { startsWith }) => startsWith(cols.title, 'Java'),
+      where: { title: { like: 'Java%' } },
     });
 
     expect(posts).toHaveLength(2);
@@ -342,7 +403,7 @@ describe('M5: startsWith() operator', () => {
     expect(posts.map((p) => p.title)).toContain('Java Basics');
   });
 
-  test('startsWith is case-sensitive', async ({ ctx }) => {
+  test('like is case-sensitive', async ({ ctx }) => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
     const user = await ctx.db.insert('users', {
@@ -371,9 +432,9 @@ describe('M5: startsWith() operator', () => {
       createdAt: 2000,
     });
 
-    // Find posts starting with 'Java' (case-sensitive)
+    // Find posts with prefix 'Java' (case-sensitive)
     const posts = await db.query.posts.findMany({
-      where: (cols, { startsWith }) => startsWith(cols.title, 'Java'),
+      where: { title: { like: 'Java%' } },
     });
 
     expect(posts).toHaveLength(1);
@@ -382,11 +443,11 @@ describe('M5: startsWith() operator', () => {
 });
 
 // ============================================================================
-// endsWith Operator Tests
+// LIKE Suffix Pattern Tests
 // ============================================================================
 
-describe('M5: endsWith() operator', () => {
-  test('endsWith matches suffix', async ({ ctx }) => {
+describe('M5: like() suffix pattern', () => {
+  test('like matches suffix', async ({ ctx }) => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
     const user = await ctx.db.insert('users', {
@@ -427,7 +488,7 @@ describe('M5: endsWith() operator', () => {
 
     // Find posts ending with 'Guide'
     const posts = await db.query.posts.findMany({
-      where: (cols, { endsWith }) => endsWith(cols.title, 'Guide'),
+      where: { title: { like: '%Guide' } },
     });
 
     expect(posts).toHaveLength(2);
@@ -435,7 +496,7 @@ describe('M5: endsWith() operator', () => {
     expect(posts.map((p) => p.title)).toContain('Quick Guide');
   });
 
-  test('endsWith is case-sensitive', async ({ ctx }) => {
+  test('like is case-sensitive', async ({ ctx }) => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
     const user = await ctx.db.insert('users', {
@@ -466,7 +527,7 @@ describe('M5: endsWith() operator', () => {
 
     // Find posts ending with 'Guide' (case-sensitive)
     const posts = await db.query.posts.findMany({
-      where: (cols, { endsWith }) => endsWith(cols.title, 'Guide'),
+      where: { title: { like: '%Guide' } },
     });
 
     expect(posts).toHaveLength(1);
@@ -475,11 +536,11 @@ describe('M5: endsWith() operator', () => {
 });
 
 // ============================================================================
-// contains Operator Tests
+// LIKE Substring Pattern Tests
 // ============================================================================
 
-describe('M5: contains() operator', () => {
-  test('contains matches substring', async ({ ctx }) => {
+describe('M5: like() substring pattern', () => {
+  test('like matches substring', async ({ ctx }) => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
     const user = await ctx.db.insert('users', {
@@ -520,7 +581,7 @@ describe('M5: contains() operator', () => {
 
     // Find posts containing 'JavaScript'
     const posts = await db.query.posts.findMany({
-      where: (cols, { contains }) => contains(cols.title, 'JavaScript'),
+      where: { title: { like: '%JavaScript%' } },
     });
 
     expect(posts).toHaveLength(2);
@@ -528,7 +589,7 @@ describe('M5: contains() operator', () => {
     expect(posts.map((p) => p.title)).toContain('Advanced JavaScript');
   });
 
-  test('contains is case-sensitive', async ({ ctx }) => {
+  test('like is case-sensitive', async ({ ctx }) => {
     const db = createDatabase(ctx.db, testSchema, edges);
 
     const user = await ctx.db.insert('users', {
@@ -559,7 +620,7 @@ describe('M5: contains() operator', () => {
 
     // Find posts containing 'JavaScript' (case-sensitive)
     const posts = await db.query.posts.findMany({
-      where: (cols, { contains }) => contains(cols.title, 'JavaScript'),
+      where: { title: { like: '%JavaScript%' } },
     });
 
     expect(posts).toHaveLength(1);

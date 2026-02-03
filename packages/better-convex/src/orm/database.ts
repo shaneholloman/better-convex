@@ -8,7 +8,7 @@
 import type { GenericDatabaseReader } from 'convex/server';
 import type { EdgeMetadata } from './extractRelationsConfig';
 import { RelationalQueryBuilder } from './query-builder';
-import type { TablesRelationalConfig } from './types';
+import { defineRelations, type TablesRelationalConfig } from './relations';
 
 /**
  * Database with query builder API
@@ -35,19 +35,24 @@ export type DatabaseWithQuery<TSchema extends TablesRelationalConfig> =
  * Create database context with query builder API
  *
  * @param db - Convex GenericDatabaseReader<any> (ctx.db)
- * @param schema - Schema configuration object (tables + relations)
+ * @param schema - Schema configuration object (defineRelations output)
  * @param edgeMetadata - Edge metadata from extractRelationsConfig()
  * @returns Extended database with query property
  *
  * @example
  * import { createDatabase, extractRelationsConfig } from 'better-convex/orm';
  *
- * const schema = { users, posts, usersRelations, postsRelations };
- * const edges = extractRelationsConfig(schema);
+ * const schema = { users, posts };
+ * const relations = defineRelations(schema, (r) => ({
+ *   posts: {
+ *     author: r.one.users({ from: r.posts.userId, to: r.users._id }),
+ *   },
+ * }));
+ * const edges = extractRelationsConfig(relations);
  *
  * export default query({
  *   handler: async (ctx) => {
- *     const db = createDatabase(ctx.db, schema, edges);
+ *     const db = createDatabase(ctx.db, relations, edges);
  *     const users = await db.query.users.findMany({
  *       with: { posts: true }
  *     });
@@ -65,7 +70,7 @@ export function createDatabase<TSchema extends TablesRelationalConfig>(
   for (const [tableName, tableConfig] of Object.entries(schema)) {
     // Filter edges to only those originating from this table
     const tableEdges = edgeMetadata.filter(
-      (edge) => edge.sourceTable === tableConfig.dbName
+      (edge) => edge.sourceTable === tableConfig.name
     );
 
     query[tableName] = new RelationalQueryBuilder(
@@ -85,70 +90,12 @@ export function createDatabase<TSchema extends TablesRelationalConfig>(
 }
 
 /**
- * Extract tables from schema (filter out Relations)
+ * Build schema configuration from raw tables (no relations)
  *
- * Pattern from Drizzle: Only include entries that are tables
- */
-type ExtractTablesFromSchema<TSchema extends Record<string, any>> = {
-  [K in keyof TSchema as TSchema[K] extends { tableName: string }
-    ? K
-    : never]: TSchema[K];
-};
-
-/**
- * Build schema configuration from table and relation definitions
- *
- * Helper to construct TablesRelationalConfig from raw schema object
- * with proper type inference for table names and structures
- *
- * @template TSchema - Input schema object with table definitions
- * @param rawSchema - Object containing tables and relations
- * @returns Typed schema configuration with inferred table names
- *
- * @example
- * const schema = buildSchema({
- *   users,
- *   posts,
- *   usersRelations,
- *   postsRelations,
- * });
- * // Type inferred as: { users: TableRelationalConfig; posts: TableRelationalConfig }
+ * Convenience wrapper around defineRelations(schema).
  */
 export function buildSchema<TSchema extends Record<string, any>>(
   rawSchema: TSchema
 ) {
-  const config: Record<string, any> = {};
-
-  // Extract tables and their relations from raw schema
-  for (const [key, value] of Object.entries(rawSchema)) {
-    // Skip if not a table (could be a Relations object)
-    if (!value.tableName || !value[Symbol.for('better-convex:Columns')]) {
-      continue;
-    }
-
-    const tableName = value.tableName;
-    const columns = value[Symbol.for('better-convex:Columns')];
-    const relations = value[Symbol.for('better-convex:Relations')] || {};
-
-    config[key] = {
-      tsName: key,
-      dbName: tableName,
-      columns,
-      relations,
-    };
-  }
-
-  return config as {
-    [K in keyof ExtractTablesFromSchema<TSchema>]: {
-      tsName: K & string;
-      dbName: TSchema[K] extends { _: { name: infer TName } } ? TName : string;
-      columns: TSchema[K] extends { _: { columns: infer C } } ? C : any;
-      relations: import('./types').ExtractTableRelationsFromSchema<
-        TSchema,
-        TSchema[K] extends { _: { name: infer TName extends string } }
-          ? TName
-          : string
-      >;
-    };
-  };
+  return defineRelations(rawSchema);
 }

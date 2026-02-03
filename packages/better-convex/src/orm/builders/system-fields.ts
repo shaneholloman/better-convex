@@ -19,10 +19,19 @@ import {
  * System ID field builder (_id)
  * Always present, always non-null
  */
+type ConvexSystemIdConfig = ColumnBuilderBaseConfig<
+  'string',
+  'ConvexSystemId'
+> & {
+  data: string;
+  driverParam: string;
+  enumValues: undefined;
+};
+
 export class ConvexSystemIdBuilder extends ColumnBuilder<
-  ColumnBuilderBaseConfig<'string', 'ConvexSystemId'>,
+  ConvexSystemIdConfig,
   {},
-  {}
+  { notNull: true }
 > {
   static readonly [entityKind]: string = 'ConvexSystemIdBuilder';
   readonly [entityKind]: string = 'ConvexSystemIdBuilder';
@@ -51,10 +60,19 @@ export class ConvexSystemIdBuilder extends ColumnBuilder<
  * System creation time field builder (_creationTime)
  * Always present, always non-null, always a number (milliseconds)
  */
+type ConvexSystemCreationTimeConfig = ColumnBuilderBaseConfig<
+  'number',
+  'ConvexSystemCreationTime'
+> & {
+  data: number;
+  driverParam: number;
+  enumValues: undefined;
+};
+
 export class ConvexSystemCreationTimeBuilder extends ColumnBuilder<
-  ColumnBuilderBaseConfig<'number', 'ConvexSystemCreationTime'>,
+  ConvexSystemCreationTimeConfig,
   {},
-  {}
+  { notNull: true }
 > {
   static readonly [entityKind]: string = 'ConvexSystemCreationTimeBuilder';
   readonly [entityKind]: string = 'ConvexSystemCreationTimeBuilder';

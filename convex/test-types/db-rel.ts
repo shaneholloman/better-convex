@@ -17,7 +17,7 @@
  * Attempted fixes that didn't work:
  * - Conditional type with extends check
  * - Helper type to distribute over union
- * - Preserving literal dbName in buildSchema
+ * - Preserving literal table name in defineRelations output
  *
  * These 7 type tests are disabled until type widening issue is resolved.
  *
@@ -28,36 +28,15 @@
  * - convex/orm/pagination.test.ts (cursor pagination tests - all passing)
  */
 
-import {
-  buildSchema,
-  createDatabase,
-  extractRelationsConfig,
-} from 'better-convex/orm';
+import { createDatabase, extractRelationsConfig } from 'better-convex/orm';
 import type { GenericDatabaseReader } from 'convex/server';
 import type { GenericId } from 'convex/values';
 import * as schema from './tables-rel';
 import { type Equal, Expect } from './utils';
 
 // Build schema following Better Convex pattern
-const rawSchema = {
-  users: schema.users,
-  cities: schema.cities,
-  posts: schema.posts,
-  comments: schema.comments,
-  books: schema.books,
-  bookAuthors: schema.bookAuthors,
-  node: schema.node,
-  usersRelations: schema.usersRelations,
-  citiesRelations: schema.citiesRelations,
-  postsRelations: schema.postsRelations,
-  commentsRelations: schema.commentsRelations,
-  booksRelations: schema.booksRelations,
-  bookAuthorsRelations: schema.bookAuthorsRelations,
-  nodeRelations: schema.nodeRelations,
-};
-
-const schemaConfig = buildSchema(rawSchema);
-const edgeMetadata = extractRelationsConfig(rawSchema);
+const schemaConfig = schema.relations;
+const edgeMetadata = extractRelationsConfig(schema.relations);
 
 // Mock database reader for type testing
 const mockDb = {} as GenericDatabaseReader<any>;
@@ -69,12 +48,12 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 
 {
   const result = await db.query.users.findMany({
-    where: (users, { eq }) => eq(users.name, 'Alice'),
+    where: { name: 'Alice' },
     limit: 1,
     orderBy: (users, { asc, desc }) => [asc(users.name), desc(users.email)],
     with: {
       posts: {
-        where: (posts, { eq }) => eq(posts.title, 'Hello'),
+        where: { title: 'Hello' },
         limit: 1,
         columns: {
           content: false,
@@ -83,7 +62,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
         with: {
           author: true,
           comments: {
-            where: (comments, { eq }) => eq(comments.text, 'Nice'),
+            where: { text: 'Nice' },
             limit: 1,
             columns: {
               text: true,
@@ -156,7 +135,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
               cityId: GenericId<'cities'>;
               homeCityId: GenericId<'cities'> | null;
             }>;
-          };
+          } | null;
         } | null;
       }>;
     }>;
@@ -328,11 +307,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 {
   const result = await db.query.books.findMany({
     with: {
-      authors: {
-        with: {
-          author: true,
-        },
-      },
+      authors: true,
     },
   });
 
@@ -343,18 +318,11 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     authors: Array<{
       _id: string;
       _creationTime: number;
-      bookId: string;
-      authorId: string;
-      role: string;
-      author: {
-        _id: string;
-        _creationTime: number;
-        name: string;
-        email: string;
-        age: number | null;
-        cityId: string;
-        homeCityId: string | null;
-      };
+      name: string;
+      email: string;
+      age: number | null;
+      cityId: string;
+      homeCityId: string | null;
     }>;
   }>;
 
@@ -433,7 +401,7 @@ db.query.users.findMany({
 // TODO(M5): Uncomment when findFirst constraints implemented
 // // @ts-expect-error - Cannot use where/orderBy/limit on findFirst
 // db.query.users.findFirst({
-//   where: (users, { eq }) => eq(users.name, 'test'),
+//   where: { name: 'test' },
 // });
 
 // TODO(M5): Uncomment when findFirst constraints implemented

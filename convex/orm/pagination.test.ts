@@ -4,33 +4,16 @@
  * Tests for .paginate() method with Convex-native cursor pagination (O(1) performance)
  */
 
-import {
-  asc,
-  buildSchema,
-  createDatabase,
-  desc,
-  extractRelationsConfig,
-} from 'better-convex/orm';
+import { createDatabase, extractRelationsConfig } from 'better-convex/orm';
 import { expect, test } from 'vitest';
-import schema, {
-  ormPosts,
-  ormPostsRelations,
-  ormSchema,
-  ormUsers,
-  ormUsersRelations,
-} from '../schema';
+import schema, { ormPosts, ormSchema, ormUsers } from '../schema';
 import { convexTest, runCtx } from '../setup.testing';
 
 // Create test schema for ORM
-const testSchema = buildSchema({
-  users: ormUsers,
-  posts: ormPosts,
-  usersRelations: ormUsersRelations,
-  postsRelations: ormPostsRelations,
-});
+const testSchema = ormSchema;
 
 // Extract edges for relation loading
-const edges = extractRelationsConfig(testSchema);
+const edges = extractRelationsConfig(ormSchema);
 
 test('basic pagination - null cursor returns first page', async () => {
   const t = convexTest(schema);
@@ -186,7 +169,7 @@ test('pagination with WHERE filter', async () => {
 
     const result = await db.query.users.paginate(
       {
-        where: (users, { gte }) => gte(users.age, 25),
+        where: { age: { gte: 25 } },
       },
       {
         cursor: null,
@@ -225,7 +208,7 @@ test('pagination with ORDER BY ascending', async () => {
 
     const result = await db.query.users.paginate(
       {
-        orderBy: asc(ormUsers.name),
+        orderBy: { name: 'asc' },
       },
       {
         cursor: null,
@@ -270,7 +253,7 @@ test('pagination with ORDER BY descending', async () => {
 
     const result = await db.query.posts.paginate(
       {
-        orderBy: desc(ormPosts.numLikes),
+        orderBy: { numLikes: 'desc' },
       },
       {
         cursor: null,
@@ -437,8 +420,8 @@ test('pagination with combined WHERE and ORDER BY', async () => {
 
     const result = await db.query.posts.paginate(
       {
-        where: (posts, { eq }) => eq(posts.published, true),
-        orderBy: desc(ormPosts.numLikes),
+        where: { published: true },
+        orderBy: { numLikes: 'desc' },
       },
       {
         cursor: null,

@@ -72,8 +72,13 @@ export interface BinaryExpression<TField = any>
     | 'lte'
     | 'inArray'
     | 'notInArray'
+    | 'arrayContains'
+    | 'arrayContained'
+    | 'arrayOverlaps'
     | 'like'
     | 'ilike'
+    | 'notLike'
+    | 'notIlike'
     | 'startsWith'
     | 'endsWith'
     | 'contains';
@@ -351,6 +356,32 @@ export function ilike<TBuilder extends ColumnBuilder<any, any, any>>(
 }
 
 /**
+ * NOT LIKE operator: Negated LIKE pattern
+ */
+export function notLike<TBuilder extends ColumnBuilder<any, any, any>>(
+  col: Column<TBuilder, string>,
+  pattern: string
+): BinaryExpression<string> {
+  return new BinaryExpressionImpl('notLike', [
+    fieldRef(col.columnName),
+    pattern,
+  ]);
+}
+
+/**
+ * NOT ILIKE operator: Negated case-insensitive LIKE
+ */
+export function notIlike<TBuilder extends ColumnBuilder<any, any, any>>(
+  col: Column<TBuilder, string>,
+  pattern: string
+): BinaryExpression<string> {
+  return new BinaryExpressionImpl('notIlike', [
+    fieldRef(col.columnName),
+    pattern,
+  ]);
+}
+
+/**
  * startsWith operator: Check if string starts with prefix
  * Optimized for prefix matching
  *
@@ -523,6 +554,45 @@ export function notInArray<TBuilder extends ColumnBuilder<any, any, any>>(
     throw new Error('notInArray requires a non-empty array of values');
   }
   return new BinaryExpressionImpl('notInArray', [
+    fieldRef(col.columnName),
+    values as any,
+  ]);
+}
+
+/**
+ * Array contains operator: field @> array
+ */
+export function arrayContains<TBuilder extends ColumnBuilder<any, any, any>>(
+  col: Column<TBuilder, string>,
+  values: readonly ColumnToType<TBuilder>[]
+): BinaryExpression<ColumnToType<TBuilder>> {
+  return new BinaryExpressionImpl('arrayContains', [
+    fieldRef(col.columnName),
+    values as any,
+  ]);
+}
+
+/**
+ * Array contained operator: field <@ array
+ */
+export function arrayContained<TBuilder extends ColumnBuilder<any, any, any>>(
+  col: Column<TBuilder, string>,
+  values: readonly ColumnToType<TBuilder>[]
+): BinaryExpression<ColumnToType<TBuilder>> {
+  return new BinaryExpressionImpl('arrayContained', [
+    fieldRef(col.columnName),
+    values as any,
+  ]);
+}
+
+/**
+ * Array overlaps operator: field && array
+ */
+export function arrayOverlaps<TBuilder extends ColumnBuilder<any, any, any>>(
+  col: Column<TBuilder, string>,
+  values: readonly ColumnToType<TBuilder>[]
+): BinaryExpression<ColumnToType<TBuilder>> {
+  return new BinaryExpressionImpl('arrayOverlaps', [
     fieldRef(col.columnName),
     values as any,
   ]);

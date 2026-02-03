@@ -6,9 +6,19 @@ import type {
   Simplify,
 } from '../internal/types';
 import type { ColumnBuilder } from './builders/column-builder';
+import type { SystemFields } from './builders/system-fields';
 import type { Column } from './filter-expression';
-import type { One, Relation, Relations } from './relations';
+import type {
+  One,
+  Relation,
+  RelationsFilter,
+  RelationsRecord,
+  TableRelationalConfig,
+  TablesRelationalConfig,
+} from './relations';
 import type { ConvexTable } from './table';
+
+export type { TableRelationalConfig, TablesRelationalConfig };
 
 /**
  * Value or array helper (Drizzle pattern).
@@ -139,102 +149,9 @@ type ColumnsToType<T> =
       }
     : never;
 
-/**
- * Extract relation types from a Relations definition
- * Requires schema context to look up referenced tables
- *
- * @template TRelations - Relations definition
- * @template TSchema - Full schema configuration
- *
- * @example
- * const usersRelations = relations(users, ({ many }) => ({
- *   posts: many(posts),
- * }));
- * type UserRelations = InferRelations<typeof usersRelations, typeof schema>;
- * // → { posts: Post[] }
- */
-export type InferRelations<
-  TRelations extends Relations<any, any>,
-  TSchema extends TablesRelationalConfig,
-> = TRelations extends Relations<any, infer TConfig>
-  ? Simplify<{
-      [K in keyof TConfig]: TConfig[K] extends Relation<any>
-        ? InferRelationTypeWithSchema<TConfig[K], TSchema>
-        : never;
-    }>
-  : never;
-
-/**
- * Infer type for a single relation with schema context
- * - one() → T | null (with schema lookup)
- * - many() → T[] (with schema lookup)
- *
- * Uses schema to find referenced table, then builds query result
- */
-type InferRelationTypeWithSchema<
-  TRel extends Relation<any>,
-  TSchema extends TablesRelationalConfig,
-> = BuildQueryResult<
-  TSchema,
-  FindTableByDBName<TSchema, TRel['referencedTableName']>,
-  true
-> extends infer TResult
-  ? TRel extends One<any, any>
-    ? TResult | (Equal<TRel['isNullable'], false> extends true ? null : never)
-    : TResult[]
-  : never;
-
-/**
- * Extract TablesRelationalConfig from a schema definition object
- * Used for type inference in tests and utilities
- *
- * @example
- * const schema = { users, posts };
- * type Schema = ExtractTablesWithRelations<typeof schema>;
- * type Relations = InferRelations<typeof usersRelations, Schema>;
- */
-export type ExtractTablesWithRelations<
-  TSchema extends Record<string, unknown>,
-> = {
-  [K in keyof TSchema]: TSchema[K] extends ConvexTable<infer TConfig>
-    ? {
-        tsName: K;
-        dbName: TConfig['name'];
-        columns: TConfig['columns'];
-        relations: {}; // Relations extracted separately
-      }
-    : never;
-};
-
 // ============================================================================
 // M3 Query Builder Types
 // ============================================================================
-
-/**
- * Schema configuration - map of table names to table configurations
- * Used by query builder to understand schema structure
- */
-export type TablesRelationalConfig = Record<string, TableRelationalConfig>;
-
-/**
- * Configuration for a single table including columns and relations
- * Built from ConvexTable + Relations definitions
- */
-export interface TableRelationalConfig<
-  TRelations extends Record<string, Relation<any>> = Record<
-    string,
-    Relation<any>
-  >,
-> {
-  /** Table name in TypeScript/database */
-  tsName: string;
-  /** Database table name (same as tsName for Convex) */
-  dbName: string;
-  /** Column builders */
-  columns: Record<string, ColumnBuilder<any, any, any>>;
-  /** Relations defined for this table */
-  relations: TRelations;
-}
 
 /**
  * Query configuration for findMany/findFirst
@@ -255,7 +172,7 @@ export type DBQueryConfig<
    */
   columns?:
     | {
-        [K in keyof TTableConfig['columns']]?: boolean;
+        [K in keyof TableColumns<TTableConfig>]?: boolean;
       }
     | undefined;
   /**
@@ -275,7 +192,7 @@ export type DBQueryConfig<
                 TSchema,
                 FindTableByDBName<
                   TSchema,
-                  TTableConfig['relations'][K]['referencedTableName']
+                  TTableConfig['relations'][K]['targetTableName']
                 >
               >
             | undefined;
@@ -290,50 +207,27 @@ export type DBQueryConfig<
     | Record<string, unknown>
     | ((
         fields: Simplify<
-          [TTableConfig['columns']] extends [never]
+          [TableColumns<TTableConfig>] extends [never]
             ? {}
-            : TTableConfig['columns']
+            : TableColumns<TTableConfig>
         >
       ) => Record<string, unknown>)
     | undefined;
+  /**
+   * Relation-aware filter object (v1)
+   */
+  where?: RelationsFilter<TTableConfig, TSchema> | undefined;
+  /**
+   * Order results - callback or object syntax
+   */
+  orderBy?: DBQueryConfigOrderBy<TTableConfig> | undefined;
+  /** Skip first N results */
+  offset?: number | undefined;
 } & (TRelationType extends 'many'
   ? {
-      /**
-       * Filter rows - receives raw column builders (not FieldReference)
-       * Following Drizzle pattern: pass columns directly, operators wrap at runtime
-       */
-      where?:
-        | ((
-            fields: Simplify<
-              [TTableConfig['columns']] extends [never]
-                ? {}
-                : TTableConfig['columns']
-            >,
-            operators: FilterOperators
-          ) => any)
-        | undefined;
-      /**
-       * Order results - accepts clause(s) or function
-       */
-      orderBy?:
-        | ValueOrArray<OrderByValue>
-        | ((
-            fields: Simplify<
-              [TTableConfig['columns']] extends [never]
-                ? {}
-                : TTableConfig['columns']
-            >,
-            operators: OrderDirection
-          ) => ValueOrArray<OrderByValue>)
-        | undefined;
       /** Limit number of results */
       limit?: number | undefined;
-    } & (TIsRoot extends true
-      ? {
-          /** Skip first N results */
-          offset?: number | undefined;
-        }
-      : {})
+    }
   : {});
 
 /**
@@ -384,6 +278,21 @@ export interface FilterOperators {
     values: readonly GetColumnData<TBuilder, 'raw'>[]
   ): any;
 
+  arrayContains<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    values: readonly GetColumnData<TBuilder, 'raw'>[]
+  ): any;
+
+  arrayContained<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    values: readonly GetColumnData<TBuilder, 'raw'>[]
+  ): any;
+
+  arrayOverlaps<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    values: readonly GetColumnData<TBuilder, 'raw'>[]
+  ): any;
+
   isNull<TBuilder extends ColumnBuilder<any, any, any>>(
     field: TBuilder extends { _: { notNull: true } } ? never : TBuilder
   ): any;
@@ -399,6 +308,16 @@ export interface FilterOperators {
   ): any;
 
   ilike<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    pattern: string
+  ): any;
+
+  notLike<TBuilder extends ColumnBuilder<any, any, any>>(
+    field: TBuilder,
+    pattern: string
+  ): any;
+
+  notIlike<TBuilder extends ColumnBuilder<any, any, any>>(
     field: TBuilder,
     pattern: string
   ): any;
@@ -450,6 +369,21 @@ export interface OrderDirection {
   ) => OrderByClause<TBuilder>;
 }
 
+export type DBQueryConfigOrderByCallback<TTable extends ConvexTable<any>> = (
+  table: TTable,
+  operators: OrderDirection
+) => ValueOrArray<OrderByValue> | undefined;
+
+export type DBQueryConfigOrderByObject<
+  TColumns extends Record<string, unknown>,
+> = {
+  [K in keyof TColumns]?: 'asc' | 'desc' | undefined;
+};
+
+export type DBQueryConfigOrderBy<TTableConfig extends TableRelationalConfig> =
+  | DBQueryConfigOrderByCallback<TTableConfig['table']>
+  | DBQueryConfigOrderByObject<TableColumns<TTableConfig>>;
+
 /**
  * Build query result type from configuration
  * Handles column selection and relation loading
@@ -467,12 +401,16 @@ type ColumnsSelection<T> = Assume<
   Record<string, unknown>
 >;
 
+type TableColumns<TTableConfig extends TableRelationalConfig> =
+  TTableConfig['table']['_']['columns'] &
+    SystemFields<TTableConfig['table']['_']['name']>;
+
 export type BuildQueryResult<
   TSchema extends TablesRelationalConfig,
   TTableConfig extends TableRelationalConfig,
   TFullSelection,
 > = Equal<TFullSelection, true> extends true
-  ? InferModelFromColumns<TTableConfig['columns']>
+  ? InferModelFromColumns<TableColumns<TTableConfig>>
   : TFullSelection extends Record<string, unknown>
     ? Simplify<
         (Exclude<TFullSelection['columns'], undefined> extends Record<
@@ -482,20 +420,20 @@ export type BuildQueryResult<
           ? NonUndefinedKeysOnly<
               ColumnsSelection<TFullSelection['columns']>
             > extends never
-            ? InferModelFromColumns<TTableConfig['columns']>
+            ? InferModelFromColumns<TableColumns<TTableConfig>>
             : InferModelFromColumns<{
                 [K in Equal<
                   Exclude<
                     ColumnsSelection<
                       TFullSelection['columns']
                     >[keyof ColumnsSelection<TFullSelection['columns']> &
-                      keyof TTableConfig['columns']],
+                      keyof TableColumns<TTableConfig>],
                     undefined
                   >,
                   false
                 > extends true
                   ? Exclude<
-                      keyof TTableConfig['columns'],
+                      keyof TableColumns<TTableConfig>,
                       NonUndefinedKeysOnly<
                         ColumnsSelection<TFullSelection['columns']>
                       >
@@ -510,9 +448,9 @@ export type BuildQueryResult<
                         ? K
                         : never;
                     }[keyof ColumnsSelection<TFullSelection['columns']>] &
-                      keyof TTableConfig['columns']]: TTableConfig['columns'][K];
+                      keyof TableColumns<TTableConfig>]: TableColumns<TTableConfig>[K];
               }>
-          : InferModelFromColumns<TTableConfig['columns']>) &
+          : InferModelFromColumns<TableColumns<TTableConfig>>) &
           (Exclude<TFullSelection['extras'], undefined> extends
             | Record<string, unknown>
             | ((...args: any[]) => Record<string, unknown>)
@@ -552,19 +490,17 @@ export type BuildQueryResult<
 export type BuildRelationResult<
   TSchema extends TablesRelationalConfig,
   TInclude extends Record<string, unknown>,
-  TRelations extends Record<string, Relation<any>>,
+  TRelations extends RelationsRecord,
 > = {
   [K in NonUndefinedKeysOnly<TInclude> &
     keyof TRelations]: TRelations[K] extends infer TRel extends Relation<any>
     ? BuildQueryResult<
         TSchema,
-        FindTableByDBName<TSchema, TRel['referencedTableName']>,
+        FindTableByDBName<TSchema, TRel['targetTableName']>,
         Assume<TInclude[K], true | Record<string, unknown>>
       > extends infer TResult
       ? TRel extends One<any, any>
-        ?
-            | TResult
-            | (Equal<TRel['isNullable'], false> extends true ? null : never)
+        ? TResult | (Equal<TRel['optional'], true> extends true ? null : never)
         : TResult[]
       : never
     : never;
@@ -623,45 +559,6 @@ export type PickColumns<
 type ExtractObjectValues<T> = T[keyof T];
 
 /**
- * Filter schema keys to only Relations for specific table
- * Pattern from Drizzle: drizzle-orm/src/relations.ts:124-128
- *
- * @template TSchema - Full schema with tables and Relations objects
- * @template TTableName - Database table name to match
- * @template K - Current key being checked
- */
-type TableRelationsKeysOnly<
-  TSchema extends Record<string, unknown>,
-  TTableName extends string,
-  K extends keyof TSchema,
-> = TSchema[K] extends Relations<any, any>
-  ? TSchema[K] extends { _tableName: TTableName }
-    ? K
-    : never
-  : never;
-
-/**
- * Extract relations config for a specific table from schema
- * Pattern from Drizzle: drizzle-orm/src/relations.ts:130-143
- *
- * Searches schema for Relations object matching table name,
- * extracts TConfig type parameter without widening to union
- *
- * @template TSchema - Full schema with tables and Relations objects
- * @template TTableName - Database table name
- */
-export type ExtractTableRelationsFromSchema<
-  TSchema extends Record<string, unknown>,
-  TTableName extends string,
-> = ExtractObjectValues<{
-  [K in keyof TSchema as TableRelationsKeysOnly<
-    TSchema,
-    TTableName,
-    K
-  >]: TSchema[K] extends Relations<any, infer TConfig> ? TConfig : never;
-}>;
-
-/**
  * Find table configuration by database name
  * Pattern from Drizzle: drizzle-orm/src/relations.ts:198-208
  *
@@ -673,7 +570,7 @@ export type FindTableByDBName<
   TSchema extends TablesRelationalConfig,
   TDBName extends string,
 > = ExtractObjectValues<{
-  [K in keyof TSchema as TSchema[K]['dbName'] extends TDBName
+  [K in keyof TSchema as TSchema[K]['name'] extends TDBName
     ? K
     : never]: TSchema[K];
 }>;

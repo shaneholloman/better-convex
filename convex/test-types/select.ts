@@ -1,9 +1,6 @@
 import {
-  asc,
-  buildSchema,
   convexTable,
   createDatabase,
-  desc,
   extractRelationsConfig,
   type InferInsertModel,
   type InferSelectModel,
@@ -16,47 +13,24 @@ import type { GenericId } from 'convex/values';
 import { UserRow } from './fixtures/types';
 import {
   bookAuthors,
-  bookAuthorsRelations,
   books,
-  booksRelations,
   cities,
-  citiesRelations,
   comments,
-  commentsRelations,
   node,
-  nodeRelations,
   posts,
-  postsRelations,
+  relations,
   users,
-  usersRelations,
 } from './tables-rel';
 import { type Equal, Expect } from './utils';
 
 // Build schema following Better Convex pattern
-const schema = {
-  users,
-  cities,
-  posts,
-  comments,
-  books,
-  bookAuthors,
-  node,
-  usersRelations,
-  citiesRelations,
-  postsRelations,
-  commentsRelations,
-  booksRelations,
-  bookAuthorsRelations,
-  nodeRelations,
-};
+const schemaConfig = relations;
+const edgeMetadata = extractRelationsConfig(relations);
 
-const schemaConfig = buildSchema<typeof schema>(schema);
-const edgeMetadata = extractRelationsConfig(schema);
+type SchemaUsersName = typeof schemaConfig.users.name;
+Expect<Equal<SchemaUsersName, 'users'>>;
 
-type SchemaUsersRelationsTableName = typeof schema.usersRelations._tableName;
-Expect<Equal<SchemaUsersRelationsTableName, 'users'>>;
-
-type SchemaKeys = keyof typeof schema;
+type SchemaKeys = keyof typeof schemaConfig;
 type ExpectedSchemaKeys =
   | 'users'
   | 'cities'
@@ -64,24 +38,8 @@ type ExpectedSchemaKeys =
   | 'comments'
   | 'books'
   | 'bookAuthors'
-  | 'node'
-  | 'usersRelations'
-  | 'citiesRelations'
-  | 'postsRelations'
-  | 'commentsRelations'
-  | 'booksRelations'
-  | 'bookAuthorsRelations'
-  | 'nodeRelations';
+  | 'node';
 Expect<Equal<SchemaKeys, ExpectedSchemaKeys>>;
-
-type SchemaUsersRelationsIsRelations =
-  typeof schema.usersRelations extends import('better-convex/orm').Relations<
-    any,
-    any
-  >
-    ? true
-    : false;
-Expect<Equal<SchemaUsersRelationsIsRelations, true>>;
 
 type SchemaUserRelationKeys = keyof typeof schemaConfig.users.relations;
 type ExpectedSchemaUserRelationKeys =
@@ -108,7 +66,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test 1: eq operator
 {
   const result = await db.query.users.findMany({
-    where: (users, { eq }) => eq(users.name, 'Alice'),
+    where: { name: 'Alice' },
   });
 
   type Expected = UserRow[];
@@ -119,7 +77,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test 2: Multiple filter operators
 {
   const result = await db.query.users.findMany({
-    where: (users, { gt, lt }) => gt(users.age, 18),
+    where: { age: { gt: 18, lt: 65 } },
   });
 
   type Expected = UserRow[];
@@ -130,7 +88,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test 3: inArray operator
 {
   const result = await db.query.users.findMany({
-    where: (users, { inArray }) => inArray(users.name, ['Alice', 'Bob']),
+    where: { name: { in: ['Alice', 'Bob'] } },
   });
 
   type Expected = UserRow[];
@@ -141,7 +99,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test 4: isNull / isNotNull for optional fields
 {
   const result = await db.query.users.findMany({
-    where: (users, { isNull }) => isNull(users.age),
+    where: { age: { isNull: true } },
   });
 
   type Expected = UserRow[];
@@ -156,7 +114,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test 5: orderBy asc
 {
   const result = await db.query.users.findMany({
-    orderBy: asc(schema.users.name),
+    orderBy: { name: 'asc' },
   });
 
   type Expected = UserRow[];
@@ -167,7 +125,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test 6: orderBy desc
 {
   const result = await db.query.users.findMany({
-    orderBy: desc(schema.users.age),
+    orderBy: { age: 'desc' },
   });
 
   type Expected = UserRow[];
@@ -204,8 +162,8 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test 9: Combined where + orderBy + limit
 {
   const result = await db.query.users.findMany({
-    where: (users, { gt }) => gt(users.age, 18),
-    orderBy: desc(schema.users.name),
+    where: { age: { gt: 18 } },
+    orderBy: { name: 'desc' },
     limit: 10,
     offset: 5,
   });
@@ -271,10 +229,10 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // _loadRelations() currently returns rows unchanged
 // {
 //   const result = await db.query.users.findMany({
-//     where: (users, { eq }) => eq(users.name, 'Alice'),
+//     where: { name: 'Alice' },
 //     with: {
 //       posts: {
-//         where: (posts, { eq }) => eq(posts.published, true),
+//         where: { published: true },
 //         columns: {
 //           title: true,
 //         },
@@ -305,7 +263,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test: findFirst returns T | undefined
 {
   const result = await db.query.users.findFirst({
-    where: (users, { eq }) => eq(users.name, 'Alice'),
+    where: { name: 'Alice' },
   });
 
   type Expected = UserRow | undefined;
@@ -316,7 +274,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test: findFirst with orderBy
 {
   const result = await db.query.users.findFirst({
-    orderBy: desc(schema.users.age),
+    orderBy: { age: 'desc' },
   });
 
   type Expected = UserRow | undefined;
@@ -327,7 +285,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test: findFirst with no match returns undefined
 {
   const result = await db.query.users.findFirst({
-    where: (users, { eq }) => eq(users.name, 'NonExistent'),
+    where: { name: 'NonExistent' },
   });
 
   type Expected = UserRow | undefined;
@@ -350,7 +308,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 
 // Test: InferSelectModel uses 'query' mode (includes null for nullable fields)
 {
-  type User = InferSelectModel<typeof schema.users>;
+  type User = InferSelectModel<typeof users>;
 
   // Age is nullable, should include null (query mode)
   Expect<Equal<User['age'], number | null>>;
@@ -371,11 +329,11 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   Expect<Equal<Row['age'], number | null>>;
 }
 
-// Test: FilterOperators use 'raw' mode (don't accept null)
+// Test: Filter values use 'raw' mode (don't accept null)
 {
   // eq should accept `number`, NOT `number | null`
   await db.query.users.findMany({
-    where: (users, { eq }) => eq(users.age, 30), // ✓ Should work
+    where: { age: 30 }, // ✓ Should work
   });
 
   // This test verifies eq doesn't accept null by attempting it in negative test section
@@ -389,8 +347,8 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test: where + orderBy + limit combined
 {
   const result = await db.query.users.findMany({
-    where: (users, { gt }) => gt(users.age, 18),
-    orderBy: desc(schema.users.age),
+    where: { age: { gt: 18 } },
+    orderBy: { age: 'desc' },
     limit: 10,
   });
 
@@ -406,7 +364,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
       name: true,
       email: true,
     },
-    where: (users, { eq }) => eq(users.name, 'Alice'),
+    where: { name: 'Alice' },
   });
 
   type Row = (typeof result)[number];
@@ -423,7 +381,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test: orderBy on posts table
 {
   const result = await db.query.posts.findMany({
-    orderBy: desc(schema.posts.title),
+    orderBy: { title: 'desc' },
   });
 
   // Should return array of posts
@@ -434,7 +392,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test: Complex where with multiple operators
 {
   const result = await db.query.users.findMany({
-    where: (users, { gt }) => gt(users.age, 18),
+    where: { age: { gt: 18 } },
   });
 
   type Expected = UserRow[];
@@ -446,10 +404,10 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // M5 STRING OPERATOR TESTS
 // ============================================================================
 
-// Test: startsWith operator
+// Test: like prefix pattern
 {
   const result = await db.query.users.findMany({
-    where: (users, { startsWith }) => startsWith(users.name, 'A'),
+    where: { name: { like: 'A%' } },
   });
 
   type Expected = UserRow[];
@@ -457,10 +415,10 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   Expect<Equal<Expected, typeof result>>;
 }
 
-// Test: endsWith operator
+// Test: like suffix pattern
 {
   const result = await db.query.users.findMany({
-    where: (users, { endsWith }) => endsWith(users.email, '@example.com'),
+    where: { email: { like: '%@example.com' } },
   });
 
   type Expected = UserRow[];
@@ -468,10 +426,10 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   Expect<Equal<Expected, typeof result>>;
 }
 
-// Test: contains operator
+// Test: like substring pattern
 {
   const result = await db.query.users.findMany({
-    where: (users, { contains }) => contains(users.name, 'ice'),
+    where: { name: { like: '%ice%' } },
   });
 
   type Expected = UserRow[];
@@ -486,7 +444,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test: orderBy with system field _creationTime
 {
   const result = await db.query.users.findMany({
-    orderBy: desc(schema.users._creationTime),
+    orderBy: { _creationTime: 'desc' },
   });
 
   type Expected = UserRow[];
@@ -497,7 +455,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Test: orderBy with nullable field
 {
   const result = await db.query.users.findMany({
-    orderBy: desc(schema.users.age), // age is nullable
+    orderBy: { age: 'desc' }, // age is nullable
   });
 
   type Expected = UserRow[];
@@ -550,7 +508,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 // Negative: orderBy on invalid field
 db.query.users.findMany({
   // @ts-expect-error - Property 'nonExistent' does not exist
-  orderBy: asc(schema.users.nonExistent),
+  orderBy: { nonExistent: 'asc' },
 });
 
 // Negative: Invalid default value type
@@ -568,13 +526,13 @@ db.query.users.findMany({
 // Invalid field in where clause
 db.query.users.findMany({
   // @ts-expect-error - Property 'invalidField' does not exist
-  where: (users, { eq }) => eq(users.invalidField, 'test'),
+  where: { invalidField: 'test' },
 });
 
 // Type mismatch in eq operator
 db.query.users.findMany({
   // @ts-expect-error - Argument of type 'string' is not assignable to parameter of type 'number'
-  where: (users, { eq }) => eq(users.age, 'not a number'),
+  where: { age: 'not a number' },
 });
 
 // Invalid field in orderBy
@@ -586,19 +544,19 @@ db.query.users.findMany({
 // Invalid operator for field type
 db.query.users.findMany({
   // @ts-expect-error - Argument of type 'number' is not assignable to parameter of type 'string'
-  where: (users, { gt }) => gt(users.name, 100),
+  where: { name: { gt: 100 } },
 });
 
 // inArray with wrong value type
 db.query.users.findMany({
   // @ts-expect-error - Type 'string' is not assignable to type 'number'
-  where: (users, { inArray }) => inArray(users.age, ['not', 'numbers']),
+  where: { age: { in: ['not', 'numbers'] } },
 });
 
 // FilterOperators use 'raw' mode - eq should NOT accept null
 db.query.users.findMany({
   // @ts-expect-error - Argument of type 'null' is not assignable to parameter of type 'number'
-  where: (users, { eq }) => eq(users.age, null),
+  where: { age: null },
 });
 
 // findFirst should not be assignable to array type
@@ -608,10 +566,10 @@ db.query.users.findMany({
   const arr: UserRow[] = [result];
 }
 
-// isNull on non-nullable field
+// isNull expects boolean
 db.query.users.findMany({
-  // @ts-expect-error - Argument of type notNull column is not assignable to parameter of type 'never'
-  where: (users, { isNull }) => isNull(users.name),
+  // @ts-expect-error - Type 'string' is not assignable to type 'true'
+  where: { name: { isNull: 'nope' } },
 });
 
 // Invalid column in selection
@@ -622,12 +580,11 @@ db.query.users.findMany({
   },
 });
 
-// Cannot use where in nested one() relation
+// Where in nested one() relation (allowed)
 db.query.posts.findMany({
   with: {
     author: {
-      // @ts-expect-error - Property 'name' does not exist on union type (one() relations don't support where)
-      where: (users, { eq }) => eq(users.name, 'Alice'),
+      where: { name: 'Alice' },
     },
   },
 });
@@ -672,20 +629,20 @@ db.query.posts.findMany({
 
 // B. Type Mismatches - Array for single value operator
 db.query.users.findMany({
-  // @ts-expect-error - Argument of type 'string[]' is not assignable to parameter of type 'string'
-  where: (users, { eq }) => eq(users.name, ['Alice', 'Bob']),
+  // @ts-expect-error - Type 'number' is not assignable to type 'string'
+  where: { name: { eq: 123 } },
 });
 
 // C. Invalid Operations - gt on boolean field
 // Note: This currently doesn't produce a type error due to type system limitations
 db.query.posts.findMany({
-  where: (posts, { gt }) => gt(posts.published, true),
+  where: { published: { gt: true } },
 });
 
 // C. Invalid Operations - lt on boolean field
 // Note: This currently doesn't produce a type error due to type system limitations
 db.query.posts.findMany({
-  where: (posts, { lt }) => lt(posts.published, false),
+  where: { published: { lt: false } },
 });
 
 // D. Invalid Query Config - Unknown query option
@@ -732,7 +689,7 @@ db.query.users.findMany({
 // Edge Case 1: Empty result arrays
 {
   const result = await db.query.users.findMany({
-    where: (users, { eq }) => eq(users.name, 'NonExistentUser12345'),
+    where: { name: 'NonExistentUser12345' },
   });
 
   // Should still be Array<UserRow>, not undefined or never
@@ -744,12 +701,12 @@ db.query.users.findMany({
 // Edge Case 2: Null handling in complex queries
 {
   const result = await db.query.users.findMany({
-    where: (users, { isNull }) => isNull(users.age),
+    where: { age: { isNull: true } },
     columns: {
       name: true,
       age: true,
     },
-    orderBy: desc(schema.users._creationTime),
+    orderBy: { _creationTime: 'desc' },
   });
 
   type Row = (typeof result)[number];
@@ -761,7 +718,7 @@ db.query.users.findMany({
 // Edge Case 3: System field ordering (_id, _creationTime)
 {
   const result = await db.query.users.findMany({
-    orderBy: asc(schema.users._creationTime),
+    orderBy: { _creationTime: 'asc' },
   });
 
   type Expected = UserRow[];
@@ -786,13 +743,13 @@ db.query.users.findMany({
 // Edge Case 5: Deeply nested query configs (type check only)
 {
   const result = await db.query.users.findMany({
-    where: (users, { eq }) => eq(users.name, 'Alice'),
+    where: { name: 'Alice' },
     columns: {
       name: true,
       email: true,
       age: true,
     },
-    orderBy: desc(schema.users.age),
+    orderBy: { age: 'desc' },
     limit: 10,
     offset: 5,
   });

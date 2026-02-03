@@ -9,21 +9,9 @@
  * - Index-aware optimization
  */
 
-import {
-  asc,
-  createDatabase,
-  desc,
-  eq,
-  extractRelationsConfig,
-} from 'better-convex/orm';
+import { createDatabase, extractRelationsConfig } from 'better-convex/orm';
 import { test as baseTest, describe, expect } from 'vitest';
-import schema, {
-  ormPosts,
-  ormPostsRelations,
-  ormSchema,
-  ormUsers,
-  ormUsersRelations,
-} from '../schema';
+import schema, { ormPosts, ormSchema } from '../schema';
 import { convexTest } from '../setup.testing';
 
 // ============================================================================
@@ -40,12 +28,7 @@ const test = baseTest.extend<{ ctx: any }>({
 });
 // Extract edges once for all tests
 const testSchema = ormSchema;
-const edges = extractRelationsConfig({
-  users: ormUsers,
-  posts: ormPosts,
-  usersRelations: ormUsersRelations,
-  postsRelations: ormPostsRelations,
-});
+const edges = extractRelationsConfig(ormSchema);
 
 // ============================================================================
 // Basic OrderBy Tests
@@ -102,7 +85,7 @@ describe('M5: OrderBy - Basic Ordering', () => {
 
     // Query with ascending order by createdAt
     const posts = await db.query.posts.findMany({
-      orderBy: asc(ormPosts.createdAt),
+      orderBy: (posts, { asc }) => asc(posts.createdAt),
     });
 
     expect(posts).toHaveLength(3);
@@ -161,7 +144,7 @@ describe('M5: OrderBy - Basic Ordering', () => {
 
     // Query with descending order by createdAt
     const posts = await db.query.posts.findMany({
-      orderBy: desc(ormPosts.createdAt),
+      orderBy: (posts, { desc }) => desc(posts.createdAt),
     });
 
     expect(posts).toHaveLength(3);
@@ -212,7 +195,7 @@ describe('M5: OrderBy - Basic Ordering', () => {
 
     // Query ordered by _creationTime (has default index)
     const postsAsc = await db.query.posts.findMany({
-      orderBy: asc(ormPosts._creationTime),
+      orderBy: { _creationTime: 'asc' },
     });
 
     expect(postsAsc).toHaveLength(3);
@@ -220,7 +203,7 @@ describe('M5: OrderBy - Basic Ordering', () => {
     expect(postsAsc[2].title).toBe('Third');
 
     const postsDesc = await db.query.posts.findMany({
-      orderBy: desc(ormPosts._creationTime),
+      orderBy: { _creationTime: 'desc' },
     });
 
     expect(postsDesc).toHaveLength(3);
@@ -285,8 +268,8 @@ describe('M5: OrderBy - Combined with WHERE', () => {
 
     // Query published posts ordered by createdAt
     const posts = await db.query.posts.findMany({
-      where: (cols, { eq }) => eq(cols.published, true),
-      orderBy: asc(ormPosts.createdAt),
+      where: { published: true },
+      orderBy: { createdAt: 'asc' },
     });
 
     expect(posts).toHaveLength(3);
@@ -352,7 +335,7 @@ describe('M5: OrderBy - Combined with Pagination', () => {
 
     // Get top 2 oldest posts
     const posts = await db.query.posts.findMany({
-      orderBy: asc(ormPosts.createdAt),
+      orderBy: { createdAt: 'asc' },
       limit: 2,
     });
 
@@ -412,7 +395,7 @@ describe('M5: OrderBy - Combined with Pagination', () => {
 
     // Get page 2 (skip first 2, take 2)
     const posts = await db.query.posts.findMany({
-      orderBy: asc(ormPosts.createdAt),
+      orderBy: { createdAt: 'asc' },
       limit: 2,
       offset: 2,
     });

@@ -9,23 +9,17 @@
  */
 
 import {
-  buildSchema,
   convexTable,
   createDatabase,
+  defineRelations,
   extractRelationsConfig,
   id,
-  relations,
   text,
 } from 'better-convex/orm';
 import type { StorageActionWriter } from 'convex/server';
 import { test as baseTest, describe, expect } from 'vitest';
 import type { MutationCtx } from '../_generated/server';
-import schema, {
-  ormPosts,
-  ormSchema,
-  ormUsers,
-  ormUsersRelations,
-} from '../schema';
+import schema, { ormPosts, ormUsers } from '../schema';
 import { convexTest } from '../setup.testing';
 
 // M6.5 Phase 2: Comments table and relations for nested testing (local to this test file)
@@ -35,25 +29,42 @@ const ormComments = convexTable('comments', {
   userId: id('users'),
 });
 
-const ormCommentsRelations = relations(ormComments, ({ one }) => ({
-  post: one(ormPosts, {
-    fields: [ormComments.postId],
-    references: [ormPosts._id],
-  }),
-  user: one(ormUsers, {
-    fields: [ormComments.userId],
-    references: [ormUsers._id],
-  }),
-}));
-
-// M6.5 Phase 2: Extend posts relations to include comments (local to this test file)
-const ormPostsRelationsWithComments = relations(ormPosts, ({ one, many }) => ({
-  user: one(ormUsers, {
-    fields: [ormPosts.userId],
-    references: [ormUsers._id],
-  }),
-  comments: many(ormComments),
-}));
+// M6.5 Phase 2: Relations for comments + posts (local to this test file)
+const relations = defineRelations(
+  {
+    users: ormUsers,
+    posts: ormPosts,
+    comments: ormComments,
+  },
+  (r) => ({
+    users: {
+      posts: r.many.posts({
+        from: r.users._id,
+        to: r.posts.userId,
+      }),
+    },
+    posts: {
+      user: r.one.users({
+        from: r.posts.userId,
+        to: r.users._id,
+      }),
+      comments: r.many.comments({
+        from: r.posts._id,
+        to: r.comments.postId,
+      }),
+    },
+    comments: {
+      post: r.one.posts({
+        from: r.comments.postId,
+        to: r.posts._id,
+      }),
+      user: r.one.users({
+        from: r.comments.userId,
+        to: r.users._id,
+      }),
+    },
+  })
+);
 
 import { v } from 'convex/values';
 // Local schema with comments table for Ents testing
@@ -83,17 +94,9 @@ const test = baseTest.extend<{
   },
 });
 
-// Test schema (use ormSchema from main schema, comments will be added to Ents schema by test setup)
-const testSchema = ormSchema;
-
-const edges = extractRelationsConfig({
-  users: ormUsers,
-  posts: ormPosts,
-  comments: ormComments,
-  usersRelations: ormUsersRelations,
-  postsRelations: ormPostsRelationsWithComments,
-  commentsRelations: ormCommentsRelations,
-});
+// Test schema (local defineRelations config)
+const testSchema = relations;
+const edges = extractRelationsConfig(relations);
 
 describe('M6.5 Phase 1: Relation Loading', () => {
   describe('One-to-Many Relations (users.posts)', () => {
@@ -627,7 +630,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       const users = await db.query.users.findMany({
         with: {
           posts: {
-            orderBy: asc(ormPosts.numLikes),
+            orderBy: { numLikes: 'asc' },
           },
         },
       });
@@ -674,7 +677,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       const users = await db.query.users.findMany({
         with: {
           posts: {
-            orderBy: desc(ormPosts.numLikes),
+            orderBy: { numLikes: 'desc' },
           },
         },
       });
@@ -808,7 +811,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       const users = await db.query.users.findMany({
         with: {
           posts: {
-            orderBy: desc(ormPosts.numLikes),
+            orderBy: { numLikes: 'desc' },
             limit: 3, // Get top 3 posts by likes
           },
         },

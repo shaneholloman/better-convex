@@ -2,7 +2,7 @@
 
 > Concise guide mapping Drizzle patterns to Prisma equivalents. Assumes proficiency in Prisma and Convex.
 
-**Version Note:** This doc covers both **stable (v0.45.1)** and **beta (v1.0.0-beta.13+)**. Sections marked with 🔶 indicate beta-specific API changes. Use stable API unless explicitly using beta.
+**Version Note:** Better Convex is upgrading to **Drizzle v1** (canonical PG integration). This doc is migrating to v1-only; legacy v0.45 references will be removed as part of the upgrade.
 
 ## Quick Mental Map
 

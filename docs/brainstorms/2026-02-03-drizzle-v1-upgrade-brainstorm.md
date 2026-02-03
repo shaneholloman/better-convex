@@ -16,12 +16,11 @@ The project goal is parity with Drizzle v1, so the simplest and most reliable st
 ## Key Decisions
 - **Breaking upgrade only**: remove v0.45 API entirely; no adapters or transitional shims.
 - **`drizzle-v1` is the canonical reference** for behavior, typings, and tests.
-- **Pick one primary Drizzle integration** (most relevant to Convex semantics) and mirror its typing patterns.
+- **Canonical integration: PostgreSQL** (mirror `drizzle-orm/type-tests/pg/*` and `pg-core` patterns).
 - **Tests are copied and adapted**, not reinvented; type tests and runtime tests should follow Drizzle structure.
 - **Convex-only constraints are explicit**: if Drizzle behavior cannot map to Convex, document the divergence and test it.
 
 ## Open Questions
-- Which Drizzle integration should be treated as the canonical reference for types and tests?
 - What Convex-specific divergences are unavoidable, and how should they be documented?
 - How should relation filtering and query object syntax map to Convex query capabilities without surprises?
 - What migration guidance is required to move users off v0.45 (docs only vs. codemods)?

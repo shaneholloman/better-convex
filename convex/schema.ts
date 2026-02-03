@@ -194,11 +194,10 @@ export const entDefinitions = getEntDefinitions(schema);
 
 import {
   boolean,
-  buildSchema,
   convexTable,
+  defineRelations,
   id,
   number,
-  relations,
   text,
 } from 'better-convex/orm';
 
@@ -267,32 +266,32 @@ export const ormAttachments = convexTable('attachments', {
 });
 
 // Schema Builder (M1)
-export const ormSchema = buildSchema({
-  users: ormUsers,
-  posts: ormPosts,
-  profiles: ormProfiles,
-  messages: ormMessages,
-  tags: ormTags,
-  messageDetails: ormMessageDetails,
-  photos: ormPhotos,
-  secrets: ormSecrets,
-  headshots: ormHeadshots,
-  headshotDetails: ormHeadshotDetails,
-  attachments: ormAttachments,
-});
+export const ormSchema = defineRelations(
+  {
+    users: ormUsers,
+    posts: ormPosts,
+    profiles: ormProfiles,
+    messages: ormMessages,
+    tags: ormTags,
+    messageDetails: ormMessageDetails,
+    photos: ormPhotos,
+    secrets: ormSecrets,
+    headshots: ormHeadshots,
+    headshotDetails: ormHeadshotDetails,
+    attachments: ormAttachments,
+  },
+  (r) => ({
+    users: {
+      posts: r.many.posts(),
+    },
+    posts: {
+      user: r.one.users({
+        from: r.posts.userId,
+        to: r.users._id,
+      }),
+      // Note: comments relation only in relation-loading.test.ts to avoid breaking other tests
+    },
+  })
+);
 
-// Relations Definitions (M2) - Simplified for M4 where filtering tests
-// Note: Each table can only have ONE relations() call (it attaches a Symbol)
-export const ormUsersRelations = relations(ormUsers, ({ many }) => ({
-  posts: many(ormPosts),
-}));
-
-export const ormPostsRelations = relations(ormPosts, ({ one }) => ({
-  user: one(ormUsers, {
-    fields: [ormPosts.userId],
-    references: [ormUsers._id],
-  }), // M6.5: Fixed to use actual userId field
-  // Note: comments relation only in relation-loading.test.ts to avoid breaking other tests
-}));
-
-// Note: ormCommentsRelations only in relation-loading.test.ts schema
+// Note: comments relations only in relation-loading.test.ts schema
