@@ -51,7 +51,7 @@ export class ConvexBooleanBuilder<
     if (this.config.notNull) {
       return v.boolean();
     }
-    return v.optional(v.boolean());
+    return v.optional(v.union(v.null(), v.boolean()));
   }
 
   /**

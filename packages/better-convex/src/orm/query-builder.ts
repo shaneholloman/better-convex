@@ -7,6 +7,7 @@
  */
 
 import type { GenericDatabaseReader } from 'convex/server';
+import type { KnownKeysOnly } from '../internal/types';
 import type { EdgeMetadata } from './extractRelationsConfig';
 import { GelRelationalQuery } from './query';
 import type {
@@ -69,7 +70,10 @@ export class RelationalQueryBuilder<
    * });
    */
   findMany<TConfig extends DBQueryConfig<'many', true, TSchema, TTableConfig>>(
-    config?: TConfig
+    config?: KnownKeysOnly<
+      TConfig,
+      DBQueryConfig<'many', true, TSchema, TTableConfig>
+    >
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
@@ -112,7 +116,10 @@ export class RelationalQueryBuilder<
       'limit'
     >,
   >(
-    config?: TConfig
+    config?: KnownKeysOnly<
+      TConfig,
+      Omit<DBQueryConfig<'many', true, TSchema, TTableConfig>, 'limit'>
+    >
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,

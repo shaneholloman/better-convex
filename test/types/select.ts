@@ -38,7 +38,8 @@ type ExpectedSchemaKeys =
   | 'comments'
   | 'books'
   | 'bookAuthors'
-  | 'node';
+  | 'node'
+  | 'metrics';
 Expect<Equal<SchemaKeys, ExpectedSchemaKeys>>;
 
 type SchemaUserRelationKeys = keyof typeof schemaConfig.users.relations;
@@ -107,6 +108,99 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   Expect<Equal<Expected, typeof result>>;
 }
 
+// Test 4b: notIn operator
+{
+  const result = await db.query.users.findMany({
+    where: { name: { notIn: ['Alice', 'Bob'] } },
+  });
+
+  type Expected = UserRow[];
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// ============================================================================
+// LOGICAL OPERATOR TYPE TESTS
+// ============================================================================
+
+// Test 4c: OR at table level
+{
+  const result = await db.query.users.findMany({
+    where: {
+      OR: [{ name: 'Alice' }, { name: 'Bob' }],
+    },
+  });
+
+  type Expected = UserRow[];
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// Test 4d: AND at table level
+{
+  const result = await db.query.users.findMany({
+    where: {
+      AND: [{ age: { gt: 18 } }, { age: { lt: 65 } }],
+    },
+  });
+
+  type Expected = UserRow[];
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// Test 4e: NOT at table level
+{
+  const result = await db.query.users.findMany({
+    where: {
+      NOT: { age: { isNull: true } },
+    },
+  });
+
+  type Expected = UserRow[];
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// Test 4f: OR inside a single column filter
+{
+  const result = await db.query.users.findMany({
+    where: {
+      age: { OR: [{ lt: 18 }, { gt: 65 }] },
+    },
+  });
+
+  type Expected = UserRow[];
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// Test 4g: AND inside a single column filter
+{
+  const result = await db.query.users.findMany({
+    where: {
+      age: { AND: [{ gt: 18 }, { lt: 65 }] },
+    },
+  });
+
+  type Expected = UserRow[];
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// Test 4h: NOT inside a single column filter
+{
+  const result = await db.query.users.findMany({
+    where: {
+      age: { NOT: { isNull: true } },
+    },
+  });
+
+  type Expected = UserRow[];
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
 // ============================================================================
 // ORDER BY TYPE TESTS
 // ============================================================================
@@ -126,6 +220,28 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 {
   const result = await db.query.users.findMany({
     orderBy: { age: 'desc' },
+  });
+
+  type Expected = UserRow[];
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// Test 6b: orderBy callback with column builder
+{
+  const result = await db.query.users.findMany({
+    orderBy: (users) => users.name,
+  });
+
+  type Expected = UserRow[];
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// Test 6c: orderBy callback with multiple fields
+{
+  const result = await db.query.users.findMany({
+    orderBy: (users, { asc, desc }) => [desc(users.age), asc(users.name)],
   });
 
   type Expected = UserRow[];
@@ -187,8 +303,6 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   });
 
   type Expected = Array<{
-    _id: string;
-    _creationTime: number;
     name: string;
     email: string;
   }>;
@@ -369,8 +483,6 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 
   type Row = (typeof result)[number];
   type Expected = {
-    _id: string;
-    _creationTime: number;
     name: string;
     email: string;
   };
@@ -572,6 +684,44 @@ db.query.users.findMany({
   where: { name: { isNull: 'nope' } },
 });
 
+// OR must be an array of filters
+db.query.users.findMany({
+  where: {
+    // @ts-expect-error - OR expects an array of filters
+    OR: { name: 'Alice' },
+  },
+});
+
+// Column-level OR must be an array of filters
+db.query.users.findMany({
+  where: {
+    age: {
+      // @ts-expect-error - OR expects an array of field filters
+      OR: { gt: 18 },
+    },
+  },
+});
+
+// isNull only accepts true
+db.query.users.findMany({
+  where: {
+    age: {
+      // @ts-expect-error - isNull only accepts true
+      isNull: false,
+    },
+  },
+});
+
+// NOT must be a single filter, not an array
+db.query.users.findMany({
+  where: {
+    age: {
+      // @ts-expect-error - NOT expects a single field filter
+      NOT: [{ gt: 18 }],
+    },
+  },
+});
+
 // Invalid column in selection
 db.query.users.findMany({
   columns: {
@@ -761,8 +911,6 @@ db.query.users.findMany({
     Equal<
       Row,
       {
-        _id: string;
-        _creationTime: number;
         name: string;
         email: string;
         age: number | null;

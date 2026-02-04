@@ -2,8 +2,10 @@
   "name": "better-convex",
   "private": true,
   "workspaces": [
+    "convex",
     "example",
     "packages/*",
+    "test",
     "www"
   ],
   "scripts": {
@@ -19,14 +21,13 @@
     "release": "bun build:pkg && changeset publish",
     "start": "bun --cwd www start",
     "test": "bun test && vitest run",
-    "typecheck": "turbo typecheck && tsgo --noEmit --project convex/tsconfig.json",
+    "typecheck": "turbo typecheck",
     "typecheck:watch": "tsc --noEmit --watch"
   },
   "dependencies": {
     "@convex-dev/better-auth": "0.10.10",
     "@tanstack/react-query": "5.90.20",
     "convex": "1.31.6",
-    "convex-ents": "^0.20.0",
     "convex-helpers": "0.1.111",
     "hono": "4.8.5",
     "next": "16.1.6",

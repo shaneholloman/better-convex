@@ -1657,7 +1657,7 @@ export class GelRelationalQuery<
 
   /**
    * Load one() relation (many-to-one or one-to-one)
-   * Example: posts.user where posts.userId → users._id
+   * Example: posts.author where posts.authorId → users._id
    * M6.5 Phase 2: Added support for nested relations
    */
   private async _loadOneRelation(
@@ -1774,7 +1774,7 @@ export class GelRelationalQuery<
 
   /**
    * Load many() relation (one-to-many)
-   * Example: users.posts where posts.userId → users._id
+   * Example: users.posts where posts.authorId → users._id
    *
    * For many() relations, use the configured from/to fields to match rows.
    * Supports .through() for many-to-many relations via a junction table.

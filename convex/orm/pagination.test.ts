@@ -4,34 +4,27 @@
  * Tests for .paginate() method with Convex-native cursor pagination (O(1) performance)
  */
 
-import { createDatabase, extractRelationsConfig } from 'better-convex/orm';
 import { expect, test } from 'vitest';
-import schema, { ormPosts, ormSchema, ormUsers } from '../schema';
+import schema from '../schema';
 import { convexTest, runCtx } from '../setup.testing';
-
-// Create test schema for ORM
-const testSchema = ormSchema;
-
-// Extract edges for relation loading
-const edges = extractRelationsConfig(ormSchema);
 
 test('basic pagination - null cursor returns first page', async () => {
   const t = convexTest(schema);
 
   // Setup: Create 50 users
   await t.run(async (baseCtx) => {
-    const ctx = await runCtx(baseCtx);
     for (let i = 0; i < 50; i++) {
-      await ctx
-        .table('users')
-        .insert({ name: `User ${i}`, email: `user${i}@example.com` });
+      await baseCtx.db.insert('users', {
+        name: `User ${i}`,
+        email: `user${i}@example.com`,
+      });
     }
   });
 
   // Test: Paginate first page
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
-    const db = createDatabase(baseCtx.db, testSchema, edges);
+    const db = ctx.table;
 
     const result = await db.query.users.paginate(undefined, {
       cursor: null,
@@ -49,18 +42,18 @@ test('pagination - multiple pages with cursor', async () => {
 
   // Setup: Create 25 users
   await t.run(async (baseCtx) => {
-    const ctx = await runCtx(baseCtx);
     for (let i = 0; i < 25; i++) {
-      await ctx
-        .table('users')
-        .insert({ name: `User ${i}`, email: `user${i}@example.com` });
+      await baseCtx.db.insert('users', {
+        name: `User ${i}`,
+        email: `user${i}@example.com`,
+      });
     }
   });
 
   // Test: Paginate through all pages
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
-    const db = createDatabase(baseCtx.db, testSchema, edges);
+    const db = ctx.table;
 
     // Page 1
     const page1 = await db.query.users.paginate(undefined, {
@@ -105,7 +98,7 @@ test('pagination - empty result set', async () => {
   // Test: Paginate empty table
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
-    const db = createDatabase(baseCtx.db, testSchema, edges);
+    const db = ctx.table;
 
     const result = await db.query.users.paginate(undefined, {
       cursor: null,
@@ -123,18 +116,18 @@ test('pagination - single page (isDone: true)', async () => {
 
   // Setup: Create 5 users (less than page size)
   await t.run(async (baseCtx) => {
-    const ctx = await runCtx(baseCtx);
     for (let i = 0; i < 5; i++) {
-      await ctx
-        .table('users')
-        .insert({ name: `User ${i}`, email: `user${i}@example.com` });
+      await baseCtx.db.insert('users', {
+        name: `User ${i}`,
+        email: `user${i}@example.com`,
+      });
     }
   });
 
   // Test: Paginate with larger page size
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
-    const db = createDatabase(baseCtx.db, testSchema, edges);
+    const db = ctx.table;
 
     const result = await db.query.users.paginate(undefined, {
       cursor: null,
@@ -152,9 +145,8 @@ test('pagination with WHERE filter', async () => {
 
   // Setup: Create users with different ages
   await t.run(async (baseCtx) => {
-    const ctx = await runCtx(baseCtx);
     for (let i = 0; i < 30; i++) {
-      await ctx.table('users').insert({
+      await baseCtx.db.insert('users', {
         name: `User ${i}`,
         email: `user${i}@example.com`,
         age: 20 + (i % 10), // Ages 20-29
@@ -165,7 +157,7 @@ test('pagination with WHERE filter', async () => {
   // Test: Paginate only users age >= 25
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
-    const db = createDatabase(baseCtx.db, testSchema, edges);
+    const db = ctx.table;
 
     const result = await db.query.users.paginate(
       {
@@ -190,12 +182,12 @@ test('pagination with ORDER BY ascending', async () => {
 
   // Setup: Create users with specific names
   await t.run(async (baseCtx) => {
-    const ctx = await runCtx(baseCtx);
     const names = ['Charlie', 'Alice', 'Bob', 'David', 'Eve'];
     for (const name of names) {
-      await ctx
-        .table('users')
-        .insert({ name, email: `${name.toLowerCase()}@example.com` });
+      await baseCtx.db.insert('users', {
+        name,
+        email: `${name.toLowerCase()}@example.com`,
+      });
     }
   });
 
@@ -204,7 +196,7 @@ test('pagination with ORDER BY ascending', async () => {
   // Since 'name' has no index, this falls back to _creationTime ordering.
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
-    const db = createDatabase(baseCtx.db, testSchema, edges);
+    const db = ctx.table;
 
     const result = await db.query.users.paginate(
       {
@@ -230,17 +222,17 @@ test('pagination with ORDER BY descending', async () => {
 
   // Setup: Create posts with different like counts
   await t.run(async (baseCtx) => {
-    const ctx = await runCtx(baseCtx);
-    const userId = await ctx
-      .table('users')
-      .insert({ name: 'Alice', email: 'alice@example.com' });
+    const userId = await baseCtx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
 
     for (let i = 1; i <= 20; i++) {
-      await ctx.table('posts').insert({
+      await baseCtx.db.insert('posts', {
         text: `Post ${i}`,
         title: `Post ${i}`,
         type: 'text',
-        userId,
+        authorId: userId,
         numLikes: i * 10,
       });
     }
@@ -249,7 +241,7 @@ test('pagination with ORDER BY descending', async () => {
   // Test: Paginate posts by likes descending
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
-    const db = createDatabase(baseCtx.db, testSchema, edges);
+    const db = ctx.table;
 
     const result = await db.query.posts.paginate(
       {
@@ -276,18 +268,18 @@ test('pagination - cursor stability (replaying cursor returns same results)', as
 
   // Setup: Create 15 users
   await t.run(async (baseCtx) => {
-    const ctx = await runCtx(baseCtx);
     for (let i = 0; i < 15; i++) {
-      await ctx
-        .table('users')
-        .insert({ name: `User ${i}`, email: `user${i}@example.com` });
+      await baseCtx.db.insert('users', {
+        name: `User ${i}`,
+        email: `user${i}@example.com`,
+      });
     }
   });
 
   // Test: Replay same cursor multiple times
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
-    const db = createDatabase(baseCtx.db, testSchema, edges);
+    const db = ctx.table;
 
     // Get first page
     const page1 = await db.query.users.paginate(undefined, {
@@ -318,12 +310,12 @@ test('pagination - default ordering (_creationTime desc)', async () => {
 
   // Setup: Create users in sequence
   await t.run(async (baseCtx) => {
-    const ctx = await runCtx(baseCtx);
     const userIds = [];
     for (let i = 0; i < 10; i++) {
-      const id = await ctx
-        .table('users')
-        .insert({ name: `User ${i}`, email: `user${i}@example.com` });
+      const id = await baseCtx.db.insert('users', {
+        name: `User ${i}`,
+        email: `user${i}@example.com`,
+      });
       userIds.push(id);
     }
   });
@@ -331,7 +323,7 @@ test('pagination - default ordering (_creationTime desc)', async () => {
   // Test: Paginate without explicit orderBy (should default to _creationTime desc)
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
-    const db = createDatabase(baseCtx.db, testSchema, edges);
+    const db = ctx.table;
 
     const result = await db.query.users.paginate(undefined, {
       cursor: null,
@@ -352,18 +344,18 @@ test('pagination - large result set (100+ items)', async () => {
 
   // Setup: Create 150 users
   await t.run(async (baseCtx) => {
-    const ctx = await runCtx(baseCtx);
     for (let i = 0; i < 150; i++) {
-      await ctx
-        .table('users')
-        .insert({ name: `User ${i}`, email: `user${i}@example.com` });
+      await baseCtx.db.insert('users', {
+        name: `User ${i}`,
+        email: `user${i}@example.com`,
+      });
     }
   });
 
   // Test: Paginate through large dataset
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
-    const db = createDatabase(baseCtx.db, testSchema, edges);
+    const db = ctx.table;
 
     let cursor: string | null = null;
     let totalFetched = 0;
@@ -396,17 +388,17 @@ test('pagination with combined WHERE and ORDER BY', async () => {
 
   // Setup: Create posts with different publish status and likes
   await t.run(async (baseCtx) => {
-    const ctx = await runCtx(baseCtx);
-    const userId = await ctx
-      .table('users')
-      .insert({ name: 'Alice', email: 'alice@example.com' });
+    const userId = await baseCtx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
 
     for (let i = 0; i < 30; i++) {
-      await ctx.table('posts').insert({
+      await baseCtx.db.insert('posts', {
         text: `Post ${i}`,
         title: `Post ${i}`,
         type: 'text',
-        userId,
+        authorId: userId,
         published: i % 3 === 0,
         numLikes: i,
       });
@@ -416,7 +408,7 @@ test('pagination with combined WHERE and ORDER BY', async () => {
   // Test: Paginate published posts ordered by likes
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
-    const db = createDatabase(baseCtx.db, testSchema, edges);
+    const db = ctx.table;
 
     const result = await db.query.posts.paginate(
       {

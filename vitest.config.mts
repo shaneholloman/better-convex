@@ -13,7 +13,12 @@ export default defineConfig({
   test: {
     environment: 'edge-runtime',
     server: { deps: { inline: ['convex-test'] } },
-    include: ['convex/**/*.test.ts', 'convex/**/*.test.tsx'],
+    include: [
+      'convex/**/*.test.ts',
+      'convex/**/*.test.tsx',
+      'test/**/*.test.ts',
+      'test/**/*.test.tsx',
+    ],
     exclude: ['**/node_modules/**', '**/tmp/**'],
   },
 });

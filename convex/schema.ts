@@ -1,297 +1,163 @@
-import { v } from 'convex/values';
 import {
-  defineEnt,
-  defineEntFromTable,
-  defineEntSchema,
-  getEntDefinitions,
-} from 'convex-ents';
-import { migrationsTable } from 'convex-helpers/server/migrations';
-
-const schema = defineEntSchema(
-  {
-    migrations: defineEntFromTable(migrationsTable),
-    messages: defineEnt({
-      text: v.string(),
-    })
-      .edge('user')
-      .edges('tags')
-      .edges('messageDetails', { ref: true }),
-
-    users: defineEnt({
-      name: v.string(),
-    })
-      .field('email', v.string(), { unique: true })
-      .field('height', v.optional(v.number()), { index: true })
-      .field('age', v.optional(v.number()))
-      .field(
-        'status',
-        v.optional(
-          v.union(
-            v.literal('active'),
-            v.literal('pending'),
-            v.literal('deleted')
-          )
-        )
-      )
-      .field('role', v.optional(v.string()))
-      .field('deletedAt', v.optional(v.union(v.number(), v.null())))
-      .edge('profile', { ref: true })
-      .edges('messages', { ref: true })
-      .edges('followers', { to: 'users', inverse: 'followees' })
-      .edges('friends', { to: 'users' })
-      .edge('secret', { ref: 'ownerId' })
-      .edge('photo', { ref: 'user' })
-      .edges('ownedPhotos', { to: 'photos', ref: 'ownerId' })
-      .edges('headshots', { ref: true }),
-
-    profiles: defineEnt({
-      bio: v.string(),
-    }).edge('user'),
-
-    photos: defineEnt({
-      url: v.string(),
-    })
-      .edge('user', { field: 'user', optional: true })
-      .edge('owner', { field: 'ownerId', to: 'users', optional: true }),
-
-    headshots: defineEnt({
-      taken: v.string(),
-    })
-      .edge('user')
-      .edge('file', { to: '_storage', deletion: 'hard' })
-      .edge('job', {
-        field: 'jobId',
-        to: '_scheduled_functions',
-        deletion: 'hard',
-        optional: true,
-      })
-      .edge('detail', {
-        field: 'detailId',
-        to: 'headshotDetails',
-        deletion: 'soft',
-        optional: true,
-      })
-      .deletion('soft'),
-
-    headshotDetails: defineEnt({})
-      .edge('headshot', { ref: true })
-      .deletion('soft'),
-
-    tags: defineEnt({
-      name: v.string(),
-    }).edges('messages'),
-
-    posts: defineEnt({
-      text: v.string(),
-    })
-      .field('numLikes', v.number(), { default: 0 })
-      .field('type', v.union(v.literal('text'), v.literal('video')), {
-        default: 'text',
-      })
-      .field('title', v.optional(v.string()))
-      .field('content', v.optional(v.string()))
-      .field('published', v.optional(v.boolean()))
-      .field('userId', v.optional(v.id('users')))
-      .field('createdAt', v.optional(v.number()))
-      .index('numLikesAndType', ['type', 'numLikes'])
-      .searchIndex('text', {
-        searchField: 'text',
-        filterFields: ['type'],
-      })
-      .edge('attachment', { ref: 'originId' })
-      .edge('secondaryAttachment', { ref: 'copyId', to: 'attachments' })
-      .edges('allAttachments', { to: 'attachments', ref: 'shareId' })
-      .edges('anyAttachments', {
-        to: 'attachments',
-        table: 'posts_to_anyattachments',
-      })
-      .edges('anyAttachments2', {
-        to: 'attachments',
-        table: 'posts_to_anyattachments2',
-        field: 'owningPostId',
-      }),
-
-    attachments: defineEnt({})
-      .edge('origin', { to: 'posts', field: 'originId' })
-      .edge('copy', { to: 'posts', field: 'copyId' })
-      .edge('share', { to: 'posts', field: 'shareId' })
-      .edges('in', { to: 'posts', table: 'posts_to_anyattachments' })
-      .edges('in2', {
-        to: 'posts',
-        table: 'posts_to_anyattachments2',
-        field: 'attachId',
-      })
-      .edges('siblings', { to: 'attachments', table: 'attachment_to_siblings' })
-      .edges('replaced', {
-        to: 'attachments',
-        inverse: 'replacing',
-        table: 'attachment_to_replaced',
-      })
-      .edges('siblings2', {
-        to: 'attachments',
-        table: 'attachment_to_siblings2',
-        field: 'sibling1Id',
-        inverseField: 'sibling2Id',
-      })
-      .edges('replaced2', {
-        to: 'attachments',
-        inverse: 'replacing2',
-        table: 'attachment_to_replaced2',
-        field: 'r1Id',
-        inverseField: 'r2Id',
-      }),
-
-    secrets: defineEnt({
-      value: v.string(),
-    }).edge('user', { field: 'ownerId' }),
-
-    messageDetails: defineEnt({
-      value: v.string(),
-    }).edge('message'),
-
-    teams: defineEnt({})
-      .edges('members', { ref: true, deletion: 'soft' })
-      .deletion('scheduled'),
-
-    members: defineEnt({})
-      .edge('team')
-      .edges('datas', { ref: true })
-      .edge('badge', { ref: 'memberId' })
-      .deletion('soft'),
-
-    datas: defineEnt({}).edge('member'),
-
-    badges: defineEnt({}).edge('member', { field: 'memberId', optional: true }),
-
-    imported: defineEnt(
-      v.union(
-        v.object({
-          type: v.literal('num'),
-          num: v.number(),
-        }),
-        v.object({
-          type: v.literal('str'),
-          str: v.string(),
-        })
-      )
-    )
-      .field('id', v.string(), { unique: true })
-      .index('typeAndId', ['type', 'id']),
-  },
-  { schemaValidation: true }
-);
-
-export default schema;
-
-export const entDefinitions = getEntDefinitions(schema);
-
-// ============================================================================
-// Better Convex ORM Schema (M1-M4 Testing)
-// ============================================================================
-// Parallel convexTable-based schema for M1-M4 tests
-// Note: This is the "best equivalent we can do so far" - mirrors defineEnt
-// structure but uses convexTable API for Better Convex ORM testing
-
-import {
+  bigint,
   boolean,
   convexTable,
   defineRelations,
+  defineSchema,
   id,
+  index,
+  integer,
   number,
   text,
 } from 'better-convex/orm';
 
-// Table Definitions (M1: Schema Foundation)
-export const ormUsers = convexTable('users', {
+// ============================================================================
+// Better Convex ORM Schema (Drizzle-style)
+// ============================================================================
+
+export const users = convexTable('users', {
   name: text().notNull(),
   email: text().notNull(),
   height: number(),
-  age: number(),
+  age: integer(),
   status: text(),
   role: text(),
   deletedAt: number(),
+  cityId: id('cities'),
+  homeCityId: id('cities'),
 });
 
-export const ormPosts = convexTable('posts', {
-  text: text().notNull(),
-  numLikes: number().notNull(),
-  type: text().notNull(),
-  // Additional fields for testing ordering and string operators
-  title: text(),
-  content: text(),
-  published: boolean(),
-  userId: id('users'),
-  createdAt: number(),
-});
-
-// Note: ormComments table only in relation-loading.test.ts schema
-
-export const ormProfiles = convexTable('profiles', {
-  bio: text().notNull(),
-});
-
-export const ormMessages = convexTable('messages', {
-  text: text().notNull(),
-});
-
-export const ormTags = convexTable('tags', {
+export const cities = convexTable('cities', {
   name: text().notNull(),
 });
 
-export const ormMessageDetails = convexTable('messageDetails', {
-  value: text().notNull(),
-});
-
-export const ormPhotos = convexTable('photos', {
-  url: text().notNull(),
-  user: id('users'),
-  ownerId: id('users'),
-});
-
-export const ormSecrets = convexTable('secrets', {
-  value: text().notNull(),
-  ownerId: id('users').notNull(),
-});
-
-export const ormHeadshots = convexTable('headshots', {
-  taken: text().notNull(),
-});
-
-export const ormHeadshotDetails = convexTable('headshotDetails', {});
-
-export const ormAttachments = convexTable('attachments', {
-  originId: id('posts'),
-  copyId: id('posts'),
-  shareId: id('posts'),
-});
-
-// Schema Builder (M1)
-export const ormSchema = defineRelations(
+export const posts = convexTable(
+  'posts',
   {
-    users: ormUsers,
-    posts: ormPosts,
-    profiles: ormProfiles,
-    messages: ormMessages,
-    tags: ormTags,
-    messageDetails: ormMessageDetails,
-    photos: ormPhotos,
-    secrets: ormSecrets,
-    headshots: ormHeadshots,
-    headshotDetails: ormHeadshotDetails,
-    attachments: ormAttachments,
+    text: text().notNull(),
+    numLikes: number().notNull(),
+    type: text().notNull(),
+    title: text(),
+    content: text(),
+    published: boolean(),
+    authorId: id('users'),
+    createdAt: number(),
   },
-  (r) => ({
-    users: {
-      posts: r.many.posts(),
-    },
-    posts: {
-      user: r.one.users({
-        from: r.posts.userId,
-        to: r.users._id,
-      }),
-      // Note: comments relation only in relation-loading.test.ts to avoid breaking other tests
-    },
-  })
+  (t) => [index('numLikesAndType').on(t.type, t.numLikes)]
+);
+posts.searchIndex('text', { searchField: 'text', filterFields: ['type'] });
+
+export const comments = convexTable('comments', {
+  postId: id('posts').notNull(),
+  authorId: id('users'),
+  text: text().notNull(),
+});
+
+export const books = convexTable('books', {
+  name: text().notNull(),
+});
+
+export const bookAuthors = convexTable('bookAuthors', {
+  bookId: id('books').notNull(),
+  authorId: id('users').notNull(),
+  role: text().notNull(),
+});
+
+export const node = convexTable('node', {
+  parentId: id('node'),
+  leftId: id('node'),
+  rightId: id('node'),
+});
+
+export const metrics = convexTable(
+  'metrics',
+  {
+    total: bigint().notNull(),
+    ratio: number(),
+    active: boolean().notNull(),
+    ownerId: id('users'),
+  },
+  (t) => [index('by_owner').on(t.ownerId)]
 );
 
-// Note: comments relations only in relation-loading.test.ts schema
+export const tables = {
+  users,
+  cities,
+  posts,
+  comments,
+  books,
+  bookAuthors,
+  node,
+  metrics,
+};
+
+export default defineSchema(tables);
+
+// ============================================================================
+// ORM Relations Config
+// ============================================================================
+
+export const relations = defineRelations(tables, (r) => ({
+  users: {
+    city: r.one.cities({
+      from: r.users.cityId,
+      to: r.cities._id,
+      alias: 'UsersInCity',
+    }),
+    homeCity: r.one.cities({
+      from: r.users.homeCityId,
+      to: r.cities._id,
+    }),
+    posts: r.many.posts({
+      from: r.users._id,
+      to: r.posts.authorId,
+    }),
+    comments: r.many.comments({
+      from: r.users._id,
+      to: r.comments.authorId,
+    }),
+  },
+  cities: {
+    users: r.many.users({
+      from: r.cities._id,
+      to: r.users.cityId,
+      alias: 'UsersInCity',
+    }),
+  },
+  posts: {
+    author: r.one.users({
+      from: r.posts.authorId,
+      to: r.users._id,
+    }),
+    comments: r.many.comments({
+      from: r.posts._id,
+      to: r.comments.postId,
+    }),
+  },
+  comments: {
+    post: r.one.posts({
+      from: r.comments.postId,
+      to: r.posts._id,
+    }),
+    author: r.one.users({
+      from: r.comments.authorId,
+      to: r.users._id,
+    }),
+  },
+  books: {
+    authors: r.many.users({
+      from: r.books._id.through(r.bookAuthors.bookId),
+      to: r.users._id.through(r.bookAuthors.authorId),
+    }),
+  },
+  bookAuthors: {
+    book: r.one.books({
+      from: r.bookAuthors.bookId,
+      to: r.books._id,
+    }),
+    author: r.one.users({
+      from: r.bookAuthors.authorId,
+      to: r.users._id,
+    }),
+  },
+}));

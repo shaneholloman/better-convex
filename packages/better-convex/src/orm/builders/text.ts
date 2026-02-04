@@ -52,7 +52,7 @@ export class ConvexTextBuilder<
     if (this.config.notNull) {
       return v.string();
     }
-    return v.optional(v.string());
+    return v.optional(v.union(v.null(), v.string()));
   }
 
   /**

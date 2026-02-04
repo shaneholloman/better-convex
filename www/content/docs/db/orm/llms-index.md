@@ -5,184 +5,131 @@ description: Structured index of Better-Convex ORM documentation for AI assistan
 
 # Better-Convex ORM Documentation Index
 
-**For LLM/AI Discovery**: This file provides a structured index of all Better-Convex ORM documentation for AI assistants and code completion tools.
+This file provides a structured index of Better‑Convex ORM documentation for AI assistants and code completion tools.
 
-## Core Concepts (M1-M6.5)
+## Core Concepts
 
 **Getting Started:**
 - `/docs/db/orm` - Overview, installation, and value proposition
-- `/docs/db/orm/quickstart` - 5-minute tutorial with backend queries
+- `/docs/db/orm/quickstart` - 5‑minute tutorial with backend queries
 
 **Schema Definition:**
-- `/docs/db/orm/schema` - Table definitions, field types, and type inference
+- `/docs/db/orm/schema` - Table definitions, field types, indexes, and type inference
 
 **Relations:**
-- `/docs/db/orm/relations` - Define one-to-one, one-to-many, many-to-many relationships
+- `/docs/db/orm/relations` - One‑to‑one, one‑to‑many, many‑to‑many relations
 
 **Querying Data:**
-- `/docs/db/orm/queries` - findMany(), findFirst(), paginate(), where filtering, orderBy
+- `/docs/db/orm/queries` - findMany(), findFirst(), paginate(), filters, orderBy
 
-**Mutations (Coming Soon):**
-- `/docs/db/orm/mutations` - insert(), update(), delete() operations (planned API)
+**Mutations:**
+- `/docs/db/orm/mutations` - insert(), update(), delete(), returning(), onConflictDoUpdate()
 
 ## Migration & Comparison
 
-**Drizzle ORM:**
-- `/docs/db/orm/comparison` - Side-by-side API comparison and migration guide
+- `/docs/db/orm/comparison` - Drizzle v1 mapping and migration guidance
 
 ## Reference
 
-**API Documentation:**
-- `/docs/db/orm/api-reference` - Complete API surface, all operators, TypeScript signatures
+- `/docs/db/orm/api-reference` - Full API surface and TypeScript helpers
+- `/docs/db/orm/limitations` - Differences and performance guidance
 
-**Limitations & Performance:**
-- `/docs/db/orm/limitations` - Category 2/4 features, workarounds, performance guidance
-
-## Quick Reference (M1-M6.5)
+## Quick Reference
 
 ### Key APIs
 
 **Schema:**
 ```ts
-convexTable(name, columns)              // Define table
-relations(table, callback)             // Define relations
-buildSchema(rawSchema)                 // Build typed schema
-extractRelationsConfig(schema)         // Build relation edges
+convexTable(name, columns)
+defineRelations(schema, callback)
+extractRelationsConfig(schema)
 ```
 
-**Queries (Implemented):**
+**Queries:**
 ```ts
 const db = createDatabase(ctx.db, ormSchema, ormEdges)
 
 await db.query.table.findMany({
-  where: (cols, ops) => ops.eq(cols.field, value),
-  orderBy: (cols, { desc }) => desc(cols._creationTime),
+  where: { field: value },
+  orderBy: { _creationTime: 'desc' },
   limit: 10,
   offset: 0,
 })
 
 await db.query.table.findFirst({
-  where: (cols, { eq }) => eq(cols.field, value),
+  where: { field: value },
 })
 
 await db.query.table.paginate(
-  { where: (cols, { eq }) => eq(cols.active, true) },
+  { where: { active: true } },
   { cursor: null, numItems: 20 }
 )
 ```
 
-**Mutations (Not Yet Implemented):**
+**Mutations:**
 ```ts
-// Use native Convex mutations for now:
-ctx.db.insert(table, data)
-ctx.db.patch(id, data)
-ctx.db.delete(id)
+await db.insert(table).values(data)
+await db.update(table).set(data).where(eq(table._id, id))
+await db.delete(table).where(eq(table._id, id))
 ```
 
-**Operators (Implemented):**
+**Object `where` operators:**
 ```ts
-eq(field, value)       // Equal
-ne(field, value)       // Not equal
-gt(field, value)       // Greater than
-lt(field, value)       // Less than
-gte(field, value)      // Greater than or equal
-lte(field, value)      // Less than or equal
-and(...conditions)     // Logical AND
-or(...conditions)      // Logical OR
-not(condition)         // Logical NOT
-isNull(field)          // Null/undefined check
-isNotNull(field)       // Not null/undefined check
+{ field: value }
+{ field: { ne: value } }
+{ field: { gt: value } }
+{ field: { gte: value } }
+{ field: { lt: value } }
+{ field: { lte: value } }
+{ field: { in: [a, b] } }
+{ field: { notIn: [a, b] } }
+{ field: { isNull: true } }
+{ field: { isNotNull: true } }
+{ AND: [ ... ] }
+{ OR: [ ... ] }
+{ NOT: { ... } }
 ```
 
-### Feature Categories (M1-M6.5)
+**Mutation filter helpers:**
+```ts
+eq(field, value)
+ne(field, value)
+gt(field, value)
+gte(field, value)
+lt(field, value)
+lte(field, value)
+inArray(field, values)
+notInArray(field, values)
+and(...filters)
+or(...filters)
+not(filter)
+isNull(field)
+isNotNull(field)
+```
 
-**✅ Implemented:**
+### Feature Overview
+
+**Core features:**
 - Schema definition (convexTable, column builders)
 - Relations definition and loading (one, many, with)
 - Query operations (findMany, findFirst, paginate)
-- Where filtering (eq, ne, gt, lt, gte, lte, and, or, not)
+- Where filtering (object filters)
 - Pagination (limit, offset)
-- Order by (multi-field, index-aware first sort)
+- Order by (multi‑field, index‑aware first sort)
 - Type inference
-- Column selection (post-fetch)
-- String operators (post-fetch)
+- Column selection (post‑fetch)
+- String operators (post‑fetch)
+- Mutations (insert, update, delete, returning)
 
-**🚧 Coming Soon:**
-- Mutations (insert, update, delete)
-
-**⚠️ Limited/Workaround:**
-- String operators and column selection are post-fetch
-- Relation filters for `many()` are post-fetch
-
-**❌ Not Applicable (SQL-specific):**
+**Unavailable in Convex:**
 - Raw SQL queries
 - Database migrations
-- Complex SQL JOINs
-
-### Common Patterns
-
-**Basic Query:**
-```ts
-const users = await db.query.users.findMany();
-```
-
-**Filtered Query:**
-```ts
-const admins = await db.query.users.findMany({
-  where: (users, { and, eq, gt }) =>
-    and(eq(users.role, 'admin'), gt(users.lastSeen, Date.now() - 86_400_000)),
-});
-```
-
-**With Pagination:**
-```ts
-const posts = await db.query.posts.findMany({
-  where: (posts, { eq }) => eq(posts.published, true),
-  limit: 10,
-  offset: 0,
-});
-```
-
-**Find First:**
-```ts
-const user = await db.query.users.findFirst({
-  where: (users, { eq }) => eq(users.email, 'alice@example.com'),
-});
-```
-
-**Real-Time (React):**
-```ts
-const users = useQuery(api.queries.getUsers);
-// Automatically updates when data changes
-```
+- SQL joins
 
 ## Error Messages & Solutions
 
-**Common errors:**
-
-- `where is not a function` → Use callback form: `where: (cols, ops) => ...`
+- `where is not a function` → Use object form: `where: { field: value }`
 - `Property 'query' does not exist` → Use `createDatabase(ctx.db, ormSchema, ormEdges)`
-- `Type error: missing required field` → Check schema definition for required fields
-- `Property '...' does not exist on type` → Field doesn't exist in schema
+- `Type error: missing required field` → Check `.notNull()` in schema
 - `findUnique is not a function` → Use `findFirst` with `where`
 - `'include' does not exist` → Use `with` instead of `include`
-
-## Migration Quickstart
-
-**From Drizzle:**
-
-1. Replace imports: `drizzle-orm` → `better-convex/orm`
-2. Replace `pgTable` → `convexTable` with column builders
-3. Remove manual `id` fields (auto-created as `_id`)
-4. Use `buildSchema()` and `extractRelationsConfig()`
-5. Create DB instance with `createDatabase(ctx.db, ormSchema, ormEdges)`
-6. Keep `where` callback shape
-7. Use native Convex mutations for now
-
-## Additional Resources
-
-- GitHub: https://github.com/get-convex/convex-backend
-- Discord: https://convex.dev/community
-- API Catalog: `/orm/api-catalog.json`
-- Error Catalog: `/orm/error-catalog.json`
-- Examples Registry: `/orm/examples-registry.json`

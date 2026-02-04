@@ -58,7 +58,7 @@ export class ConvexNumberBuilder<
     if (this.config.notNull) {
       return v.number();
     }
-    return v.optional(v.number());
+    return v.optional(v.union(v.null(), v.number()));
   }
 
   /**

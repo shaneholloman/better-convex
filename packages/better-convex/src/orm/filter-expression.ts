@@ -167,6 +167,10 @@ export interface Column<
   readonly columnName: TName;
 }
 
+type ColumnArgument<TBuilder extends ColumnBuilder<any, any, any>> =
+  | Column<TBuilder, string>
+  | TBuilder;
+
 /**
  * Create a column wrapper
  * Used internally by query builder's _createColumnProxies
@@ -176,6 +180,26 @@ export function column<
   TName extends string,
 >(builder: TBuilder, columnName: TName): Column<TBuilder, TName> {
   return { builder, columnName };
+}
+
+function resolveColumn<TBuilder extends ColumnBuilder<any, any, any>>(
+  col: ColumnArgument<TBuilder>
+): Column<TBuilder, string> {
+  if (col && typeof col === 'object' && 'columnName' in col) {
+    return col as Column<TBuilder, string>;
+  }
+  if (isFieldReference(col as any)) {
+    return {
+      builder: col as any,
+      columnName: (col as any).fieldName,
+    } as Column<TBuilder, string>;
+  }
+  const builder = col as ColumnBuilder<any, any, any>;
+  const columnName = (builder as any)?.config?.name;
+  if (!columnName) {
+    throw new Error('Column builder is missing a column name');
+  }
+  return column(builder as TBuilder, columnName);
 }
 
 // ============================================================================
@@ -263,60 +287,72 @@ class UnaryExpressionImpl implements UnaryExpression {
  * const filter = eq(cols.name, 'Alice');
  */
 export function eq<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   value: ColumnToType<TBuilder>
 ): BinaryExpression<ColumnToType<TBuilder>> {
-  return new BinaryExpressionImpl('eq', [fieldRef(col.columnName), value]);
+  const resolved = resolveColumn(col);
+  return new BinaryExpressionImpl('eq', [fieldRef(resolved.columnName), value]);
 }
 
 /**
  * Not equal operator: field != value
  */
 export function ne<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   value: ColumnToType<TBuilder>
 ): BinaryExpression<ColumnToType<TBuilder>> {
-  return new BinaryExpressionImpl('ne', [fieldRef(col.columnName), value]);
+  const resolved = resolveColumn(col);
+  return new BinaryExpressionImpl('ne', [fieldRef(resolved.columnName), value]);
 }
 
 /**
  * Greater than operator: field > value
  */
 export function gt<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   value: ColumnToType<TBuilder>
 ): BinaryExpression<ColumnToType<TBuilder>> {
-  return new BinaryExpressionImpl('gt', [fieldRef(col.columnName), value]);
+  const resolved = resolveColumn(col);
+  return new BinaryExpressionImpl('gt', [fieldRef(resolved.columnName), value]);
 }
 
 /**
  * Greater than or equal operator: field >= value
  */
 export function gte<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   value: ColumnToType<TBuilder>
 ): BinaryExpression<ColumnToType<TBuilder>> {
-  return new BinaryExpressionImpl('gte', [fieldRef(col.columnName), value]);
+  const resolved = resolveColumn(col);
+  return new BinaryExpressionImpl('gte', [
+    fieldRef(resolved.columnName),
+    value,
+  ]);
 }
 
 /**
  * Less than operator: field < value
  */
 export function lt<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   value: ColumnToType<TBuilder>
 ): BinaryExpression<ColumnToType<TBuilder>> {
-  return new BinaryExpressionImpl('lt', [fieldRef(col.columnName), value]);
+  const resolved = resolveColumn(col);
+  return new BinaryExpressionImpl('lt', [fieldRef(resolved.columnName), value]);
 }
 
 /**
  * Less than or equal operator: field <= value
  */
 export function lte<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   value: ColumnToType<TBuilder>
 ): BinaryExpression<ColumnToType<TBuilder>> {
-  return new BinaryExpressionImpl('lte', [fieldRef(col.columnName), value]);
+  const resolved = resolveColumn(col);
+  return new BinaryExpressionImpl('lte', [
+    fieldRef(resolved.columnName),
+    value,
+  ]);
 }
 
 // ============================================================================
@@ -333,10 +369,14 @@ export function lte<TBuilder extends ColumnBuilder<any, any, any>>(
  * });
  */
 export function like<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   pattern: string
 ): BinaryExpression<string> {
-  return new BinaryExpressionImpl('like', [fieldRef(col.columnName), pattern]);
+  const resolved = resolveColumn(col);
+  return new BinaryExpressionImpl('like', [
+    fieldRef(resolved.columnName),
+    pattern,
+  ]);
 }
 
 /**
@@ -349,21 +389,26 @@ export function like<TBuilder extends ColumnBuilder<any, any, any>>(
  * });
  */
 export function ilike<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   pattern: string
 ): BinaryExpression<string> {
-  return new BinaryExpressionImpl('ilike', [fieldRef(col.columnName), pattern]);
+  const resolved = resolveColumn(col);
+  return new BinaryExpressionImpl('ilike', [
+    fieldRef(resolved.columnName),
+    pattern,
+  ]);
 }
 
 /**
  * NOT LIKE operator: Negated LIKE pattern
  */
 export function notLike<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   pattern: string
 ): BinaryExpression<string> {
+  const resolved = resolveColumn(col);
   return new BinaryExpressionImpl('notLike', [
-    fieldRef(col.columnName),
+    fieldRef(resolved.columnName),
     pattern,
   ]);
 }
@@ -372,11 +417,12 @@ export function notLike<TBuilder extends ColumnBuilder<any, any, any>>(
  * NOT ILIKE operator: Negated case-insensitive LIKE
  */
 export function notIlike<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   pattern: string
 ): BinaryExpression<string> {
+  const resolved = resolveColumn(col);
   return new BinaryExpressionImpl('notIlike', [
-    fieldRef(col.columnName),
+    fieldRef(resolved.columnName),
     pattern,
   ]);
 }
@@ -391,11 +437,12 @@ export function notIlike<TBuilder extends ColumnBuilder<any, any, any>>(
  * });
  */
 export function startsWith<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   prefix: string
 ): BinaryExpression<string> {
+  const resolved = resolveColumn(col);
   return new BinaryExpressionImpl('startsWith', [
-    fieldRef(col.columnName),
+    fieldRef(resolved.columnName),
     prefix,
   ]);
 }
@@ -409,11 +456,12 @@ export function startsWith<TBuilder extends ColumnBuilder<any, any, any>>(
  * });
  */
 export function endsWith<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   suffix: string
 ): BinaryExpression<string> {
+  const resolved = resolveColumn(col);
   return new BinaryExpressionImpl('endsWith', [
-    fieldRef(col.columnName),
+    fieldRef(resolved.columnName),
     suffix,
   ]);
 }
@@ -428,11 +476,12 @@ export function endsWith<TBuilder extends ColumnBuilder<any, any, any>>(
  * });
  */
 export function contains<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   substring: string
 ): BinaryExpression<string> {
+  const resolved = resolveColumn(col);
   return new BinaryExpressionImpl('contains', [
-    fieldRef(col.columnName),
+    fieldRef(resolved.columnName),
     substring,
   ]);
 }
@@ -525,15 +574,16 @@ export function not(expression: FilterExpression<boolean>): UnaryExpression {
  * const filter = inArray(cols.status, ['active', 'pending']);
  */
 export function inArray<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   values: readonly ColumnToType<TBuilder>[]
 ): BinaryExpression<ColumnToType<TBuilder>> {
   // Validation: Array must be non-empty
   if (!Array.isArray(values) || values.length === 0) {
     throw new Error('inArray requires a non-empty array of values');
   }
+  const resolved = resolveColumn(col);
   return new BinaryExpressionImpl('inArray', [
-    fieldRef(col.columnName),
+    fieldRef(resolved.columnName),
     values as any,
   ]);
 }
@@ -546,15 +596,16 @@ export function inArray<TBuilder extends ColumnBuilder<any, any, any>>(
  * const filter = notInArray(cols.role, ['admin', 'moderator']);
  */
 export function notInArray<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   values: readonly ColumnToType<TBuilder>[]
 ): BinaryExpression<ColumnToType<TBuilder>> {
   // Validation: Array must be non-empty
   if (!Array.isArray(values) || values.length === 0) {
     throw new Error('notInArray requires a non-empty array of values');
   }
+  const resolved = resolveColumn(col);
   return new BinaryExpressionImpl('notInArray', [
-    fieldRef(col.columnName),
+    fieldRef(resolved.columnName),
     values as any,
   ]);
 }
@@ -563,11 +614,12 @@ export function notInArray<TBuilder extends ColumnBuilder<any, any, any>>(
  * Array contains operator: field @> array
  */
 export function arrayContains<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   values: readonly ColumnToType<TBuilder>[]
 ): BinaryExpression<ColumnToType<TBuilder>> {
+  const resolved = resolveColumn(col);
   return new BinaryExpressionImpl('arrayContains', [
-    fieldRef(col.columnName),
+    fieldRef(resolved.columnName),
     values as any,
   ]);
 }
@@ -576,11 +628,12 @@ export function arrayContains<TBuilder extends ColumnBuilder<any, any, any>>(
  * Array contained operator: field <@ array
  */
 export function arrayContained<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   values: readonly ColumnToType<TBuilder>[]
 ): BinaryExpression<ColumnToType<TBuilder>> {
+  const resolved = resolveColumn(col);
   return new BinaryExpressionImpl('arrayContained', [
-    fieldRef(col.columnName),
+    fieldRef(resolved.columnName),
     values as any,
   ]);
 }
@@ -589,11 +642,12 @@ export function arrayContained<TBuilder extends ColumnBuilder<any, any, any>>(
  * Array overlaps operator: field && array
  */
 export function arrayOverlaps<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>,
+  col: ColumnArgument<TBuilder>,
   values: readonly ColumnToType<TBuilder>[]
 ): BinaryExpression<ColumnToType<TBuilder>> {
+  const resolved = resolveColumn(col);
   return new BinaryExpressionImpl('arrayOverlaps', [
-    fieldRef(col.columnName),
+    fieldRef(resolved.columnName),
     values as any,
   ]);
 }
@@ -610,9 +664,12 @@ export function arrayOverlaps<TBuilder extends ColumnBuilder<any, any, any>>(
  * const filter = isNull(cols.deletedAt);
  */
 export function isNull<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>
+  col: ColumnArgument<TBuilder>
 ): UnaryExpression {
-  return new UnaryExpressionImpl('isNull', [fieldRef(col.columnName) as any]);
+  const resolved = resolveColumn(col);
+  return new UnaryExpressionImpl('isNull', [
+    fieldRef(resolved.columnName) as any,
+  ]);
 }
 
 /**
@@ -623,9 +680,10 @@ export function isNull<TBuilder extends ColumnBuilder<any, any, any>>(
  * const filter = isNotNull(cols.deletedAt);
  */
 export function isNotNull<TBuilder extends ColumnBuilder<any, any, any>>(
-  col: Column<TBuilder, string>
+  col: ColumnArgument<TBuilder>
 ): UnaryExpression {
+  const resolved = resolveColumn(col);
   return new UnaryExpressionImpl('isNotNull', [
-    fieldRef(col.columnName) as any,
+    fieldRef(resolved.columnName) as any,
   ]);
 }

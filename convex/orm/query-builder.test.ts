@@ -8,29 +8,25 @@
  * - Basic column selection
  */
 
-import { createDatabase, extractRelationsConfig } from 'better-convex/orm';
 import { it as baseIt, describe, expect } from 'vitest';
-import schema, { ormSchema } from '../schema';
-import { convexTest } from '../setup.testing';
+import schema from '../schema';
+import { convexTest, runCtx, type TestCtx } from '../setup.testing';
 
 // Test setup with convexTest
-const it = baseIt.extend<{ ctx: any }>({
+const it = baseIt.extend<{ ctx: TestCtx }>({
   ctx: async ({}, use) => {
     const t = convexTest(schema);
-    await t.run(async (ctx) => {
+    await t.run(async (baseCtx) => {
+      const ctx = await runCtx(baseCtx);
       await use(ctx);
     });
   },
 });
 
-// Test schema and edges
-const testSchema = ormSchema;
-const edges = extractRelationsConfig(ormSchema);
-
 describe('M3 Query Builder', () => {
   describe('Builder Creation', () => {
     it('should create query builders for tables', ({ ctx }) => {
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
 
       expect(db.query).toBeDefined();
       expect(db.query.users).toBeDefined();
@@ -41,7 +37,7 @@ describe('M3 Query Builder', () => {
 
   describe('findMany()', () => {
     it('should return QueryPromise instance', ({ ctx }) => {
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const query = db.query.users.findMany();
 
       expect(query).toBeDefined();
@@ -51,7 +47,7 @@ describe('M3 Query Builder', () => {
     });
 
     it('should execute query and return empty array', async ({ ctx }) => {
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const result = await db.query.users.findMany();
 
       expect(Array.isArray(result)).toBe(true);
@@ -68,7 +64,7 @@ describe('M3 Query Builder', () => {
         email: 'bob@example.com',
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const result = await db.query.users.findMany();
 
       expect(result).toHaveLength(2);
@@ -88,7 +84,7 @@ describe('M3 Query Builder', () => {
         email: 'bob@example.com',
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const result = await db.query.users.findFirst();
 
       expect(result).toBeDefined();
@@ -96,7 +92,7 @@ describe('M3 Query Builder', () => {
     });
 
     it('should return undefined for empty results', async ({ ctx }) => {
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const result = await db.query.users.findFirst();
 
       expect(result).toBeUndefined();
@@ -110,7 +106,7 @@ describe('M3 Query Builder', () => {
         email: 'alice@example.com',
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const result = await db.query.users.findMany({
         columns: { name: true },
       });

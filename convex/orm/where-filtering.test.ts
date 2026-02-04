@@ -11,40 +11,24 @@
  * - Convex query generation
  */
 
-import {
-  and,
-  createDatabase,
-  eq,
-  extractRelationsConfig,
-  inArray,
-  notInArray,
-  or,
-} from 'better-convex/orm';
+import { and, eq, inArray, notInArray, or } from 'better-convex/orm';
 import { test as baseTest, describe, expect } from 'vitest';
-import schema, { ormSchema } from '../schema';
-import { convexTest } from '../setup.testing';
+import schema from '../schema';
+import { convexTest, runCtx, type TestCtx } from '../setup.testing';
 
 // ============================================================================
 // Test Setup
 // ============================================================================
 
-const test = baseTest.extend<{ ctx: any }>({
+const test = baseTest.extend<{ ctx: TestCtx }>({
   ctx: async ({}, use) => {
     const t = convexTest(schema);
-    await t.run(async (ctx) => {
+    await t.run(async (baseCtx) => {
+      const ctx = await runCtx(baseCtx);
       await use(ctx);
     });
   },
 });
-
-// ============================================================================
-// Test Schema - Using exported ORM schema from schema.ts
-// ============================================================================
-
-// M4 testing uses the shared ORM schema from schema.ts
-// This ensures tests use the same schema structure as production
-const testSchema = ormSchema;
-const edges = extractRelationsConfig(ormSchema);
 
 // ============================================================================
 // Binary Operators
@@ -52,7 +36,7 @@ const edges = extractRelationsConfig(ormSchema);
 
 describe('M4 Where Filtering - Binary Operators', () => {
   test('should filter with eq operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -78,7 +62,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
   });
 
   test('should filter with ne operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -104,7 +88,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
   });
 
   test('should filter with gt operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -130,7 +114,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
   });
 
   test('should filter with gte operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -159,11 +143,11 @@ describe('M4 Where Filtering - Binary Operators', () => {
     });
 
     expect(result).toHaveLength(2);
-    expect(result.map((u) => u.name).sort()).toEqual(['Bob', 'Charlie']);
+    expect(result.map((u: any) => u.name).sort()).toEqual(['Bob', 'Charlie']);
   });
 
   test('should filter with lt operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -189,7 +173,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
   });
 
   test('should filter with lte operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -218,7 +202,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
     });
 
     expect(result).toHaveLength(2);
-    expect(result.map((u) => u.name).sort()).toEqual(['Alice', 'Bob']);
+    expect(result.map((u: any) => u.name).sort()).toEqual(['Alice', 'Bob']);
   });
 });
 
@@ -228,7 +212,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
 
 describe('M4 Where Filtering - Logical Operators', () => {
   test('should combine filters with and operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -264,7 +248,7 @@ describe('M4 Where Filtering - Logical Operators', () => {
   });
 
   test('should combine filters with or operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -295,11 +279,11 @@ describe('M4 Where Filtering - Logical Operators', () => {
     });
 
     expect(result).toHaveLength(2);
-    expect(result.map((u) => u.name).sort()).toEqual(['Alice', 'Bob']);
+    expect(result.map((u: any) => u.name).sort()).toEqual(['Alice', 'Bob']);
   });
 
   test('should negate filter with not operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -327,7 +311,7 @@ describe('M4 Where Filtering - Logical Operators', () => {
   });
 
   test('should handle complex nested logical expressions', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -363,7 +347,7 @@ describe('M4 Where Filtering - Logical Operators', () => {
   });
 
   test('should filter out undefined expressions in and()', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -394,7 +378,7 @@ describe('M4 Where Filtering - Logical Operators', () => {
   });
 
   test('should filter out undefined expressions in or()', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -430,12 +414,123 @@ describe('M4 Where Filtering - Logical Operators', () => {
 });
 
 // ============================================================================
+// Column-Level Logical Operators
+// ============================================================================
+
+describe('M4 Where Filtering - Column Logical Operators', () => {
+  test('should apply OR within a single column filter', async ({ ctx }) => {
+    const db = ctx.table;
+
+    await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+      age: 10,
+      status: 'active',
+      deletedAt: null,
+    });
+    await ctx.db.insert('users', {
+      name: 'Bob',
+      email: 'bob@example.com',
+      age: 30,
+      status: 'active',
+      deletedAt: null,
+    });
+    await ctx.db.insert('users', {
+      name: 'Charlie',
+      email: 'charlie@example.com',
+      age: 70,
+      status: 'active',
+      deletedAt: null,
+    });
+
+    const result = await db.query.users.findMany({
+      where: {
+        age: { OR: [{ lt: 18 }, { gt: 65 }] },
+      },
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result.map((u: any) => u.name).sort()).toEqual(['Alice', 'Charlie']);
+  });
+
+  test('should apply AND within a single column filter', async ({ ctx }) => {
+    const db = ctx.table;
+
+    await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+      age: 10,
+      status: 'active',
+      deletedAt: null,
+    });
+    await ctx.db.insert('users', {
+      name: 'Bob',
+      email: 'bob@example.com',
+      age: 30,
+      status: 'active',
+      deletedAt: null,
+    });
+    await ctx.db.insert('users', {
+      name: 'Charlie',
+      email: 'charlie@example.com',
+      age: 70,
+      status: 'active',
+      deletedAt: null,
+    });
+
+    const result = await db.query.users.findMany({
+      where: {
+        age: { AND: [{ gt: 18 }, { lt: 65 }] },
+      },
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('Bob');
+  });
+
+  test('should apply NOT within a single column filter', async ({ ctx }) => {
+    const db = ctx.table;
+
+    await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+      age: 10,
+      status: 'active',
+      deletedAt: 123,
+    });
+    await ctx.db.insert('users', {
+      name: 'Bob',
+      email: 'bob@example.com',
+      age: 30,
+      status: 'active',
+      deletedAt: null,
+    });
+    await ctx.db.insert('users', {
+      name: 'Charlie',
+      email: 'charlie@example.com',
+      age: 70,
+      status: 'active',
+      deletedAt: 456,
+    });
+
+    const result = await db.query.users.findMany({
+      where: {
+        deletedAt: { NOT: { isNull: true } },
+      },
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result.map((u: any) => u.name).sort()).toEqual(['Alice', 'Charlie']);
+  });
+});
+
+// ============================================================================
 // Array Operators
 // ============================================================================
 
 describe('M4 Where Filtering - Array Operators', () => {
   test('should filter with inArray operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -464,11 +559,11 @@ describe('M4 Where Filtering - Array Operators', () => {
     });
 
     expect(result).toHaveLength(2);
-    expect(result.map((u) => u.name).sort()).toEqual(['Alice', 'Bob']);
+    expect(result.map((u: any) => u.name).sort()).toEqual(['Alice', 'Bob']);
   });
 
   test('should filter with notInArray operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -512,7 +607,7 @@ describe('M4 Where Filtering - Array Operators', () => {
 
 describe('M4 Where Filtering - Null Operators', () => {
   test('should filter with isNull operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -538,7 +633,7 @@ describe('M4 Where Filtering - Null Operators', () => {
   });
 
   test('should filter with isNotNull operator', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -571,7 +666,7 @@ describe('M4 Where Filtering - Null Operators', () => {
 describe('M4 Where Filtering - Pagination', () => {
   // TODO M4.5: Convex doesn't have skip() - need cursor-based pagination
   test.skip('should use skip() before take() for offset', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -609,12 +704,12 @@ describe('M4 Where Filtering - Pagination', () => {
 
     expect(result).toHaveLength(2);
     // Results should be 3rd and 4th users (Charlie and David)
-    const names = result.map((u) => u.name).sort();
+    const names = result.map((u: any) => u.name).sort();
     expect(names).toEqual(['Charlie', 'David']);
   });
 
   test('should not apply offset when not provided', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -645,7 +740,7 @@ describe('M4 Where Filtering - Pagination', () => {
 
 describe('M4 Where Filtering - Edge Cases', () => {
   test('should handle undefined where clause', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -695,7 +790,7 @@ describe('M4 Where Filtering - Edge Cases', () => {
   test('should handle complex filter with all operator types', async ({
     ctx,
   }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     await ctx.db.insert('users', {
       name: 'Alice',
@@ -731,6 +826,26 @@ describe('M4 Where Filtering - Edge Cases', () => {
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('Alice');
   });
+
+  test('should throw when RAW filter is provided', async ({ ctx }) => {
+    const db = ctx.table;
+
+    await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+      age: 25,
+      status: 'active',
+      deletedAt: null,
+    });
+
+    await expect(
+      db.query.users.findMany({
+        where: {
+          RAW: () => ({}) as any,
+        },
+      })
+    ).rejects.toThrow('RAW filters are not supported');
+  });
 });
 
 // ============================================================================
@@ -741,7 +856,7 @@ describe('M4 Where Filtering - Type Safety', () => {
   test('should provide typed column access in where clause', async ({
     ctx,
   }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     // TypeScript should allow accessing valid columns
     await db.query.users.findMany({

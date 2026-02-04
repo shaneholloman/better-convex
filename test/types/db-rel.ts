@@ -34,6 +34,13 @@ import type { GenericId } from 'convex/values';
 import * as schema from './tables-rel';
 import { type Equal, Expect } from './utils';
 
+type UserId = GenericId<'users'>;
+type PostId = GenericId<'posts'>;
+type CommentId = GenericId<'comments'>;
+type CityId = GenericId<'cities'>;
+type BookId = GenericId<'books'>;
+type NodeId = GenericId<'node'>;
+
 // Build schema following Better Convex pattern
 const schemaConfig = schema.relations;
 const edgeMetadata = extractRelationsConfig(schema.relations);
@@ -88,52 +95,70 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   });
 
   type Expected = Array<{
-    _id: string;
+    _id: UserId;
     _creationTime: number;
     name: string;
     email: string;
+    height: number | null;
     age: number | null;
-    cityId: GenericId<'cities'>;
-    homeCityId: GenericId<'cities'> | null;
+    status: string | null;
+    role: string | null;
+    deletedAt: number | null;
+    cityId: CityId | null;
+    homeCityId: CityId | null;
     posts: Array<{
-      _id: string;
+      _id: PostId;
       _creationTime: number;
-      title: string;
-      authorId: GenericId<'users'> | null;
+      text: string;
+      numLikes: number;
+      type: string;
+      title: string | null;
+      authorId: UserId | null;
+      createdAt: number | null;
       published: boolean | null;
       author: {
-        _id: string;
+        _id: UserId;
         _creationTime: number;
         name: string;
         email: string;
+        height: number | null;
         age: number | null;
-        cityId: GenericId<'cities'>;
-        homeCityId: GenericId<'cities'> | null;
+        status: string | null;
+        role: string | null;
+        deletedAt: number | null;
+        cityId: CityId | null;
+        homeCityId: CityId | null;
       } | null;
       comments: Array<{
-        _id: string;
-        _creationTime: number;
         text: string;
         author: {
-          _id: string;
+          _id: UserId;
           _creationTime: number;
           name: string;
           email: string;
+          height: number | null;
           age: number | null;
-          cityId: GenericId<'cities'>;
-          homeCityId: GenericId<'cities'> | null;
+          status: string | null;
+          role: string | null;
+          deletedAt: number | null;
+          cityId: CityId | null;
+          homeCityId: CityId | null;
           city: {
-            _id: string;
+            _id: CityId;
             _creationTime: number;
             name: string;
             users: Array<{
-              _id: string;
+              _id: UserId;
               _creationTime: number;
               name: string;
               email: string;
+              height: number | null;
               age: number | null;
-              cityId: GenericId<'cities'>;
-              homeCityId: GenericId<'cities'> | null;
+              status: string | null;
+              role: string | null;
+              deletedAt: number | null;
+              cityId: CityId | null;
+              homeCityId: CityId | null;
             }>;
           } | null;
         } | null;
@@ -153,19 +178,27 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   });
 
   type Expected = Array<{
-    _id: string;
+    _id: UserId;
     _creationTime: number;
     name: string;
     email: string;
+    height: number | null;
     age: number | null;
-    cityId: GenericId<'cities'>;
-    homeCityId: GenericId<'cities'> | null;
+    status: string | null;
+    role: string | null;
+    deletedAt: number | null;
+    cityId: CityId | null;
+    homeCityId: CityId | null;
     posts: Array<{
-      _id: string;
+      _id: PostId;
       _creationTime: number;
-      title: string;
-      content: string;
-      authorId: GenericId<'users'> | null;
+      text: string;
+      numLikes: number;
+      type: string;
+      title: string | null;
+      content: string | null;
+      authorId: UserId | null;
+      createdAt: number | null;
       published: boolean | null;
     }>;
   }>;
@@ -187,25 +220,33 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   });
 
   type Expected = Array<{
-    _id: string;
+    _id: UserId;
     _creationTime: number;
     name: string;
     email: string;
+    height: number | null;
     age: number | null;
-    cityId: GenericId<'cities'>;
-    homeCityId: GenericId<'cities'> | null;
+    status: string | null;
+    role: string | null;
+    deletedAt: number | null;
+    cityId: CityId | null;
+    homeCityId: CityId | null;
     posts: Array<{
-      _id: string;
+      _id: PostId;
       _creationTime: number;
-      title: string;
-      content: string;
-      authorId: GenericId<'users'> | null;
+      text: string;
+      numLikes: number;
+      type: string;
+      title: string | null;
+      content: string | null;
+      authorId: UserId | null;
+      createdAt: number | null;
       published: boolean | null;
       comments: Array<{
-        _id: string;
+        _id: CommentId;
         _creationTime: number;
-        postId: GenericId<'posts'>;
-        authorId: GenericId<'users'> | null;
+        postId: PostId;
+        authorId: UserId | null;
         text: string;
       }>;
     }>;
@@ -235,7 +276,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     name: string;
     email: string;
     posts: Array<{
-      title: string;
+      title: string | null;
     }>;
   }>;
 
@@ -252,20 +293,28 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   });
 
   type Expected = Array<{
-    _id: string;
+    _id: PostId;
     _creationTime: number;
-    title: string;
-    content: string;
-    authorId: string | null;
+    text: string;
+    numLikes: number;
+    type: string;
+    title: string | null;
+    content: string | null;
+    authorId: UserId | null;
+    createdAt: number | null;
     published: boolean | null;
     author: {
-      _id: string;
+      _id: UserId;
       _creationTime: number;
       name: string;
       email: string;
+      height: number | null;
       age: number | null;
-      cityId: string;
-      homeCityId: string | null;
+      status: string | null;
+      role: string | null;
+      deletedAt: number | null;
+      cityId: CityId | null;
+      homeCityId: CityId | null;
     } | null;
   }>;
 
@@ -284,11 +333,11 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   });
 
   type NodeType = {
-    _id: string;
+    _id: NodeId;
     _creationTime: number;
-    parentId: string | null;
-    leftId: string | null;
-    rightId: string | null;
+    parentId: NodeId | null;
+    leftId: NodeId | null;
+    rightId: NodeId | null;
   };
 
   type Expected = Array<
@@ -312,17 +361,21 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   });
 
   type Expected = Array<{
-    _id: string;
+    _id: BookId;
     _creationTime: number;
     name: string;
     authors: Array<{
-      _id: string;
+      _id: UserId;
       _creationTime: number;
       name: string;
       email: string;
+      height: number | null;
       age: number | null;
-      cityId: string;
-      homeCityId: string | null;
+      status: string | null;
+      role: string | null;
+      deletedAt: number | null;
+      cityId: CityId | null;
+      homeCityId: CityId | null;
     }>;
   }>;
 
@@ -340,19 +393,27 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 
   type Expected =
     | {
-        _id: string;
+        _id: UserId;
         _creationTime: number;
         name: string;
         email: string;
+        height: number | null;
         age: number | null;
-        cityId: GenericId<'cities'>;
-        homeCityId: GenericId<'cities'> | null;
+        status: string | null;
+        role: string | null;
+        deletedAt: number | null;
+        cityId: CityId | null;
+        homeCityId: CityId | null;
         posts: Array<{
-          _id: string;
+          _id: PostId;
           _creationTime: number;
-          title: string;
-          content: string;
-          authorId: GenericId<'users'> | null;
+          text: string;
+          numLikes: number;
+          type: string;
+          title: string | null;
+          content: string | null;
+          authorId: UserId | null;
+          createdAt: number | null;
           published: boolean | null;
         }>;
       }

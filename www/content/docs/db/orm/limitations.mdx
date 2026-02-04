@@ -7,135 +7,94 @@ links:
 
 import { InfoIcon, AlertTriangle, CheckCircle, Zap } from "lucide-react"
 
-Better-Convex ORM implements core query operations with column builder syntax. Some features are planned for future milestones, and some SQL-specific features don't apply to Convex's document model.
+Better-Convex mirrors Drizzle v1’s relational query builder on top of Convex’s document database. That means a few SQL-only features do not apply, and some features are implemented post-fetch for API parity.
 
-## Current Status
+## Not Available In Convex
 
-**✅ Implemented (M1-M6.5):**
-- Schema definition with column builders (`convexTable`, `text()`, `integer()`, etc.)
-- Relations definition and loading (`one()`, `many()`, `with:`)
-- Query operations (`findMany`, `findFirst`, `paginate`)
-- Where filtering (all operators)
-- Order by (multi-field, index-aware first sort)
-- Limit/offset pagination
-- Column selection (post-fetch projection)
-- String operators (post-fetch)
-- Type inference
+These Drizzle features are SQL-specific and do not map to Convex:
 
-**🚧 Coming Soon:**
-- Mutations (`insert`, `update`, `delete`)
+- SQL joins
+- Raw SQL execution
+- Database migrations and SQL constraints
+- Custom SQL data types
+- Table introspection helpers (`getTableConfig`, `getTableColumns`)
 
-**❌ Not Applicable:**
-- SQL-specific features (raw SQL, migrations, JOINs)
+## Post-Fetch Behavior
 
-## Category 2: Limited Features
+These features keep Drizzle’s API shape but run after data is fetched:
 
-### Column Selection (post-fetch)
-
+**Column selection**
 ```ts
 const users = await db.query.users.findMany({
   columns: { name: true, email: true },
 });
 ```
 
-**Why:** Convex returns full documents. Better-Convex projects columns after fetch for API parity and type safety.
-
-### String Operators (post-fetch)
-
+**String operators**
 ```ts
 const users = await db.query.users.findMany({
-  where: (users, { ilike }) => ilike(users.email, '%@example.com'),
+  where: { email: { ilike: '%@example.com' } },
 });
 ```
 
-**Performance:** String operators are post-fetch. For large datasets, prefer Convex search indexes.
+**Relation filters on `many()`**
+```ts
+const users = await db.query.users.findMany({
+  with: {
+    posts: {
+      where: { published: true },
+      orderBy: { _creationTime: 'desc' },
+      limit: 5,
+    },
+  },
+});
+```
 
-### Relation Loading Constraints
+## Indexes And Ordering
 
-- `with` is supported for `one()` and `many()` relations
-- Nested `with` has a depth limit to avoid infinite recursion
-- Per-relation filters (`where`, `orderBy`, `limit`) apply only to `many()` relations
-- Relation filters are post-fetch (no index usage yet)
-
-### Cursor Pagination Ordering
-
-- `paginate()` uses the first `orderBy` field for cursor ordering
-- Secondary `orderBy` fields are applied per page
-
-## Planned Features
-
-### Mutations (Insert, Update, Delete)
-
-Mutation helpers are planned. Use native Convex mutations today:
+- `paginate()` relies on the first `orderBy` field for cursor ordering
+- Sorting without an index falls back to `_creationTime` ordering
+- Add `.index()` on fields used for filter or sort
 
 ```ts
-const userId = await ctx.db.insert('users', {
-  name: 'Alice',
-  email: 'alice@example.com',
-});
+const posts = convexTable('posts', {
+  title: text().notNull(),
+  numLikes: number().notNull(),
+}).index('by_likes', ['numLikes']);
 ```
 
-### Defaults and Upserts
+## Constraints And Defaults
 
-- Column defaults are not applied automatically (mutation helpers not implemented yet)
-- Upserts should be implemented with native mutations
-
-## Category 4: Not Applicable
-
-### Raw SQL
-
-Better-Convex does not expose SQL execution. Convex uses document queries and indexes.
-
-### Migrations
-
-Convex is schemaless. You update schema in code and deploy.
-
-### SQL JOINs
-
-Use `with` relation loading instead of SQL joins.
+- Convex does not enforce SQL constraints (unique, foreign keys, checks)
+- Defaults are not applied automatically at the database layer
+- Use application logic or transaction rules to enforce constraints
 
 ## Performance Guidance
 
-### Indexes
-
-Create indexes for fields you filter or sort by frequently:
-
-```ts
-import { convexTable, text, integer } from 'better-convex/orm';
-
-const users = convexTable('users', {
-  name: text().notNull(),
-  role: text().notNull(),
-  createdAt: integer(),
-}).index('by_role', ['role']);
-```
-
-### Cursor vs Offset Pagination
-
-- Use `paginate()` for large lists or infinite scroll
-- Use `limit`/`offset` for small admin tables
-
-### Avoid N+1
-
-Prefer `with` for relation loading to avoid per-row queries.
+- Index every field you filter or order by frequently
+- Use search indexes for large text filtering
+- Use vector indexes only for embedding search
+- Prefer `paginate()` for infinite scroll and large datasets
+- Avoid deep offset pagination for large tables
+- Use `with` to avoid N+1 queries
 
 ## Common Gotchas
 
-| Issue | Cause | Solution |
-|-------|-------|----------|
-| **Slow queries without index** | Missing index on filtered field | Add `.index()` in schema |
-| **Deep offset pagination slow** | Using offset for deep pages | Switch to cursor pagination |
-| **Column selection not working** | Projection is post-fetch | Ensure `columns` is configured |
-| **LIKE operator slow** | Post-fetch filtering | Use search indexes for large datasets |
-| **Relations not loading** | Missing relations/edges | Export relations and pass `ormEdges` |
+| Issue | Cause | Fix |
+|---|---|---|
+| Slow ordering | Missing index | Add `.index()` in schema |
+| `paginate()` order changes | No index on primary sort | Add index on first `orderBy` field |
+| `like` or `ilike` is slow | Post-fetch filtering | Use search indexes |
+| Relations not loading | Missing edges | Export `ormSchema` and `ormEdges` |
+| Missing defaults | Convex does not apply defaults | Set defaults in code |
 
 ## Next Steps
 
 <Cards>
   <Card title="Schema Definition" href="/docs/db/orm/schema">
-    Learn how to define schemas with indexes
+    Define tables, relations, and indexes
   </Card>
   <Card title="Querying Data" href="/docs/db/orm/queries">
-    Master efficient query patterns
+    Learn filters, ordering, and pagination
   </Card>
 </Cards>

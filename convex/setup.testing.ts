@@ -1,25 +1,42 @@
-import { SchemaDefinition, StorageActionWriter } from 'convex/server';
-import { EntDefinition } from 'convex-ents';
+import {
+  createDatabase,
+  type EdgeMetadata,
+  extractRelationsConfig,
+  type TablesRelationalConfig,
+} from 'better-convex/orm';
+import type {
+  GenericDatabaseWriter,
+  SchemaDefinition,
+  StorageActionWriter,
+} from 'convex/server';
 import { convexTest as baseConvexTest } from 'convex-test';
-import { MutationCtx } from './_generated/server';
-import { mutationCtx } from './functions';
+import { relations } from './schema';
 
-// Work around a TypeScript subtyping issue with Ents schemas
-type GenericEntSchema = Record<string, EntDefinition>;
-export function convexTest<Schema extends GenericEntSchema>(
-  schema: SchemaDefinition<Schema, boolean>
+export function convexTest<Schema extends SchemaDefinition<any, any>>(
+  schema: Schema
 ) {
   return baseConvexTest(schema);
 }
 
-// Use inside t.run() to use Ents
-export async function runCtx(
-  ctx: MutationCtx & { storage: StorageActionWriter }
-) {
-  return { ...ctx, ...(await mutationCtx(ctx)) };
+const defaultEdges = extractRelationsConfig(relations);
+
+export const getCtxWithTable = <
+  Ctx extends { db: GenericDatabaseWriter<any> },
+  Schema extends TablesRelationalConfig,
+>(
+  ctx: Ctx,
+  schema: Schema,
+  edges: EdgeMetadata[]
+) => ({
+  ...ctx,
+  table: createDatabase(ctx.db, schema, edges),
+});
+
+// Default context wrapper that attaches Better Convex ORM as ctx.table
+export async function runCtx<T extends { db: GenericDatabaseWriter<any> }>(
+  ctx: T
+): Promise<ReturnType<typeof getCtxWithTable<T, typeof relations>>> {
+  return getCtxWithTable(ctx, relations, defaultEdges);
 }
 
-export async function getNewFileId(ctx: { storage: StorageActionWriter }) {
-  const bytes = new Uint8Array([0b00001100, 0b00000000]).buffer;
-  return await ctx.storage.store(new Blob([bytes]));
-}
+export type TestCtx = Awaited<ReturnType<typeof runCtx>>;

@@ -185,26 +185,9 @@
       }
     },
     {
-      "includes": ["convex/**"],
+      "includes": ["convex/**", "test/**"],
       "linter": {
         "enabled": false
-      }
-    },
-    {
-      "includes": ["test/**/*.ts", "test/**/*.tsx"],
-      "linter": {
-        "rules": {
-          "correctness": {
-            "noEmptyPattern": "off",
-            "noConstantCondition": "off"
-          },
-          "nursery": {
-            "noUnusedExpressions": "off"
-          },
-          "suspicious": {
-            "noExportsInTest": "off"
-          }
-        }
       }
     },
     {

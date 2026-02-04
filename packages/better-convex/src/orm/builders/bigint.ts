@@ -53,7 +53,7 @@ export class ConvexBigIntBuilder<
     if (this.config.notNull) {
       return v.int64();
     }
-    return v.optional(v.int64());
+    return v.optional(v.union(v.null(), v.int64()));
   }
 
   /**

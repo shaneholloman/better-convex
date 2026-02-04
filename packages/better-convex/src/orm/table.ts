@@ -11,10 +11,12 @@ import type {
   ColumnBuilderBase,
   ColumnBuilderWithTableName,
 } from './builders/column-builder';
+import { entityKind } from './builders/column-builder';
 import {
   createSystemFields,
   type SystemFields,
 } from './builders/system-fields';
+import type { ConvexIndexBuilder, ConvexIndexBuilderOn } from './indexes';
 import { Brand, Columns, TableName } from './symbols';
 
 /**
@@ -80,6 +82,90 @@ type ColumnsWithTableName<TColumns, TName extends string> = {
     ? ColumnBuilderWithTableName<TColumns[K], TName>
     : TColumns[K];
 };
+
+export type ConvexTableExtraConfigValue = ConvexIndexBuilder;
+export type ConvexTableExtraConfig = Record<
+  string,
+  ConvexTableExtraConfigValue
+>;
+
+function isConvexIndexBuilder(value: unknown): value is ConvexIndexBuilder {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { [entityKind]?: string })[entityKind] === 'ConvexIndexBuilder'
+  );
+}
+
+function isConvexIndexBuilderOn(value: unknown): value is ConvexIndexBuilderOn {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { [entityKind]?: string })[entityKind] === 'ConvexIndexBuilderOn'
+  );
+}
+
+function getColumnName(column: ColumnBuilderBase): string {
+  const config = (column as { config?: { name?: string } }).config;
+  if (!config?.name) {
+    throw new Error(
+      'Invalid index column: expected a convexTable column builder.'
+    );
+  }
+  return config.name;
+}
+
+function getColumnTableName(column: ColumnBuilderBase): string | undefined {
+  return (column as { config?: { tableName?: string } }).config?.tableName;
+}
+
+function applyExtraConfig<T extends TableConfig>(
+  table: ConvexTableImpl<T>,
+  config: ConvexTableExtraConfigValue[] | ConvexTableExtraConfig | undefined
+) {
+  if (!config) return;
+
+  const entries = Array.isArray(config) ? config : Object.values(config);
+
+  for (const entry of entries) {
+    if (isConvexIndexBuilderOn(entry)) {
+      throw new Error(
+        `Invalid index definition on '${table.tableName}'. Did you forget to call .on(...)?`
+      );
+    }
+
+    if (isConvexIndexBuilder(entry)) {
+      const { name, columns, unique, where } = entry.config;
+
+      if (where) {
+        throw new Error(
+          `Convex does not support partial indexes. Remove .where(...) from index '${name}'.`
+        );
+      }
+
+      if (unique) {
+        // Convex does not enforce unique indexes, but we accept the syntax for Drizzle parity.
+      }
+
+      const fields = columns.map((column) => {
+        const tableName = getColumnTableName(column);
+        if (tableName && tableName !== table.tableName) {
+          throw new Error(
+            `Index '${name}' references column from '${tableName}', but belongs to '${table.tableName}'.`
+          );
+        }
+        return getColumnName(column);
+      });
+
+      table.index(name, fields);
+      continue;
+    }
+
+    throw new Error(
+      `Unsupported extra config value in convexTable('${table.tableName}').`
+    );
+  }
+}
 
 /**
  * ConvexTable implementation class
@@ -156,7 +242,86 @@ class ConvexTableImpl<T extends TableConfig> {
     return this;
   }
 
-  // TODO: Implement searchIndex() and vectorIndex() methods when needed
+  /**
+   * Add search index to table (Convex-compatible)
+   */
+  searchIndex<
+    IndexName extends string,
+    SearchField extends string,
+    FilterField extends string = never,
+  >(
+    name: IndexName,
+    config: {
+      searchField: SearchField;
+      filterFields?: FilterField[];
+      staged?: boolean;
+    }
+  ): this {
+    const entry = {
+      indexDescriptor: name,
+      searchField: config.searchField,
+      filterFields: config.filterFields ?? [],
+    };
+    if (config.staged) {
+      this.stagedSearchIndexes.push(entry);
+    } else {
+      this.searchIndexes.push(entry);
+    }
+    return this;
+  }
+
+  /**
+   * Add vector index to table (Convex-compatible)
+   */
+  vectorIndex<
+    IndexName extends string,
+    VectorField extends string,
+    FilterField extends string = never,
+  >(
+    name: IndexName,
+    config: {
+      vectorField: VectorField;
+      dimensions: number;
+      filterFields?: FilterField[];
+      staged?: boolean;
+    }
+  ): this {
+    const entry = {
+      indexDescriptor: name,
+      vectorField: config.vectorField,
+      dimensions: config.dimensions,
+      filterFields: config.filterFields ?? [],
+    };
+    if (config.staged) {
+      this.stagedVectorIndexes.push(entry);
+    } else {
+      this.vectorIndexes.push(entry);
+    }
+    return this;
+  }
+
+  /**
+   * Export the contents of this definition for Convex schema tooling.
+   * Mirrors convex/server TableDefinition.export().
+   */
+  export() {
+    const documentType = (this.validator as unknown as { json: unknown }).json;
+    if (typeof documentType !== 'object') {
+      throw new Error(
+        'Invalid validator: please make sure that the parameter of `defineTable` is valid (see https://docs.convex.dev/database/schemas)'
+      );
+    }
+
+    return {
+      indexes: this.indexes,
+      stagedDbIndexes: this.stagedDbIndexes,
+      searchIndexes: this.searchIndexes,
+      stagedSearchIndexes: this.stagedSearchIndexes,
+      vectorIndexes: this.vectorIndexes,
+      stagedVectorIndexes: this.stagedVectorIndexes,
+      documentType,
+    };
+  }
 }
 
 /**
@@ -255,7 +420,10 @@ export type ConvexTableWithColumns<T extends TableConfig> = ConvexTable<T> & {
  */
 export function convexTable<TName extends string, TColumns>(
   name: TName,
-  columns: TColumns
+  columns: TColumns,
+  extraConfig?: (
+    self: ColumnsWithTableName<TColumns, TName>
+  ) => ConvexTableExtraConfigValue[] | ConvexTableExtraConfig
 ): ConvexTableWithColumns<{
   name: TName;
   columns: ColumnsWithTableName<TColumns, TName>;
@@ -268,6 +436,11 @@ export function convexTable<TName extends string, TColumns>(
 
   // Following Drizzle pattern: Object.assign to attach columns AND system fields as properties
   const table = Object.assign(rawTable, rawTable[Columns], systemFields);
+
+  applyExtraConfig(
+    rawTable,
+    extraConfig?.(rawTable[Columns] as ColumnsWithTableName<TColumns, TName>)
+  );
 
   return table as any;
 }

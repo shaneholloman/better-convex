@@ -176,13 +176,7 @@ export type ManyFn<
 export class RelationsHelperStatic<TTables extends Schema> {
   static readonly [entityKind]: string = 'RelationsHelperStatic';
 
-  private readonly _: {
-    readonly tables: TTables;
-  };
-
   constructor(tables: TTables) {
-    this._ = { tables };
-
     const one: Record<string, OneFn<TTables[string], string>> = {};
     const many: Record<string, ManyFn<TTables[string], string>> = {};
 
@@ -280,7 +274,7 @@ export type AnyRelations = TablesRelationalConfig;
 export abstract class Relation<TTargetTableName extends string = string> {
   static readonly [entityKind]: string = 'RelationV2';
   declare readonly $brand: 'RelationV2';
-  public declare readonly relationType: 'many' | 'one';
+  declare readonly relationType: 'many' | 'one';
 
   fieldName!: string;
   sourceColumns!: ColumnBuilder<any, any, any>[];
@@ -318,7 +312,7 @@ export class One<
   static override readonly [entityKind]: string = 'OneV2';
   protected declare $relationBrand: 'OneV2';
 
-  public override readonly relationType = 'one' as const;
+  override readonly relationType = 'one' as const;
 
   readonly optional: TOptional;
 
@@ -385,7 +379,7 @@ export class Many<
   static override readonly [entityKind]: string = 'ManyV2';
   protected declare $relationBrand: 'ManyV2';
 
-  public override readonly relationType = 'many' as const;
+  override readonly relationType = 'many' as const;
 
   constructor(
     tables: Schema,
@@ -748,7 +742,6 @@ export function processRelations(
         throughTable,
         sourceTable,
         through,
-        targetTable,
         where,
         sourceColumnTableNames,
         targetColumnTableNames,

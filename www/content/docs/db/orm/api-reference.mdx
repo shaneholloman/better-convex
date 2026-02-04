@@ -1,389 +1,245 @@
 ---
 title: API Reference
-description: Complete API reference for Better-Convex ORM with all functions, operators, and types
+description: Complete API reference for Better-Convex ORM with functions, operators, and types
 links:
   doc: https://orm.drizzle.team/docs/overview
 ---
 
 import { InfoIcon, CheckCircle, Code } from "lucide-react"
 
-Complete API reference for Better-Convex ORM - every function, operator, and type documented with examples and TypeScript signatures.
+This is the full API surface for Better‑Convex ORM. The goal is to match Drizzle v1’s relational query builder while adapting to Convex’s document model.
 
-## Schema Definition
+## Schema
 
-### convexTable()
+### `convexTable()`
 
 ```ts
 convexTable<TName extends string, TColumns>(
   name: TName,
-  columns: TColumns
+  columns: TColumns,
+  extraConfig?: (t) => [
+    index('by_field').on(t.someField),
+  ]
 ): ConvexTable<TableConfig<TName, TColumns>>
 ```
 
-Define a Convex table with Drizzle-style column builders.
-
-**Parameters:**
-- `name`: Table name (string)
-- `columns`: Object mapping column names to builders (`text()`, `integer()`, `id()`, ...)
-
-**Returns:** ConvexTable instance with full type inference
-
-**Example:**
+**Example**
 ```ts
-import { convexTable, text, integer } from 'better-convex/orm';
-
 const users = convexTable('users', {
   name: text().notNull(),
   email: text().notNull(),
   age: integer(),
 });
-
-// Inferred type:
-// {
-//   _id: Id<'users'>,
-//   name: string,
-//   email: string,
-//   age: number | null,
-//   _creationTime: number
-// }
 ```
 
-**Auto-generated fields:**
-- `_id`: `Id<TName>` - Convex document ID
-- `_creationTime`: number - Unix timestamp of creation
+**Auto‑generated fields**
+- `_id: Id<TName>`
+- `_creationTime: number`
 
-### relations()
+### `index()` / `uniqueIndex()`
 
 ```ts
-relations<TTable>(
-  table: TTable,
-  callback: (helpers: RelationHelpers<TTable>) => Relations
-): Relations<TTable>
+import { index, uniqueIndex } from 'better-convex/orm';
+
+const posts = convexTable(
+  'posts',
+  {
+    title: text().notNull(),
+    authorId: id('users'),
+  },
+  (t) => [
+    index('by_author').on(t.authorId),
+    uniqueIndex('by_title').on(t.title),
+  ]
+);
 ```
 
-Define relations between tables (identical to Drizzle).
+### `table.index()` (legacy)
 
-**Parameters:**
-- `table`: The table to define relations for
-- `callback`: Function receiving `{ one, many }` helpers
-
-**Returns:** Table relations configuration
-
-**Example:**
 ```ts
-import { relations } from 'better-convex/orm';
-
-const usersRelations = relations(users, ({ many }) => ({
-  posts: many(posts),
-}));
-
-const postsRelations = relations(posts, ({ one }) => ({
-  author: one(users, {
-    fields: [posts.userId],
-    references: [users._id],
-  }),
-}));
+table.index(name: string, fields: string[]): table
 ```
 
-### one()
+### `table.searchIndex()`
 
 ```ts
-one<TTarget>(
-  target: TTarget,
-  config?: {
-    fields: [...];
-    references: [...];
-    relationName?: string;
-    onDelete?: 'cascade' | 'setNull' | 'restrict';
-    optional?: boolean;
-  }
-): One<TTarget>
+table.searchIndex(name: string, config: {
+  searchField: string;
+  filterFields?: string[];
+  staged?: boolean;
+}): table
 ```
 
-Define one-to-one or many-to-one relation.
+### `table.vectorIndex()` (wip)
 
-**Example:**
 ```ts
-one(users, {
-  fields: [posts.userId],
-  references: [users._id],
-})
+table.vectorIndex(name: string, config: {
+  vectorField: string;
+  dimensions: number;
+  filterFields?: string[];
+  staged?: boolean;
+}): table
 ```
 
-### many()
+### `defineRelations()`
 
 ```ts
-many<TTarget>(target: TTarget, config?: { relationName?: string }): Many<TTarget>
+defineRelations(schema, (r) => ({
+  users: { posts: r.many.posts() },
+  posts: {
+    author: r.one.users({ from: r.posts.authorId, to: r.users._id }),
+  },
+}))
 ```
 
-Define one-to-many relation.
+### `extractRelationsConfig()`
 
-**Example:**
 ```ts
-many(posts) // User has many posts
+const ormEdges = extractRelationsConfig(ormSchema);
 ```
 
-### buildSchema()
+### `buildSchema()`
 
 ```ts
-buildSchema<TSchema extends Record<string, any>>(
-  rawSchema: TSchema
-): TablesRelationalConfig
+const ormSchema = buildSchema({ users, posts });
 ```
 
-Build a typed schema config from tables and relations (used by the query builder).
+Builds a schema config without relations. Use this when you don’t need `with` loading.
 
-**Example:**
+## Database
+
+### `createDatabase()`
+
 ```ts
-export const schema = { users, posts, usersRelations, postsRelations };
-export const ormSchema = buildSchema(schema);
+createDatabase(db, ormSchema, ormEdges)
 ```
 
-### extractRelationsConfig()
+Creates a typed query/mutation client. If `db` is a writer context, mutation methods are available.
+
+## Query Builder
+
+### `findMany()`
 
 ```ts
-extractRelationsConfig(schema: TablesRelationalConfig): EdgeMetadata[]
-```
-
-Extract edge metadata for relation loading.
-
-**Example:**
-```ts
-export const ormEdges = extractRelationsConfig(ormSchema);
-```
-
-## Database Context
-
-### createDatabase()
-
-```ts
-createDatabase<TSchema>(
-  db: GenericDatabaseReader<any>,
-  schema: TSchema,
-  edges: EdgeMetadata[]
-): DatabaseWithQuery<TSchema>
-```
-
-Create a database instance with typed query builder access.
-
-**Example:**
-```ts
-import { createDatabase } from 'better-convex/orm';
-import { ormSchema, ormEdges } from './schema';
-
-const db = createDatabase(ctx.db, ormSchema, ormEdges);
-```
-
-## Query Operations (M6.5)
-
-### findMany()
-
-```ts
-db.query.tableName.findMany(options?)
-```
-
-Query multiple records with optional filtering.
-
-**Options:**
-- `where`: `(columns, operators) => FilterExpression`
-- `limit`: Maximum number of records to return
-- `offset`: Number of records to skip
-- `orderBy`: `asc()` / `desc()` or array of clauses
-- `with`: Relations to load
-- `columns`: Column selection (post-fetch projection)
-
-**Example:**
-```ts
-const users = await db.query.users.findMany({
-  where: (users, { and, eq, gt }) =>
-    and(
-      eq(users.role, 'admin'),
-      gt(users.age, 18)
-    ),
+await db.query.users.findMany({
+  where: { role: 'admin' },
+  orderBy: { _creationTime: 'desc' },
   limit: 10,
+  offset: 0,
+  with: { posts: true },
+  columns: { name: true },
 });
 ```
 
-### findFirst()
+**Options**
+- `where`: object filter (Drizzle v1 shape)
+- `orderBy`: `{ field: 'asc' | 'desc' }`
+- `limit`, `offset`
+- `with`: relation loading
+- `columns`: post‑fetch projection
+
+### `findFirst()`
 
 ```ts
-db.query.tableName.findFirst(options?)
+await db.query.users.findFirst({ where: { email: 'a@b.com' } });
 ```
 
-Query first matching record.
-
-**Options:** Same as `findMany()` (except `limit` is fixed to 1).
-
-**Returns:** Promise resolving to record or `undefined`
-
-**Example:**
-```ts
-const user = await db.query.users.findFirst({
-  where: (users, { eq }) => eq(users.email, 'alice@example.com'),
-});
-```
-
-### paginate()
+### `paginate()`
 
 ```ts
-db.query.tableName.paginate(queryConfig?, paginationOpts?)
-```
-
-Cursor-based pagination with `continueCursor` and `isDone`.
-
-**Example:**
-```ts
-const result = await db.query.users.paginate(
-  { where: (users, { eq }) => eq(users.active, true) },
+await db.query.posts.paginate(
+  { where: { published: true }, orderBy: { _creationTime: 'desc' } },
   { cursor: null, numItems: 20 }
 );
 ```
 
-## Mutation Operations (🚧 Coming in M5-M6)
+## Query Filters (object `where`)
 
-<Callout icon={<AlertTriangle />}>
-**Not Yet Implemented**: Mutation operations are planned for M5-M6. Use native Convex mutations (`ctx.db.insert`, `ctx.db.patch`, `ctx.db.delete`) for now.
-</Callout>
+**Core operators**
+- `eq`, `ne`, `gt`, `gte`, `lt`, `lte`
+- `in`, `notIn`
+- `isNull`, `isNotNull`
+- `AND`, `OR`, `NOT`
 
-## Filter Operators
+**String operators (post‑fetch)**
+- `like`, `ilike`, `notLike`, `notIlike`
+- `startsWith`, `endsWith`, `contains`
 
-### Comparison Operators
+## Mutations
 
-- `eq(field, value)`
-- `ne(field, value)`
-- `gt(field, value)`
-- `gte(field, value)`
-- `lt(field, value)`
-- `lte(field, value)`
-- `inArray(field, values)`
-- `notInArray(field, values)`
-
-### Logical Operators
-
-- `and(...conditions)`
-- `or(...conditions)`
-- `not(condition)`
-
-### Null Checks
-
-- `isNull(field)`
-- `isNotNull(field)`
-
-## OrderBy Functions
-
-### asc()
+### `insert()`
 
 ```ts
-asc(columnBuilder): OrderByClause
+await db.insert(users).values({ name: 'Ada', email: 'ada@example.com' });
 ```
 
-**Example:**
-```ts
-const posts = await db.query.posts.findMany({
-  orderBy: asc(posts._creationTime),
-});
-```
-
-### desc()
+### `update()`
 
 ```ts
-desc(columnBuilder): OrderByClause
+await db
+  .update(users)
+  .set({ name: 'Ada Lovelace' })
+  .where(eq(users._id, userId));
 ```
 
-**Example:**
-```ts
-const posts = await db.query.posts.findMany({
-  orderBy: desc(posts._creationTime),
-});
-```
-
-## String Operators (Post-Fetch)
-
-- `like(field, pattern)`
-- `ilike(field, pattern)`
-- `startsWith(field, prefix)`
-- `endsWith(field, suffix)`
-- `contains(field, substring)`
-
-**Example:**
-```ts
-const posts = await db.query.posts.findMany({
-  where: (posts, { like }) => like(posts.title, '%JavaScript%'),
-});
-```
-
-## Type Utilities
-
-### $inferSelect
+### `delete()`
 
 ```ts
-type User = typeof users.$inferSelect;
+await db.delete(users).where(eq(users._id, userId));
 ```
 
-### $inferInsert
+### `returning()`
 
 ```ts
-type NewUser = typeof users.$inferInsert;
+const [user] = await db
+  .insert(users)
+  .values({ name: 'Ada', email: 'ada@example.com' })
+  .returning({ id: users._id, email: users.email });
 ```
 
-### InferSelectModel
+### `onConflictDoUpdate()`
 
 ```ts
-import type { InferSelectModel } from 'better-convex/orm';
-
-type User = InferSelectModel<typeof users>;
+await db
+  .insert(users)
+  .values({ email: 'ada@example.com', name: 'Ada' })
+  .onConflictDoUpdate({
+    target: users.email,
+    set: { name: 'Ada Lovelace' },
+  });
 ```
 
-### InferInsertModel
+## Filter Expression Helpers
+
+Use these in mutation `where(...)` clauses:
 
 ```ts
-import type { InferInsertModel } from 'better-convex/orm';
-
-type NewUser = InferInsertModel<typeof users>;
+eq(field, value)
+ne(field, value)
+gt(field, value)
+gte(field, value)
+lt(field, value)
+lte(field, value)
+inArray(field, values)
+notInArray(field, values)
+and(...filters)
+or(...filters)
+not(filter)
+isNull(field)
+isNotNull(field)
 ```
 
-### InferRelations
+## Type Helpers
 
 ```ts
-import type { InferRelations, ExtractTablesWithRelations } from 'better-convex/orm';
-
-type Schema = ExtractTablesWithRelations<typeof schema>;
-type UserRelations = InferRelations<typeof usersRelations, Schema>;
+InferSelectModel<typeof users>
+InferInsertModel<typeof users>
+users.$inferSelect
+users.$inferInsert
 ```
 
-## Complete Operator Table
+## Notes
 
-| Operator | Signature | Example | Category |
-|----------|-----------|---------|----------|
-| **eq** | `eq(field, value)` | `eq(users.role, 'admin')` | Comparison |
-| **ne** | `ne(field, value)` | `ne(users.status, 'banned')` | Comparison |
-| **gt** | `gt(field, value)` | `gt(users.age, 18)` | Comparison |
-| **gte** | `gte(field, value)` | `gte(users.credits, 100)` | Comparison |
-| **lt** | `lt(field, value)` | `lt(users.age, 65)` | Comparison |
-| **lte** | `lte(field, value)` | `lte(users.loginCount, 10)` | Comparison |
-| **inArray** | `inArray(field, values)` | `inArray(users.id, ids)` | Comparison |
-| **notInArray** | `notInArray(field, values)` | `notInArray(users.id, ids)` | Comparison |
-| **and** | `and(...conditions)` | `and(eq(...), gt(...))` | Logical |
-| **or** | `or(...conditions)` | `or(eq(...), eq(...))` | Logical |
-| **not** | `not(condition)` | `not(eq(users.banned, true))` | Logical |
-| **isNull** | `isNull(field)` | `isNull(users.deletedAt)` | Null Check |
-| **isNotNull** | `isNotNull(field)` | `isNotNull(users.email)` | Null Check |
-| **like** | `like(field, pattern)` | `like(posts.title, '%JavaScript%')` | String (Post-Fetch) |
-| **ilike** | `ilike(field, pattern)` | `ilike(posts.title, '%javascript%')` | String (Post-Fetch) |
-| **startsWith** | `startsWith(field, prefix)` | `startsWith(posts.title, 'How to')` | String (Post-Fetch) |
-| **endsWith** | `endsWith(field, suffix)` | `endsWith(posts.title, 'Guide')` | String (Post-Fetch) |
-| **contains** | `contains(field, substring)` | `contains(posts.title, 'JavaScript')` | String (Post-Fetch) |
-
-## Next Steps
-
-<Cards>
-  <Card title="Schema Definition" href="/docs/db/orm/schema">
-    Learn table and relation patterns
-  </Card>
-  <Card title="Querying Data" href="/docs/db/orm/queries">
-    Master query operations
-  </Card>
-  <Card title="Limitations" href="/docs/db/orm/limitations">
-    Know the edge cases and workarounds
-  </Card>
-</Cards>
+- `columns` projection is post‑fetch
+- String operators are post‑fetch
+- `paginate()` uses the first `orderBy` field for cursor ordering

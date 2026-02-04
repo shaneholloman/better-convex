@@ -7,16 +7,14 @@ links:
 
 import { InfoIcon, CheckCircle, AlertTriangle } from "lucide-react"
 
-Define relationships between tables using Drizzle's `relations()` API. Better-Convex ORM uses the exact same relation definition syntax as Drizzle.
+Define relationships between tables using Drizzle v1 `defineRelations()` API. Better-Convex ORM mirrors Drizzle v1 relation syntax.
 
 ## Overview
 
-**Category**: ✅ Drizzle-Compatible (Definition + Loading) | ⚠️ Limited (Nested Constraints)
-
-Relations in Better-Convex ORM use the same API as Drizzle for **defining** and **loading** relationships. The `with:` option is implemented and type-safe, with a few nested constraints noted below.
+Relations in Better-Convex ORM use the same API as Drizzle v1 for **defining** and **loading** relationships. The `with:` option is type-safe, with a few nested constraints noted below.
 
 <Callout icon={<AlertTriangle />}>
-**Current Status**: Relation loading via `with:` works end-to-end. Nested `with` has a depth limit and per-relation filters are post-fetch for `many()` relations.
+Relation loading via `with:` works end-to-end. Nested `with` has a depth limit and per-relation filters are post-fetch for `many()` relations.
 </Callout>
 
 ## Relation Types
@@ -24,7 +22,7 @@ Relations in Better-Convex ORM use the same API as Drizzle for **defining** and 
 ### One-to-One Relations
 
 ```ts title="convex/schema.ts" showLineNumbers {1-3,5-23}
-import { convexTable, relations, text, id } from 'better-convex/orm';
+import { convexTable, defineRelations, text, id } from 'better-convex/orm';
 
 const users = convexTable('users', {
   name: text().notNull(),
@@ -35,22 +33,21 @@ const profiles = convexTable('profiles', {
   userId: id('users'),
 });
 
-// Define 1:1 relation (profiles side - has foreign key)
-const profilesRelations = relations(profiles, ({ one }) => ({
-  user: one(users, {
-    fields: [profiles.userId],
-    references: [users._id],
-  }),
-}));
-
-// Define 1:1 relation (users side - optional)
-const usersRelations = relations(users, ({ one }) => ({
-  profile: one(profiles),
+const ormSchema = defineRelations({ users, profiles }, (r) => ({
+  profiles: {
+    user: r.one.users({
+      from: r.profiles.userId,
+      to: r.users._id,
+    }),
+  },
+  users: {
+    profile: r.one.profiles(),
+  },
 }));
 ```
 
 <Callout icon={<InfoIcon />}>
-**Relation Definition**: The `one()` function declares that a profile belongs to exactly one user. The `fields` and `references` parameters specify the foreign key relationship.
+**Relation Definition**: Use `from` and `to` to describe the foreign key relationship. In Convex, primary keys are `_id`.
 </Callout>
 
 ### One-to-Many Relations
@@ -58,7 +55,7 @@ const usersRelations = relations(users, ({ one }) => ({
 The most common relation type - one user has many posts.
 
 ```ts title="convex/schema.ts" showLineNumbers {1-3,5-21,23-31}
-import { convexTable, relations, text, boolean, id } from 'better-convex/orm';
+import { convexTable, defineRelations, text, boolean, id } from 'better-convex/orm';
 
 const users = convexTable('users', {
   name: text().notNull(),
@@ -71,17 +68,16 @@ const posts = convexTable('posts', {
   userId: id('users'),
 });
 
-// "One" side: User has many posts
-const usersRelations = relations(users, ({ many }) => ({
-  posts: many(posts),
-}));
-
-// "Many" side: Post belongs to one user
-const postsRelations = relations(posts, ({ one }) => ({
-  author: one(users, {
-    fields: [posts.userId],
-    references: [users._id],
-  }),
+const ormSchema = defineRelations({ users, posts }, (r) => ({
+  users: {
+    posts: r.many.posts(),
+  },
+  posts: {
+    author: r.one.users({
+      from: r.posts.userId,
+      to: r.users._id,
+    }),
+  },
 }));
 ```
 
@@ -95,7 +91,7 @@ const postsRelations = relations(posts, ({ one }) => ({
 Better-Convex does not auto-create join tables. Model many-to-many with an explicit join table:
 
 ```ts title="convex/schema.ts" showLineNumbers {1-3,5-24,26-40}
-import { convexTable, relations, text, id } from 'better-convex/orm';
+import { convexTable, defineRelations, text, id } from 'better-convex/orm';
 
 const posts = convexTable('posts', {
   title: text().notNull(),
@@ -110,17 +106,17 @@ const postsTags = convexTable('postsTags', {
   tagId: id('tags'),
 });
 
-const postsRelations = relations(posts, ({ many }) => ({
-  tags: many(postsTags),
-}));
-
-const tagsRelations = relations(tags, ({ many }) => ({
-  posts: many(postsTags),
-}));
-
-const postsTagsRelations = relations(postsTags, ({ one }) => ({
-  post: one(posts, { fields: [postsTags.postId], references: [posts._id] }),
-  tag: one(tags, { fields: [postsTags.tagId], references: [tags._id] }),
+const ormSchema = defineRelations({ posts, tags, postsTags }, (r) => ({
+  posts: {
+    tags: r.many.postsTags(),
+  },
+  tags: {
+    posts: r.many.postsTags(),
+  },
+  postsTags: {
+    post: r.one.posts({ from: r.postsTags.postId, to: r.posts._id }),
+    tag: r.one.tags({ from: r.postsTags.tagId, to: r.tags._id }),
+  },
 }));
 ```
 
@@ -129,84 +125,68 @@ const postsTagsRelations = relations(postsTags, ({ one }) => ({
 Define relations where a table references itself (e.g., user followers).
 
 ```ts title="convex/schema.ts" showLineNumbers {1-8}
-import { convexTable, relations, text } from 'better-convex/orm';
+import { convexTable, defineRelations, text, id } from 'better-convex/orm';
 
 const users = convexTable('users', {
   name: text().notNull(),
   username: text().notNull(),
+  managerId: id('users'),
 });
 
-const usersRelations = relations(users, ({ many }) => ({
-  followers: many(users, { relationName: 'user_followers' }),
-  following: many(users, { relationName: 'user_following' }),
+const ormSchema = defineRelations({ users }, (r) => ({
+  users: {
+    manager: r.one.users({
+      from: r.users.managerId,
+      to: r.users._id,
+      alias: 'manager',
+    }),
+    reports: r.many.users({
+      from: r.users._id,
+      to: r.users.managerId,
+      alias: 'manager',
+    }),
+  },
 }));
 ```
 
 **Important:**
-- **Use `relationName`** to distinguish self-referencing relations
+- **Use `alias`** to distinguish self-referencing relations
 - **Unique names** are required to disambiguate
 
 ## Relation Definition Rules
 
 ### Required Fields
 
-When defining the "many" side of a relation, specify the foreign key field explicitly:
+Define the `one()` side with `from` and `to`. The `many()` side can be inferred from the inverse relation.
 
 ```ts
-// ✅ CORRECT: Specify fields and references
-const postsRelations = relations(posts, ({ one }) => ({
-  author: one(users, {
-    fields: [posts.userId],
-    references: [users._id],
-  }),
-}));
-
-// ✅ CORRECT: "One" side doesn't need fields/references
-const usersRelations = relations(users, ({ many }) => ({
-  posts: many(posts),
+const ormSchema = defineRelations({ users, posts }, (r) => ({
+  posts: {
+    author: r.one.users({
+      from: r.posts.userId,
+      to: r.users._id,
+    }),
+  },
+  users: {
+    posts: r.many.posts(),
+  },
 }));
 ```
 
-### Export Both Table and Relations
+### Export Tables and Schema
 
 ```ts
-// ❌ WRONG: Missing relations export
-export const schema = {
-  users,
-  posts,
-  // usersRelations missing!
-};
+export const ormSchema = defineRelations({ users, posts }, (r) => ({
+  users: { posts: r.many.posts() },
+  posts: { author: r.one.users({ from: r.posts.userId, to: r.users._id }) },
+}));
 
-// ✅ CORRECT: Export both
-export const schema = {
-  users,
-  posts,
-  usersRelations,
-  postsRelations,
-};
+export const ormEdges = extractRelationsConfig(ormSchema);
 ```
 
 ### Bidirectional Definitions
 
-```ts
-// ❌ WRONG: Only defining one side
-const usersRelations = relations(users, ({ many }) => ({
-  posts: many(posts),
-}));
-// Missing postsRelations!
-
-// ✅ CORRECT: Define both sides
-const usersRelations = relations(users, ({ many }) => ({
-  posts: many(posts),
-}));
-
-const postsRelations = relations(posts, ({ one }) => ({
-  author: one(users, {
-    fields: [posts.userId],
-    references: [users._id],
-  }),
-}));
-```
+Define both sides when you want `with` loading in both directions.
 
 ## Relation Loading with `with:`
 
@@ -221,24 +201,24 @@ const usersWithPosts = await db.query.users.findMany({
   with: {
     posts: {
       limit: 5,
-      orderBy: (posts, { desc }) => desc(posts._creationTime),
+      orderBy: { _creationTime: 'desc' },
     },
   },
 });
 ```
 
 <Callout icon={<InfoIcon />}>
-**Note**: `limit`, `orderBy`, and `where` apply to `many()` relations. Nested `with` is supported, with a depth limit to prevent infinite recursion.
+**Note**: `limit`, `orderBy`, and `where` apply to `many()` relations. Nested `with` works with a depth limit to prevent infinite recursion.
 </Callout>
 
 ## Common Gotchas
 
 | Issue | Solution |
 |-------|----------|
-| **Relations not working** | Export both the table AND the relations object |
+| **Relations not working** | Define relations in `defineRelations()` and pass `ormEdges` to `createDatabase` |
 | **Foreign key field missing** | Define the FK column yourself (e.g., `userId: id('users')`) |
-| **Type errors in `fields`** | Ensure `fields` match the source table and `references` match the target table |
-| **Self-referencing conflicts** | Use unique `relationName` for each self-referencing relation |
+| **Type errors in `from`/`to`** | Ensure `from` columns belong to the source table and `to` columns belong to the target table |
+| **Self-referencing conflicts** | Use unique `alias` for each self-referencing relation |
 | **`with:` not working** | Ensure relations are defined on both tables and `ormEdges` is passed to `createDatabase` |
 
 ## Next Steps
@@ -251,7 +231,7 @@ const usersWithPosts = await db.query.users.findMany({
     Deep dive into table definitions and type inference
   </Card>
   <Card title="Limitations" href="/docs/db/orm/limitations">
-    Understand current limitations and planned features
+    Understand current limitations
   </Card>
   <Card title="Drizzle Comparison" href="/docs/db/orm/comparison">
     See how Better-Convex maps to Drizzle's API

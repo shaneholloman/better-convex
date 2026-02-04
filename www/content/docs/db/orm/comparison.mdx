@@ -7,68 +7,40 @@ links:
 
 import { InfoIcon, CheckCircle, AlertTriangle } from "lucide-react"
 
-Compare Drizzle ORM and Better-Convex ORM APIs side-by-side. This guide shows exact API mappings and migration paths for Drizzle developers.
+This guide compares Drizzle v1 and Better-Convex ORM side-by-side. It focuses on API mapping and the behavioral differences that matter when moving from SQL to Convex.
 
-## API Compatibility Overview
+## At A Glance
 
-**Current Implementation (M1-M6.5):**
-- ✅ Schema definition (`convexTable`, column builders)
-- ✅ Relations definition (`one()`, `many()`)
-- ✅ Relation loading (`with:`)
-- ✅ Query builder (`findMany`, `findFirst`, `paginate`)
-- ✅ Where filtering (all operators)
-- ✅ Order by (multi-field, index-aware first sort)
-- ✅ Column selection (post-fetch)
-- ✅ String operators (post-fetch)
-- ✅ Type inference
+**Same API surface:**
+- Table builders and relations (`convexTable`, `defineRelations`, `one`, `many`)
+- Relational query builder (`findMany`, `findFirst`, `where`, `orderBy`, `limit`, `offset`, `with`)
+- Type inference (`InferSelectModel`, `InferInsertModel`, `$inferSelect`, `$inferInsert`)
+- Mutation helpers (`insert`, `update`, `delete`, `returning`, `onConflictDoUpdate`)
 
-**Coming Soon:**
-- 🚧 Mutations (`insert`, `update`, `delete`)
+**Different behavior:**
+- `_id` is auto-created (no manual `id` column)
+- Fields are nullable by default (`text()` yields `string | null`)
+- `columns` projection and string operators run post-fetch
+- Relation filters and ordering for `many()` run post-fetch
+- Cursor pagination uses the first `orderBy` field and requires indexes for stable ordering
 
-### Migration Checklist
+**Not available in Convex:**
+- SQL joins and raw SQL execution
+- Database migrations and constraints
+- Custom SQL data types
+- Table introspection helpers (`getTableConfig`, `getTableColumns`)
+
+## Migration Checklist
 
 - [ ] Install `better-convex`
-- [ ] Convert table definitions to `convexTable()` with column builders (`text`, `integer`, etc.)
-- [ ] Define relations using `relations()` (loading via `with:` supported)
-- [ ] Update imports from `drizzle-orm` to `better-convex/orm`
-- [ ] Build schema with `buildSchema()` and edges with `extractRelationsConfig()`
-- [ ] Create database instance with `createDatabase(ctx.db, ormSchema, ormEdges)`
-- [ ] Update `where` clauses to use callback form
-- [ ] Keep `orderBy` and `columns` (post-fetch)
-- [ ] Use native Convex mutations for now
+- [ ] Convert table definitions to `convexTable()` with column builders (`text`, `integer`, `boolean`, `id`)
+- [ ] Replace manual `id` fields with Convex `_id`
+- [ ] Define relations using `defineRelations()` and `with`
+- [ ] Create a DB instance with `createDatabase(ctx.db, ormSchema, ormEdges)`
+- [ ] Keep `where`, `orderBy`, `limit`, `offset` shapes the same
+- [ ] Move joins to relation loading (`with`)
 
-## Installation
-
-<Tabs groupId="package-manager" items={['npm', 'pnpm', 'yarn', 'bun']} persist>
-  <Tab value="npm">
-    ```bash
-    npm install better-convex
-    npm uninstall drizzle-orm # Optional
-    ```
-  </Tab>
-  <Tab value="pnpm">
-    ```bash
-    pnpm add better-convex
-    pnpm remove drizzle-orm # Optional
-    ```
-  </Tab>
-  <Tab value="yarn">
-    ```bash
-    yarn add better-convex
-    yarn remove drizzle-orm # Optional
-    ```
-  </Tab>
-  <Tab value="bun">
-    ```bash
-    bun add better-convex
-    bun remove drizzle-orm # Optional
-    ```
-  </Tab>
-</Tabs>
-
-## API Migration Guide
-
-### Schema Definition
+## Schema Definition
 
 <Tabs groupId="migration" items={['Drizzle', 'Better-Convex']} persist>
   <Tab value="Drizzle">
@@ -115,54 +87,53 @@ Compare Drizzle ORM and Better-Convex ORM APIs side-by-side. This guide shows ex
   </Tab>
 </Tabs>
 
-**Key Changes:**
-- **IDs**: Use auto-generated `_id` instead of manual `id` field
-- **Types**: Use column builders (`text()`, `integer()`, etc.)
-- **Nullable**: Fields are nullable by default; use `.notNull()` for required
-- **Foreign Keys**: Use `id('table')` for references
+**Key changes:**
+- IDs are auto-created as `_id`
+- Nullable by default unless `.notNull()` is used
+- Foreign keys are `id('table')`
 
-### Relations
+## Relations
 
 <Tabs groupId="migration" items={['Drizzle', 'Better-Convex']} persist>
   <Tab value="Drizzle">
     ```ts
-    import { relations } from 'drizzle-orm';
+    import { defineRelations } from 'drizzle-orm';
 
-    const usersRelations = relations(users, ({ many }) => ({
-      posts: many(posts),
-    }));
-
-    const postsRelations = relations(posts, ({ one }) => ({
-      author: one(users, {
-        fields: [posts.userId],
-        references: [users.id],
-      }),
+    export const relations = defineRelations({ users, posts }, (r) => ({
+      users: {
+        posts: r.many.posts(),
+      },
+      posts: {
+        author: r.one.users({
+          from: r.posts.userId,
+          to: r.users.id,
+        }),
+      },
     }));
     ```
   </Tab>
   <Tab value="Better-Convex">
     ```ts
-    import { relations } from 'better-convex/orm';
+    import { defineRelations, extractRelationsConfig } from 'better-convex/orm';
 
-    const usersRelations = relations(users, ({ many }) => ({
-      posts: many(posts),
+    export const ormSchema = defineRelations({ users, posts }, (r) => ({
+      users: {
+        posts: r.many.posts(),
+      },
+      posts: {
+        author: r.one.users({
+          from: r.posts.userId,
+          to: r.users._id,
+        }),
+      },
     }));
 
-    const postsRelations = relations(posts, ({ one }) => ({
-      author: one(users, {
-        fields: [posts.userId],
-        references: [users._id], // Use _id instead of id
-      }),
-    }));
+    export const ormEdges = extractRelationsConfig(ormSchema);
     ```
   </Tab>
 </Tabs>
 
-**Key Changes:**
-- **API**: 100% identical except `_id` vs `id`
-- **Import**: `better-convex/orm` instead of `drizzle-orm`
-
-### Queries
+## Queries
 
 <Tabs groupId="migration" items={['Drizzle', 'Better-Convex']} persist>
   <Tab value="Drizzle">
@@ -170,15 +141,16 @@ Compare Drizzle ORM and Better-Convex ORM APIs side-by-side. This guide shows ex
     const users = await db.query.users.findMany();
 
     const user = await db.query.users.findFirst({
-      where: (users, { eq }) => eq(users.email, 'alice@example.com'),
+      where: { email: 'alice@example.com' },
     });
 
     const admins = await db.query.users.findMany({
-      where: (users, { and, eq, gt }) =>
-        and(
-          eq(users.role, 'admin'),
-          gt(users.lastSeen, Date.now() - 86_400_000)
-        ),
+      where: {
+        role: 'admin',
+        lastSeen: { gt: Date.now() - 86_400_000 },
+      },
+      orderBy: { lastSeen: 'desc' },
+      limit: 10,
     });
     ```
   </Tab>
@@ -192,206 +164,68 @@ Compare Drizzle ORM and Better-Convex ORM APIs side-by-side. This guide shows ex
     const users = await db.query.users.findMany();
 
     const user = await db.query.users.findFirst({
-      where: (users, { eq }) => eq(users.email, 'alice@example.com'),
+      where: { email: 'alice@example.com' },
     });
 
     const admins = await db.query.users.findMany({
-      where: (users, { and, eq, gt }) =>
-        and(
-          eq(users.role, 'admin'),
-          gt(users.lastSeen, Date.now() - 86_400_000)
-        ),
+      where: {
+        role: 'admin',
+        lastSeen: { gt: Date.now() - 86_400_000 },
+      },
+      orderBy: { lastSeen: 'desc' },
+      limit: 10,
     });
     ```
   </Tab>
 </Tabs>
 
-**Key Changes:**
-- **Context**: Use `createDatabase(ctx.db, ormSchema, ormEdges)`
-- **Where**: Keep callback form (same as Drizzle RQB)
+## API Mapping
 
-### Mutations (🚧 Coming Soon)
+| Drizzle v1 | Better-Convex | Notes |
+|---|---|---|
+| `pgTable()` / `mysqlTable()` / `sqliteTable()` | `convexTable()` | Same surface | 
+| `defineRelations()` | `defineRelations()` | Same surface |
+| `db.query.*.findMany()` | `db.query.*.findMany()` | Same surface via `createDatabase` |
+| `db.query.*.findFirst()` | `db.query.*.findFirst()` | Same surface via `createDatabase` |
+| `where` object filters | `where` object filters | Same shape |
+| `orderBy` | `orderBy` | Same shape, index-aware |
+| `columns` | `columns` | Post-fetch projection |
+| `with` | `with` | Relation loading |
+| `insert/update/delete` | `insert/update/delete` | Same surface |
+| SQL joins | Not available | Use `with` |
+| Raw SQL | Not available | Convex is document-based |
+| Custom types | Not available | Use app-level encoding |
+| Table introspection | Not available | Use your schema object |
 
-<Callout icon={<AlertTriangle />}>
-**Not Yet Implemented**: Mutation APIs (`insert`, `update`, `delete`) are planned. Use native Convex mutations for now.
-</Callout>
+## Differences To Note
 
-## Complete API Mapping
-
-| Drizzle API | Better-Convex API | Compatibility |
-|-------------|-------------------|---------------|
-| `pgTable()` / `mysqlTable()` | `convexTable()` | ✅ API identical |
-| `relations()` | `relations()` | ✅ 100% identical |
-| `db.query.*.findMany()` | `db.query.*.findMany()` (via `createDatabase`) | ✅ Equivalent |
-| `db.query.*.findFirst()` | `db.query.*.findFirst()` (via `createDatabase`) | ✅ Equivalent |
-| `eq()`, `ne()`, `gt()`, etc. | Same | ✅ 100% identical |
-| `and()`, `or()`, `not()` | Same | ✅ 100% identical |
-| `with` (relations) | `with` | ✅ 100% identical |
-| `where` (filtering) | `where` callback | ✅ 100% identical |
-| `limit` / `offset` | `limit` / `offset` | ✅ 100% identical |
-| `orderBy()` | `orderBy()` | ✅ Multi-field supported |
-| `columns` | `columns` | ✅ Post-fetch projection |
-| `like()` / `ilike()` | `like()` / `ilike()` | ✅ Post-fetch filtering |
-| Raw SQL | ❌ Not supported | ❌ Convex uses documents |
-| Migrations | ❌ Not supported | ❌ Convex is schemaless |
-
-## Feature Categories
-
-### Category 1: ✅ Drizzle-Compatible
-
-These APIs work in Better-Convex with the same surface area:
-
-**Schema:**
-- Table definitions
-- Relations (`one()`, `many()`)
-- Basic field types
-
-**Queries:**
-- `findMany()`, `findFirst()`, `paginate()`
-- `with` (relation loading)
-- `where` (filtering)
-- `limit`, `offset`
-- `orderBy` (multi-field)
-- `columns` (post-fetch)
-- String operators (post-fetch)
-
-### Category 2: ⚠️ Limited/Workaround
-
-These features require alternative approaches or are planned:
-
-| Feature | Drizzle | Better-Convex Workaround |
-|---------|---------|--------------------------|
-| Mutations | `insert/update/delete` | Use native Convex mutations |
-| Defaults | `.default()` | Set defaults in application logic |
-| Unique constraints | `.unique()` | Use Convex Ents `defineEntSchema` |
-
-### Category 3: 🚀 Convex-Native Advantages
-
-Features Better-Convex has that Drizzle doesn't:
-
-- **Real-Time Subscriptions**: Convex queries are reactive
-- **Cursor Pagination**: `paginate()` for large lists
-- **Serverless Scaling**: No connection pooling
-
-### Category 4: ❌ Not Applicable
-
-SQL-specific features not needed in Convex:
-
-- Raw SQL queries
-- Database migrations
-- Complex SQL joins
+- Better-Convex runs on Convex documents, not SQL tables
+- `_id` and `_creationTime` are always present
+- Nullable is the default, `.notNull()` makes fields required
+- `columns`, string operators, and relation filters are post-fetch
+- Cursor pagination requires an index on the primary `orderBy` field
 
 ## Migration Gotchas
 
-| Gotcha | Solution |
-|--------|----------|
+| Gotcha | Fix |
+|---|---|
 | **No `db` instance** | Use `createDatabase(ctx.db, ormSchema, ormEdges)` |
-| **`id` vs `_id`** | Convex uses `_id`, Drizzle uses `id` |
-| **Nullable fields** | Types use `null` for nullable columns |
-| **Column selection** | `columns` is post-fetch projection |
-| **`like()` performance** | Use search indexes for large datasets |
-| **Relations not loading** | Ensure relations exported and `ormEdges` passed |
-
-## Step-by-Step Migration Example
-
-### Before (Drizzle)
-
-```ts title="db/schema.ts"
-import { pgTable, serial, text, integer } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
-
-const users = pgTable('users', {
-  id: serial('id').primaryKey(),
-  name: text('name').notNull(),
-  email: text('email').notNull(),
-});
-
-const posts = pgTable('posts', {
-  id: serial('id').primaryKey(),
-  title: text('title').notNull(),
-  userId: integer('user_id').references(() => users.id),
-});
-
-const usersRelations = relations(users, ({ many }) => ({
-  posts: many(posts),
-}));
-```
-
-```ts title="app/queries.ts"
-import { db } from './db';
-
-export async function getUser(email: string) {
-  return await db.query.users.findFirst({
-    where: (users, { eq }) => eq(users.email, email),
-  });
-}
-```
-
-### After (Better-Convex)
-
-```ts title="convex/schema.ts"
-import { convexTable, relations, text, id, buildSchema, extractRelationsConfig } from 'better-convex/orm';
-
-const users = convexTable('users', {
-  name: text().notNull(),
-  email: text().notNull(),
-});
-
-const posts = convexTable('posts', {
-  title: text().notNull(),
-  userId: id('users'),
-});
-
-const usersRelations = relations(users, ({ many }) => ({
-  posts: many(posts),
-}));
-
-const postsRelations = relations(posts, ({ one }) => ({
-  author: one(users, {
-    fields: [posts.userId],
-    references: [users._id],
-  }),
-}));
-
-export const schema = { users, posts, usersRelations, postsRelations };
-export const ormSchema = buildSchema(schema);
-export const ormEdges = extractRelationsConfig(ormSchema);
-```
-
-```ts title="convex/queries.ts"
-import { query } from './_generated/server';
-import { createDatabase } from 'better-convex/orm';
-import { ormSchema, ormEdges } from './schema';
-
-export const getUser = query({
-  handler: async (ctx, args) => {
-    const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    return await db.query.users.findFirst({
-      where: (users, { eq }) => eq(users.email, args.email),
-    });
-  },
-});
-```
-
-**Changes Made:**
-1. Changed imports from `drizzle-orm` to `better-convex/orm`
-2. Changed `pgTable` to `convexTable` with column builders
-3. Removed manual `id` fields (auto-created as `_id`)
-4. Added `buildSchema()` and `extractRelationsConfig()`
-5. Created DB instance with `createDatabase`
-6. Kept `where` callback shape
-7. Changed `users.id` to `users._id` in relations
+| **`id` vs `_id`** | Convex uses `_id` for primary keys |
+| **Nullable fields** | Types include `null` unless `.notNull()` |
+| **No SQL joins** | Use `with` relation loading |
+| **Missing index for ordering** | Add `.index()` in schema |
+| **Custom SQL types** | Use app-level encoding |
 
 ## Next Steps
 
 <Cards>
   <Card title="Schema Definition" href="/docs/db/orm/schema">
-    Deep dive into table and relation patterns
+    Define tables, relations, and indexes
   </Card>
   <Card title="Querying Data" href="/docs/db/orm/queries">
-    Master all query operations
+    Learn filters, ordering, and pagination
   </Card>
   <Card title="Limitations" href="/docs/db/orm/limitations">
-    Full list of differences and workarounds
+    Understand differences and tradeoffs
   </Card>
 </Cards>

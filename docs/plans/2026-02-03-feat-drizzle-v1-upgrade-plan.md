@@ -168,11 +168,11 @@ Adopt a v1-only API surface that mirrors the `drizzle-v1` repo as canonical refe
 - Define migration guide scope early to avoid rework.
 
 ## Acceptance Criteria
-- [ ] v1-only API; no v0.45 compatibility.
-- [ ] Schema, relations, query syntax, and mutations mirror `drizzle-v1` for Convex-relevant parts.
-- [ ] Type tests mirror Drizzle v1 with minimal Convex adaptations.
-- [ ] Runtime tests pass for relations, query object syntax, and mutations.
-- [ ] Docs updated to v1-only and migration guide published.
+- [x] v1-only API; no v0.45 compatibility.
+- [x] Schema, relations, query syntax, and mutations mirror `drizzle-v1` for Convex-relevant parts.
+- [x] Type tests mirror Drizzle v1 with minimal Convex adaptations.
+- [x] Runtime tests pass for relations, query object syntax, and mutations.
+- [x] Docs updated to v1-only and migration guide published.
 
 ## Success Metrics
 - Typecheck passes with mirrored v1 tests.

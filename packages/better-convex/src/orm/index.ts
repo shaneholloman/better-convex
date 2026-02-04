@@ -20,7 +20,7 @@
  *
  * const relations = defineRelations({ users, posts }, (r) => ({
  *   posts: {
- *     author: r.one.users({ from: r.posts.userId, to: r.users._id }),
+ *     author: r.one.users({ from: r.posts.authorId, to: r.users._id }),
  *   },
  * }));
  *
@@ -43,6 +43,11 @@
  * });
  */
 
+export type {
+  DefineSchemaOptions,
+  GenericSchema,
+  SchemaDefinition,
+} from 'convex/server';
 // M6: Column Builders (Drizzle-style)
 export type {
   ColumnBuilder,
@@ -77,9 +82,10 @@ export {
   number,
   text,
 } from './builders';
-export type { DatabaseWithQuery } from './database';
+export type { DatabaseWithMutations, DatabaseWithQuery } from './database';
 // M3: Database Context
 export { buildSchema, createDatabase } from './database';
+export { ConvexDeleteBuilder } from './delete';
 export type { EdgeMetadata } from './extractRelationsConfig';
 // M2: Schema Extraction
 export { extractRelationsConfig } from './extractRelationsConfig';
@@ -115,6 +121,14 @@ export {
   or,
   startsWith,
 } from './filter-expression';
+// M1: Index Builders (Drizzle-style)
+export {
+  type ConvexIndexBuilder,
+  type ConvexIndexBuilderOn,
+  index,
+  uniqueIndex,
+} from './indexes';
+export { ConvexInsertBuilder } from './insert';
 // M5: OrderBy
 export { asc, desc } from './order-by';
 export { GelRelationalQuery } from './query';
@@ -133,6 +147,7 @@ export type {
 } from './relations';
 // M2: Relations Layer (v1)
 export { defineRelations, defineRelationsPart } from './relations';
+export { defineSchema } from './schema';
 // M1: Schema Foundation
 export {
   Brand,
@@ -152,9 +167,17 @@ export type {
   InferInsertModel,
   InferModelFromColumns,
   InferSelectModel,
+  InsertValue,
+  MutationResult,
+  MutationReturning,
   OrderByClause,
   OrderDirection,
+  ReturningAll,
+  ReturningResult,
+  ReturningSelection,
+  UpdateSet,
 } from './types';
+export { ConvexUpdateBuilder } from './update';
 // M4: Where Clause Compiler
 export type { WhereClauseResult } from './where-clause-compiler';
 export { WhereClauseCompiler } from './where-clause-compiler';

@@ -44,14 +44,14 @@ describe('M2 Relations Layer (v1)', () => {
 
       const posts = convexTable('posts', {
         title: text().notNull(),
-        userId: id('users').notNull(),
+        authorId: id('users').notNull(),
       });
 
       const relations = defineRelations({ users, posts }, (r) => ({
         users: {
           posts: r.many.posts({
             from: r.users._id,
-            to: r.posts.userId,
+            to: r.posts.authorId,
           }),
         },
       }));
@@ -68,7 +68,7 @@ describe('M2 Relations Layer (v1)', () => {
 
       const posts = convexTable('posts', {
         title: text().notNull(),
-        userId: id('users').notNull(),
+        authorId: id('users').notNull(),
       });
 
       const relations = defineRelations({ users, posts }, (r) => ({
@@ -76,15 +76,15 @@ describe('M2 Relations Layer (v1)', () => {
           posts: r.many.posts(),
         },
         posts: {
-          user: r.one.users({
-            from: r.posts.userId,
+          author: r.one.users({
+            from: r.posts.authorId,
             to: r.users._id,
           }),
         },
       }));
 
       expect(relations.users.relations.posts).toBeDefined();
-      expect(relations.posts.relations.user).toBeDefined();
+      expect(relations.posts.relations.author).toBeDefined();
     });
   });
 
@@ -96,19 +96,19 @@ describe('M2 Relations Layer (v1)', () => {
 
       const posts = convexTable('posts', {
         title: text().notNull(),
-        userId: id('users').notNull(),
+        authorId: id('users').notNull(),
       });
 
       const relations = defineRelations({ users, posts }, (r) => ({
         users: {
           posts: r.many.posts({
             from: r.users._id,
-            to: r.posts.userId,
+            to: r.posts.authorId,
           }),
         },
         posts: {
-          user: r.one.users({
-            from: r.posts.userId,
+          author: r.one.users({
+            from: r.posts.authorId,
             to: r.users._id,
           }),
         },
@@ -125,16 +125,16 @@ describe('M2 Relations Layer (v1)', () => {
         targetTable: 'posts',
         cardinality: 'many',
         sourceFields: ['_id'],
-        targetFields: ['userId'],
+        targetFields: ['authorId'],
       });
 
-      const userEdge = edges.find((e) => e.edgeName === 'user');
-      expect(userEdge).toMatchObject({
+      const authorEdge = edges.find((e) => e.edgeName === 'author');
+      expect(authorEdge).toMatchObject({
         sourceTable: 'posts',
-        edgeName: 'user',
+        edgeName: 'author',
         targetTable: 'users',
         cardinality: 'one',
-        sourceFields: ['userId'],
+        sourceFields: ['authorId'],
         targetFields: ['_id'],
       });
     });
@@ -146,7 +146,7 @@ describe('M2 Relations Layer (v1)', () => {
 
       const posts = convexTable('posts', {
         title: text().notNull(),
-        userId: id('users').notNull(),
+        authorId: id('users').notNull(),
       });
 
       const relations = defineRelations({ users, posts }, (r) => ({
@@ -154,8 +154,8 @@ describe('M2 Relations Layer (v1)', () => {
           posts: r.many.posts(),
         },
         posts: {
-          user: r.one.users({
-            from: r.posts.userId,
+          author: r.one.users({
+            from: r.posts.authorId,
             to: r.users._id,
           }),
         },
@@ -164,10 +164,10 @@ describe('M2 Relations Layer (v1)', () => {
       const edges = extractRelationsConfig(relations);
 
       const postsEdge = edges.find((e) => e.edgeName === 'posts');
-      const userEdge = edges.find((e) => e.edgeName === 'user');
+      const authorEdge = edges.find((e) => e.edgeName === 'author');
 
-      expect(postsEdge?.inverseEdge).toBe(userEdge);
-      expect(userEdge?.inverseEdge).toBe(postsEdge);
+      expect(postsEdge?.inverseEdge).toBe(authorEdge);
+      expect(authorEdge?.inverseEdge).toBe(postsEdge);
     });
   });
 
@@ -179,7 +179,7 @@ describe('M2 Relations Layer (v1)', () => {
 
       const posts = convexTable('posts', {
         title: text().notNull(),
-        userId: id('users').notNull(),
+        authorId: id('users').notNull(),
       });
 
       expect(() => {
@@ -198,13 +198,13 @@ describe('M2 Relations Layer (v1)', () => {
 
       const posts = convexTable('posts', {
         title: text().notNull(),
-        userId: id('users').notNull(),
+        authorId: id('users').notNull(),
       });
 
       const relations = defineRelations({ users, posts }, (r) => ({
         posts: {
-          user: r.one.users({
-            from: r.posts.userId,
+          author: r.one.users({
+            from: r.posts.authorId,
             to: r.users._id,
           }),
         },

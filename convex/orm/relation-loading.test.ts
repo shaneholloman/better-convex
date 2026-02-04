@@ -3,15 +3,16 @@
  *
  * Tests basic one-level relation loading:
  * - One-to-many relations (users.posts)
- * - Many-to-one relations (posts.user)
+ * - Many-to-one relations (posts.author)
  * - Batch loading efficiency (no N+1 queries)
  * - Optional relations (null handling)
  */
 
 import {
   convexTable,
-  createDatabase,
+  type DatabaseWithMutations,
   defineRelations,
+  defineSchema,
   extractRelationsConfig,
   id,
   text,
@@ -19,33 +20,33 @@ import {
 import type { StorageActionWriter } from 'convex/server';
 import { test as baseTest, describe, expect } from 'vitest';
 import type { MutationCtx } from '../_generated/server';
-import schema, { ormPosts, ormUsers } from '../schema';
-import { convexTest } from '../setup.testing';
+import { posts, users } from '../schema';
+import { convexTest, getCtxWithTable } from '../setup.testing';
 
 // M6.5 Phase 2: Comments table and relations for nested testing (local to this test file)
 const ormComments = convexTable('comments', {
   text: text().notNull(),
-  postId: id('posts'),
-  userId: id('users'),
+  postId: id('posts').notNull(),
+  authorId: id('users'),
 });
 
 // M6.5 Phase 2: Relations for comments + posts (local to this test file)
 const relations = defineRelations(
   {
-    users: ormUsers,
-    posts: ormPosts,
+    users: users,
+    posts: posts,
     comments: ormComments,
   },
   (r) => ({
     users: {
       posts: r.many.posts({
         from: r.users._id,
-        to: r.posts.userId,
+        to: r.posts.authorId,
       }),
     },
     posts: {
-      user: r.one.users({
-        from: r.posts.userId,
+      author: r.one.users({
+        from: r.posts.authorId,
         to: r.users._id,
       }),
       comments: r.many.comments({
@@ -58,45 +59,40 @@ const relations = defineRelations(
         from: r.comments.postId,
         to: r.posts._id,
       }),
-      user: r.one.users({
-        from: r.comments.userId,
+      author: r.one.users({
+        from: r.comments.authorId,
         to: r.users._id,
       }),
     },
   })
 );
 
-import { v } from 'convex/values';
-// Local schema with comments table for Ents testing
-import { defineEnt, defineEntSchema } from 'convex-ents';
-
-const testSchemaWithComments = defineEntSchema(
-  {
-    ...schema.tables,
-    comments: defineEnt({
-      text: v.string(),
-    })
-      .field('postId', v.id('posts'))
-      .field('userId', v.id('users')),
-  },
-  { schemaValidation: false }
-);
-
-// Test setup with convexTest
-const test = baseTest.extend<{
-  ctx: MutationCtx & { storage: StorageActionWriter };
-}>({
-  ctx: async ({}, use) => {
-    const t = convexTest(testSchemaWithComments);
-    await t.run(async (ctx) => {
-      await use(ctx);
-    });
-  },
+// Local schema with comments table for testing relation loading
+const testSchemaWithComments = defineSchema({
+  users: users,
+  posts: posts,
+  comments: ormComments,
 });
 
 // Test schema (local defineRelations config)
 const testSchema = relations;
 const edges = extractRelationsConfig(relations);
+
+type TestCtx = MutationCtx & {
+  storage: StorageActionWriter;
+  table: DatabaseWithMutations<typeof testSchema>;
+};
+
+// Test setup with convexTest
+const test = baseTest.extend<{ ctx: TestCtx }>({
+  ctx: async ({}, use) => {
+    const t = convexTest(testSchemaWithComments);
+    await t.run(async (baseCtx) => {
+      const ctx = getCtxWithTable(baseCtx, testSchema, edges);
+      await use(ctx);
+    });
+  },
+});
 
 describe('M6.5 Phase 1: Relation Loading', () => {
   describe('One-to-Many Relations (users.posts)', () => {
@@ -109,7 +105,7 @@ describe('M6.5 Phase 1: Relation Loading', () => {
         email: 'alice@example.com',
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const users = await db.query.users.findMany({
         with: {
           posts: true,
@@ -132,17 +128,17 @@ describe('M6.5 Phase 1: Relation Loading', () => {
         text: 'First post',
         numLikes: 10,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
       const post2Id = await ctx.db.insert('posts', {
         text: 'Second post',
         numLikes: 20,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const users = (await db.query.users.findMany({
         with: {
           posts: true,
@@ -182,13 +178,13 @@ describe('M6.5 Phase 1: Relation Loading', () => {
         text: 'Alice post 1',
         numLikes: 5,
         type: 'text',
-        userId: user1Id,
+        authorId: user1Id,
       });
       await ctx.db.insert('posts', {
         text: 'Alice post 2',
         numLikes: 10,
         type: 'text',
-        userId: user1Id,
+        authorId: user1Id,
       });
 
       // Bob: 1 post
@@ -196,12 +192,12 @@ describe('M6.5 Phase 1: Relation Loading', () => {
         text: 'Bob post 1',
         numLikes: 3,
         type: 'text',
-        userId: user2Id,
+        authorId: user2Id,
       });
 
       // Charlie: 0 posts
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const users = (await db.query.users.findMany({
         with: {
           posts: true,
@@ -214,13 +210,13 @@ describe('M6.5 Phase 1: Relation Loading', () => {
       const alice = users.find((u: any) => u._id === user1Id);
       expect(alice).toBeDefined();
       expect(alice!.posts).toHaveLength(2);
-      expect(alice!.posts.every((p: any) => p.userId === user1Id)).toBe(true);
+      expect(alice!.posts.every((p: any) => p.authorId === user1Id)).toBe(true);
 
       // Verify Bob's posts
       const bob = users.find((u: any) => u._id === user2Id);
       expect(bob).toBeDefined();
       expect(bob!.posts).toHaveLength(1);
-      expect(bob!.posts[0].userId).toBe(user2Id);
+      expect(bob!.posts[0].authorId).toBe(user2Id);
 
       // Verify Charlie has no posts
       const charlie = users.find((u: any) => u._id === user3Id);
@@ -229,7 +225,7 @@ describe('M6.5 Phase 1: Relation Loading', () => {
     });
   });
 
-  describe('Many-to-One Relations (posts.user)', () => {
+  describe('Many-to-One Relations (posts.author)', () => {
     test('should load user for single post', async ({ ctx }) => {
       // Create user and post
       const userId = await ctx.db.insert('users', {
@@ -241,42 +237,42 @@ describe('M6.5 Phase 1: Relation Loading', () => {
         text: 'First post',
         numLikes: 10,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const posts = (await db.query.posts.findMany({
         with: {
-          user: true,
+          author: true,
         },
       })) as any;
 
       expect(posts).toHaveLength(1);
       expect(posts[0]._id).toBe(postId);
-      expect(posts[0].user).toBeDefined();
-      expect(posts[0].user!._id).toBe(userId);
-      expect(posts[0].user!.name).toBe('Alice');
+      expect(posts[0].author).toBeDefined();
+      expect(posts[0].author!._id).toBe(userId);
+      expect(posts[0].author!.name).toBe('Alice');
     });
 
-    test('should handle null userId (optional relation)', async ({ ctx }) => {
+    test('should handle null authorId (optional relation)', async ({ ctx }) => {
       // Create post without user
       const postId = await ctx.db.insert('posts', {
         text: 'Anonymous post',
         numLikes: 5,
         type: 'text',
-        // userId omitted (optional field)
+        // authorId omitted (optional field)
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const posts = await db.query.posts.findMany({
         with: {
-          user: true,
+          author: true,
         },
       });
 
       expect(posts).toHaveLength(1);
       expect(posts[0]._id).toBe(postId);
-      expect(posts[0].user).toBeNull();
+      expect(posts[0].author).toBeNull();
     });
 
     test('should batch load users for multiple posts (no N+1)', async ({
@@ -298,53 +294,57 @@ describe('M6.5 Phase 1: Relation Loading', () => {
         text: 'Alice post 1',
         numLikes: 10,
         type: 'text',
-        userId: user1Id,
+        authorId: user1Id,
       });
       await ctx.db.insert('posts', {
         text: 'Alice post 2',
         numLikes: 15,
         type: 'text',
-        userId: user1Id,
+        authorId: user1Id,
       });
       await ctx.db.insert('posts', {
         text: 'Alice post 3',
         numLikes: 20,
         type: 'text',
-        userId: user1Id,
+        authorId: user1Id,
       });
       await ctx.db.insert('posts', {
         text: 'Bob post 1',
         numLikes: 5,
         type: 'text',
-        userId: user2Id,
+        authorId: user2Id,
       });
       await ctx.db.insert('posts', {
         text: 'Bob post 2',
         numLikes: 8,
         type: 'text',
-        userId: user2Id,
+        authorId: user2Id,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const posts = (await db.query.posts.findMany({
         with: {
-          user: true,
+          author: true,
         },
       })) as any;
 
       expect(posts).toHaveLength(5);
 
       // Verify all posts by Alice reference the same user object
-      const alicePosts = posts.filter((p: any) => p.userId === user1Id);
+      const alicePosts = posts.filter((p: any) => p.authorId === user1Id);
       expect(alicePosts).toHaveLength(3);
-      expect(alicePosts.every((p: any) => p.user!._id === user1Id)).toBe(true);
-      expect(alicePosts.every((p: any) => p.user!.name === 'Alice')).toBe(true);
+      expect(alicePosts.every((p: any) => p.author!._id === user1Id)).toBe(
+        true
+      );
+      expect(alicePosts.every((p: any) => p.author!.name === 'Alice')).toBe(
+        true
+      );
 
       // Verify all posts by Bob reference the same user object
-      const bobPosts = posts.filter((p: any) => p.userId === user2Id);
+      const bobPosts = posts.filter((p: any) => p.authorId === user2Id);
       expect(bobPosts).toHaveLength(2);
-      expect(bobPosts.every((p: any) => p.user!._id === user2Id)).toBe(true);
-      expect(bobPosts.every((p: any) => p.user!.name === 'Bob')).toBe(true);
+      expect(bobPosts.every((p: any) => p.author!._id === user2Id)).toBe(true);
+      expect(bobPosts.every((p: any) => p.author!.name === 'Bob')).toBe(true);
     });
   });
 
@@ -360,17 +360,17 @@ describe('M6.5 Phase 1: Relation Loading', () => {
         text: 'First post',
         numLikes: 10,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
       await ctx.db.insert('posts', {
         text: 'Second post',
         numLikes: 20,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const user = await db.query.users.findFirst({
         with: {
           posts: true,
@@ -397,22 +397,22 @@ describe('M6.5 Phase 2: Nested Relation Loading', () => {
         text: 'My post',
         numLikes: 10,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
       const comment1Id = await (ctx.db as any).insert('comments', {
         text: 'Great post!',
         postId,
-        userId,
+        authorId: userId,
       });
 
       const comment2Id = await (ctx.db as any).insert('comments', {
         text: 'Thanks for sharing',
         postId,
-        userId,
+        authorId: userId,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const users = await db.query.users.findMany({
         with: {
           posts: {
@@ -443,10 +443,10 @@ describe('M6.5 Phase 2: Nested Relation Loading', () => {
         text: 'Post without comments',
         numLikes: 5,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const users = await db.query.users.findMany({
         with: {
           posts: {
@@ -479,32 +479,32 @@ describe('M6.5 Phase 2: Nested Relation Loading', () => {
         text: 'Alice post 1',
         numLikes: 10,
         type: 'text',
-        userId: user1Id,
+        authorId: user1Id,
       });
 
       const alice_post2 = await ctx.db.insert('posts', {
         text: 'Alice post 2',
         numLikes: 15,
         type: 'text',
-        userId: user1Id,
+        authorId: user1Id,
       });
 
       await (ctx.db as any).insert('comments', {
         text: 'Comment on Alice post 1',
         postId: alice_post1,
-        userId: user1Id,
+        authorId: user1Id,
       });
 
       await (ctx.db as any).insert('comments', {
         text: 'Another comment on Alice post 1',
         postId: alice_post1,
-        userId: user1Id,
+        authorId: user1Id,
       });
 
       await (ctx.db as any).insert('comments', {
         text: 'Comment on Alice post 2',
         postId: alice_post2,
-        userId: user1Id,
+        authorId: user1Id,
       });
 
       // Bob's posts and comments
@@ -512,16 +512,16 @@ describe('M6.5 Phase 2: Nested Relation Loading', () => {
         text: 'Bob post 1',
         numLikes: 20,
         type: 'text',
-        userId: user2Id,
+        authorId: user2Id,
       });
 
       await (ctx.db as any).insert('comments', {
         text: 'Comment on Bob post 1',
         postId: bob_post1,
-        userId: user2Id,
+        authorId: user2Id,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const users = await db.query.users.findMany({
         with: {
           posts: {
@@ -535,14 +535,14 @@ describe('M6.5 Phase 2: Nested Relation Loading', () => {
       expect(users).toHaveLength(2);
 
       // Verify Alice's nested data
-      const alice = users.find((u) => u._id === user1Id) as any;
+      const alice = users.find((u: any) => u._id === user1Id) as any;
       expect(alice).toBeDefined();
       expect(alice.posts).toHaveLength(2);
       expect(alice.posts[0].comments).toHaveLength(2);
       expect(alice.posts[1].comments).toHaveLength(1);
 
       // Verify Bob's nested data
-      const bob = users.find((u) => u._id === user2Id) as any;
+      const bob = users.find((u: any) => u._id === user2Id) as any;
       expect(bob).toBeDefined();
       expect(bob.posts).toHaveLength(1);
       expect(bob.posts[0].comments).toHaveLength(1);
@@ -562,16 +562,16 @@ describe('M6.5 Phase 2: Nested Relation Loading', () => {
         text: 'Post',
         numLikes: 10,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
       await (ctx.db as any).insert('comments', {
         text: 'Comment',
         postId,
-        userId,
+        authorId: userId,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
 
       // Depth 1: users
       // Depth 2: users.posts
@@ -605,24 +605,24 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         text: 'Post 1',
         numLikes: 30,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
       await ctx.db.insert('posts', {
         text: 'Post 2',
         numLikes: 10,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
       await ctx.db.insert('posts', {
         text: 'Post 3',
         numLikes: 20,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
 
       // Import asc helper
       const { asc } = await import('better-convex/orm');
@@ -652,24 +652,24 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         text: 'Post 1',
         numLikes: 30,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
       await ctx.db.insert('posts', {
         text: 'Post 2',
         numLikes: 10,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
       await ctx.db.insert('posts', {
         text: 'Post 3',
         numLikes: 20,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
 
       // Import desc helper
       const { desc } = await import('better-convex/orm');
@@ -709,19 +709,19 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         text: 'Alice post 1',
         numLikes: 10,
         type: 'text',
-        userId: user1Id,
+        authorId: user1Id,
       });
       await ctx.db.insert('posts', {
         text: 'Alice post 2',
         numLikes: 20,
         type: 'text',
-        userId: user1Id,
+        authorId: user1Id,
       });
       await ctx.db.insert('posts', {
         text: 'Alice post 3',
         numLikes: 30,
         type: 'text',
-        userId: user1Id,
+        authorId: user1Id,
       });
 
       // Bob: 3 posts
@@ -729,22 +729,22 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         text: 'Bob post 1',
         numLikes: 5,
         type: 'text',
-        userId: user2Id,
+        authorId: user2Id,
       });
       await ctx.db.insert('posts', {
         text: 'Bob post 2',
         numLikes: 15,
         type: 'text',
-        userId: user2Id,
+        authorId: user2Id,
       });
       await ctx.db.insert('posts', {
         text: 'Bob post 3',
         numLikes: 25,
         type: 'text',
-        userId: user2Id,
+        authorId: user2Id,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
 
       const users = await db.query.users.findMany({
         with: {
@@ -757,11 +757,11 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       expect(users).toHaveLength(2);
 
       // Verify Alice has exactly 2 posts (not affected by Bob's posts)
-      const alice = users.find((u) => u._id === user1Id) as any;
+      const alice = users.find((u: any) => u._id === user1Id) as any;
       expect(alice.posts).toHaveLength(2);
 
       // Verify Bob has exactly 2 posts (not affected by Alice's posts)
-      const bob = users.find((u) => u._id === user2Id) as any;
+      const bob = users.find((u: any) => u._id === user2Id) as any;
       expect(bob.posts).toHaveLength(2);
     });
   });
@@ -778,34 +778,34 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         text: 'Post 1',
         numLikes: 50,
         type: 'text',
-        userId,
+        authorId: userId,
       });
       await ctx.db.insert('posts', {
         text: 'Post 2',
         numLikes: 10,
         type: 'text',
-        userId,
+        authorId: userId,
       });
       await ctx.db.insert('posts', {
         text: 'Post 3',
         numLikes: 30,
         type: 'text',
-        userId,
+        authorId: userId,
       });
       await ctx.db.insert('posts', {
         text: 'Post 4',
         numLikes: 20,
         type: 'text',
-        userId,
+        authorId: userId,
       });
       await ctx.db.insert('posts', {
         text: 'Post 5',
         numLikes: 40,
         type: 'text',
-        userId,
+        authorId: userId,
       });
 
-      const db = createDatabase(ctx.db, testSchema, edges);
+      const db = ctx.table;
       const { desc } = await import('better-convex/orm');
 
       const users = await db.query.users.findMany({

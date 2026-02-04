@@ -1,0 +1,7 @@
+{
+  "name": "convex",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsgo --noEmit"
+  }
+}

@@ -1,102 +1,112 @@
 ---
-title: Mutations (🚧 WIP)
-description: Insert, update, delete operations - Coming Soon in M5-M6
+title: Mutations
+description: Insert, update, and delete operations with Drizzle-style builders
 links:
   doc: https://orm.drizzle.team/docs/insert
 ---
 
-import { InfoIcon, CheckCircle, AlertTriangle } from "lucide-react"
+import { InfoIcon, CheckCircle } from "lucide-react"
 
-<Callout icon={<AlertTriangle />}>
-**🚧 Work in Progress**: Mutation operations (`insert`, `update`, `delete`) are planned and are not yet implemented. This documentation shows the **planned API design** that will mirror Drizzle ORM.
+Mutation APIs mirror Drizzle v1 patterns with Convex semantics.
 
-For now, use [Convex's native mutation methods](https://docs.convex.dev/database/writing-data) directly.
-</Callout>
+## Setup
 
-Mutation APIs in Better-Convex ORM will mirror Drizzle's insert, update, and delete operations with full type safety.
-
-## Current Approach (Native Convex)
-
-```ts title="convex/mutations.ts" showLineNumbers
+```ts title="convex/mutations.ts"
 import { mutation } from './_generated/server';
 import { v } from 'convex/values';
-
-export const createUser = mutation({
-  args: { name: v.string(), email: v.string() },
-  handler: async (ctx, args) => {
-    const userId = await ctx.db.insert('users', {
-      name: args.name,
-      email: args.email,
-    });
-
-    return userId;
-  },
-});
+import { createDatabase, eq } from 'better-convex/orm';
+import { ormSchema, ormEdges, users } from './schema';
 ```
 
-## Planned API (M5-M6)
+## Insert
 
-The following examples show the **planned API**. These features are **not yet implemented**.
-
-### Insert (Planned)
-
-```ts title="convex/mutations.ts" showLineNumbers
-import { mutation } from './_generated/server';
-import { v } from 'convex/values';
-import { createDatabase } from 'better-convex/orm';
-import { ormSchema, ormEdges } from './schema';
-
+```ts title="convex/mutations.ts"
 export const createUser = mutation({
   args: { name: v.string(), email: v.string() },
   handler: async (ctx, args) => {
     const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    const userId = await db.insert.users.values({
+
+    await db.insert(users).values({
       name: args.name,
       email: args.email,
     });
-
-    return userId;
   },
 });
 ```
 
-### Update (Planned)
+### Returning
 
-```ts title="convex/mutations.ts" showLineNumbers
-import { mutation } from './_generated/server';
-import { v } from 'convex/values';
-import { createDatabase } from 'better-convex/orm';
-import { ormSchema, ormEdges } from './schema';
+```ts
+const [user] = await db
+  .insert(users)
+  .values({ name: 'Ada', email: 'ada@example.com' })
+  .returning({ id: users._id, email: users.email });
+```
 
+<Callout icon={<InfoIcon />}>
+`returning()` always returns an array. Without `returning()`, the result is `void`.
+</Callout>
+
+### Upsert (onConflict)
+
+```ts
+await db
+  .insert(users)
+  .values({ email: 'ada@example.com', name: 'Ada' })
+  .onConflictDoUpdate({
+    target: users.email,
+    set: { name: 'Ada Lovelace' },
+  });
+```
+
+## Update
+
+```ts
 export const updateUserName = mutation({
   args: { userId: v.id('users'), newName: v.string() },
   handler: async (ctx, args) => {
     const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    await db.update.users
+
+    await db
+      .update(users)
       .set({ name: args.newName })
-      .where((users, { eq }) => eq(users._id, args.userId));
+      .where(eq(users._id, args.userId));
   },
 });
 ```
 
-### Delete (Planned)
+### Update + Returning
 
-```ts title="convex/mutations.ts" showLineNumbers
-import { mutation } from './_generated/server';
-import { v } from 'convex/values';
-import { createDatabase } from 'better-convex/orm';
-import { ormSchema, ormEdges } from './schema';
+```ts
+const updated = await db
+  .update(users)
+  .set({ name: 'New Name' })
+  .where(eq(users._id, userId))
+  .returning();
+```
 
+## Delete
+
+```ts
 export const deleteUser = mutation({
   args: { userId: v.id('users') },
   handler: async (ctx, args) => {
     const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    await db.delete.users
-      .where((users, { eq }) => eq(users._id, args.userId));
+
+    await db.delete(users).where(eq(users._id, args.userId));
   },
 });
 ```
 
-<Callout icon={<InfoIcon />}>
-**Atomicity**: Convex mutations are automatically atomic - no need for explicit transactions. All changes succeed or fail together.
+### Delete + Returning
+
+```ts
+const deleted = await db
+  .delete(users)
+  .where(eq(users._id, userId))
+  .returning();
+```
+
+<Callout icon={<CheckCircle />}>
+Convex mutations are atomic: all changes succeed or fail together.
 </Callout>

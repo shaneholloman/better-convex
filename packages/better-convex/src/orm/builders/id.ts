@@ -58,7 +58,7 @@ export class ConvexIdBuilder<
     if (this.config.notNull) {
       return v.id(this.tableName);
     }
-    return v.optional(v.id(this.tableName));
+    return v.optional(v.union(v.null(), v.id(this.tableName)));
   }
 
   /**

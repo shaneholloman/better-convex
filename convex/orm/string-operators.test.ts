@@ -7,27 +7,23 @@
  * - notLike() and notIlike() negation
  */
 
-import { createDatabase, extractRelationsConfig } from 'better-convex/orm';
 import { test as baseTest, describe, expect } from 'vitest';
-import schema, { ormSchema } from '../schema';
-import { convexTest } from '../setup.testing';
+import schema from '../schema';
+import { convexTest, runCtx, type TestCtx } from '../setup.testing';
 
 // ============================================================================
 // Test Setup
 // ============================================================================
 
-const test = baseTest.extend<{ ctx: any }>({
+const test = baseTest.extend<{ ctx: TestCtx }>({
   ctx: async ({}, use) => {
     const t = convexTest(schema);
-    await t.run(async (ctx) => {
+    await t.run(async (baseCtx) => {
+      const ctx = await runCtx(baseCtx);
       await use(ctx);
     });
   },
 });
-
-// Extract edges once for all tests
-const testSchema = ormSchema;
-const edges = extractRelationsConfig(ormSchema);
 
 // ============================================================================
 // LIKE Operator Tests
@@ -35,7 +31,7 @@ const edges = extractRelationsConfig(ormSchema);
 
 describe('M5: like() operator', () => {
   test('like with %prefix% pattern matches substring', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -49,7 +45,7 @@ describe('M5: like() operator', () => {
       title: 'JavaScript Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -59,7 +55,7 @@ describe('M5: like() operator', () => {
       title: 'Python Tutorial',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
     await ctx.db.insert('posts', {
@@ -69,7 +65,7 @@ describe('M5: like() operator', () => {
       title: 'Advanced JavaScript',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 3000,
     });
 
@@ -79,12 +75,12 @@ describe('M5: like() operator', () => {
     });
 
     expect(posts).toHaveLength(2);
-    expect(posts.map((p) => p.title)).toContain('JavaScript Guide');
-    expect(posts.map((p) => p.title)).toContain('Advanced JavaScript');
+    expect(posts.map((p: any) => p.title)).toContain('JavaScript Guide');
+    expect(posts.map((p: any) => p.title)).toContain('Advanced JavaScript');
   });
 
   test('like with prefix% pattern matches prefix', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -98,7 +94,7 @@ describe('M5: like() operator', () => {
       title: 'JavaScript Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -108,7 +104,7 @@ describe('M5: like() operator', () => {
       title: 'Python Tutorial',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
     await ctx.db.insert('posts', {
@@ -118,7 +114,7 @@ describe('M5: like() operator', () => {
       title: 'Java Basics',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 3000,
     });
 
@@ -128,12 +124,12 @@ describe('M5: like() operator', () => {
     });
 
     expect(posts).toHaveLength(2);
-    expect(posts.map((p) => p.title)).toContain('JavaScript Guide');
-    expect(posts.map((p) => p.title)).toContain('Java Basics');
+    expect(posts.map((p: any) => p.title)).toContain('JavaScript Guide');
+    expect(posts.map((p: any) => p.title)).toContain('Java Basics');
   });
 
   test('like with %suffix pattern matches suffix', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -147,7 +143,7 @@ describe('M5: like() operator', () => {
       title: 'Beginner Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -157,7 +153,7 @@ describe('M5: like() operator', () => {
       title: 'Advanced Tutorial',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
     await ctx.db.insert('posts', {
@@ -167,7 +163,7 @@ describe('M5: like() operator', () => {
       title: 'Quick Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 3000,
     });
 
@@ -177,12 +173,12 @@ describe('M5: like() operator', () => {
     });
 
     expect(posts).toHaveLength(2);
-    expect(posts.map((p) => p.title)).toContain('Beginner Guide');
-    expect(posts.map((p) => p.title)).toContain('Quick Guide');
+    expect(posts.map((p: any) => p.title)).toContain('Beginner Guide');
+    expect(posts.map((p: any) => p.title)).toContain('Quick Guide');
   });
 
   test('like without wildcards matches exact', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -196,7 +192,7 @@ describe('M5: like() operator', () => {
       title: 'Exact Title',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -206,7 +202,7 @@ describe('M5: like() operator', () => {
       title: 'Exact',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
 
@@ -220,7 +216,7 @@ describe('M5: like() operator', () => {
   });
 
   test('notLike excludes pattern matches', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -234,7 +230,7 @@ describe('M5: like() operator', () => {
       title: 'JavaScript Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -244,7 +240,7 @@ describe('M5: like() operator', () => {
       title: 'Python Tutorial',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
 
@@ -263,7 +259,7 @@ describe('M5: like() operator', () => {
 
 describe('M5: ilike() operator', () => {
   test('ilike is case-insensitive', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -277,7 +273,7 @@ describe('M5: ilike() operator', () => {
       title: 'JAVASCRIPT Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -287,7 +283,7 @@ describe('M5: ilike() operator', () => {
       title: 'Python Tutorial',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
     await ctx.db.insert('posts', {
@@ -297,7 +293,7 @@ describe('M5: ilike() operator', () => {
       title: 'javascript basics',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 3000,
     });
 
@@ -307,12 +303,12 @@ describe('M5: ilike() operator', () => {
     });
 
     expect(posts).toHaveLength(2);
-    expect(posts.map((p) => p.title)).toContain('JAVASCRIPT Guide');
-    expect(posts.map((p) => p.title)).toContain('javascript basics');
+    expect(posts.map((p: any) => p.title)).toContain('JAVASCRIPT Guide');
+    expect(posts.map((p: any) => p.title)).toContain('javascript basics');
   });
 
   test('notIlike excludes case-insensitive matches', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -326,7 +322,7 @@ describe('M5: ilike() operator', () => {
       title: 'JavaScript Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -336,7 +332,7 @@ describe('M5: ilike() operator', () => {
       title: 'Python Tutorial',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
 
@@ -355,7 +351,7 @@ describe('M5: ilike() operator', () => {
 
 describe('M5: like() prefix pattern', () => {
   test('like matches prefix', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -369,7 +365,7 @@ describe('M5: like() prefix pattern', () => {
       title: 'JavaScript Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -379,7 +375,7 @@ describe('M5: like() prefix pattern', () => {
       title: 'Python Tutorial',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
     await ctx.db.insert('posts', {
@@ -389,7 +385,7 @@ describe('M5: like() prefix pattern', () => {
       title: 'Java Basics',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 3000,
     });
 
@@ -399,12 +395,12 @@ describe('M5: like() prefix pattern', () => {
     });
 
     expect(posts).toHaveLength(2);
-    expect(posts.map((p) => p.title)).toContain('JavaScript Guide');
-    expect(posts.map((p) => p.title)).toContain('Java Basics');
+    expect(posts.map((p: any) => p.title)).toContain('JavaScript Guide');
+    expect(posts.map((p: any) => p.title)).toContain('Java Basics');
   });
 
   test('like is case-sensitive', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -418,7 +414,7 @@ describe('M5: like() prefix pattern', () => {
       title: 'JavaScript Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -428,7 +424,7 @@ describe('M5: like() prefix pattern', () => {
       title: 'javascript basics',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
 
@@ -448,7 +444,7 @@ describe('M5: like() prefix pattern', () => {
 
 describe('M5: like() suffix pattern', () => {
   test('like matches suffix', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -462,7 +458,7 @@ describe('M5: like() suffix pattern', () => {
       title: 'Beginner Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -472,7 +468,7 @@ describe('M5: like() suffix pattern', () => {
       title: 'Advanced Tutorial',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
     await ctx.db.insert('posts', {
@@ -482,7 +478,7 @@ describe('M5: like() suffix pattern', () => {
       title: 'Quick Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 3000,
     });
 
@@ -492,12 +488,12 @@ describe('M5: like() suffix pattern', () => {
     });
 
     expect(posts).toHaveLength(2);
-    expect(posts.map((p) => p.title)).toContain('Beginner Guide');
-    expect(posts.map((p) => p.title)).toContain('Quick Guide');
+    expect(posts.map((p: any) => p.title)).toContain('Beginner Guide');
+    expect(posts.map((p: any) => p.title)).toContain('Quick Guide');
   });
 
   test('like is case-sensitive', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -511,7 +507,7 @@ describe('M5: like() suffix pattern', () => {
       title: 'Quick Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -521,7 +517,7 @@ describe('M5: like() suffix pattern', () => {
       title: 'Quick guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
 
@@ -541,7 +537,7 @@ describe('M5: like() suffix pattern', () => {
 
 describe('M5: like() substring pattern', () => {
   test('like matches substring', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -555,7 +551,7 @@ describe('M5: like() substring pattern', () => {
       title: 'JavaScript Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -565,7 +561,7 @@ describe('M5: like() substring pattern', () => {
       title: 'Python Tutorial',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
     await ctx.db.insert('posts', {
@@ -575,7 +571,7 @@ describe('M5: like() substring pattern', () => {
       title: 'Advanced JavaScript',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 3000,
     });
 
@@ -585,12 +581,12 @@ describe('M5: like() substring pattern', () => {
     });
 
     expect(posts).toHaveLength(2);
-    expect(posts.map((p) => p.title)).toContain('JavaScript Guide');
-    expect(posts.map((p) => p.title)).toContain('Advanced JavaScript');
+    expect(posts.map((p: any) => p.title)).toContain('JavaScript Guide');
+    expect(posts.map((p: any) => p.title)).toContain('Advanced JavaScript');
   });
 
   test('like is case-sensitive', async ({ ctx }) => {
-    const db = createDatabase(ctx.db, testSchema, edges);
+    const db = ctx.table;
 
     const user = await ctx.db.insert('users', {
       name: 'Alice',
@@ -604,7 +600,7 @@ describe('M5: like() substring pattern', () => {
       title: 'JavaScript Guide',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 1000,
     });
     await ctx.db.insert('posts', {
@@ -614,7 +610,7 @@ describe('M5: like() substring pattern', () => {
       title: 'javascript basics',
       content: 'Content',
       published: true,
-      userId: user,
+      authorId: user,
       createdAt: 2000,
     });
 

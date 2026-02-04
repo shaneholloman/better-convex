@@ -9,8 +9,6 @@
  */
 
 import type * as functions from "../functions.js";
-import type * as migrations from "../migrations.js";
-import type * as rules from "../rules.js";
 import type * as types from "../types.js";
 
 import type {
@@ -21,8 +19,6 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   functions: typeof functions;
-  migrations: typeof migrations;
-  rules: typeof rules;
   types: typeof types;
 }>;
 

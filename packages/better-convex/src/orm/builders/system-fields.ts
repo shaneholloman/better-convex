@@ -7,6 +7,7 @@
  * These are automatically added to every Convex table.
  */
 
+import type { GenericId } from 'convex/values';
 import { v } from 'convex/values';
 import {
   ColumnBuilder,
@@ -19,17 +20,19 @@ import {
  * System ID field builder (_id)
  * Always present, always non-null
  */
-type ConvexSystemIdConfig = ColumnBuilderBaseConfig<
+type ConvexSystemIdConfig<TTableName extends string> = ColumnBuilderBaseConfig<
   'string',
   'ConvexSystemId'
 > & {
-  data: string;
-  driverParam: string;
+  data: GenericId<TTableName>;
+  driverParam: GenericId<TTableName>;
   enumValues: undefined;
 };
 
-export class ConvexSystemIdBuilder extends ColumnBuilder<
-  ConvexSystemIdConfig,
+export class ConvexSystemIdBuilder<
+  TTableName extends string,
+> extends ColumnBuilder<
+  ConvexSystemIdConfig<TTableName>,
   {},
   { notNull: true }
 > {
@@ -102,7 +105,7 @@ export class ConvexSystemCreationTimeBuilder extends ColumnBuilder<
  * These are automatically added to every ConvexTable
  */
 export type SystemFields<TName extends string> = {
-  _id: ColumnBuilderWithTableName<ConvexSystemIdBuilder, TName>;
+  _id: ColumnBuilderWithTableName<ConvexSystemIdBuilder<TName>, TName>;
   _creationTime: ColumnBuilderWithTableName<
     ConvexSystemCreationTimeBuilder,
     TName
@@ -112,7 +115,7 @@ export type SystemFields<TName extends string> = {
 export function createSystemFields<TName extends string>(
   tableName: TName
 ): SystemFields<TName> {
-  const id = new ConvexSystemIdBuilder();
+  const id = new ConvexSystemIdBuilder<TName>();
   const creationTime = new ConvexSystemCreationTimeBuilder();
 
   // Store table name for runtime introspection
@@ -120,7 +123,7 @@ export function createSystemFields<TName extends string>(
   (creationTime as any).config.tableName = tableName;
 
   return {
-    _id: id as ColumnBuilderWithTableName<ConvexSystemIdBuilder, TName>,
+    _id: id as ColumnBuilderWithTableName<ConvexSystemIdBuilder<TName>, TName>,
     _creationTime: creationTime as ColumnBuilderWithTableName<
       ConvexSystemCreationTimeBuilder,
       TName

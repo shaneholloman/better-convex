@@ -18,7 +18,10 @@ import type {
 } from './relations';
 import type { ConvexTable } from './table';
 
-export type { TableRelationalConfig, TablesRelationalConfig };
+export type {
+  TableRelationalConfig,
+  TablesRelationalConfig,
+} from './relations';
 
 /**
  * Value or array helper (Drizzle pattern).
@@ -162,7 +165,7 @@ type ColumnsToType<T> =
  */
 export type DBQueryConfig<
   TRelationType extends 'one' | 'many' = 'one' | 'many',
-  TIsRoot extends boolean = boolean,
+  _TIsRoot extends boolean = boolean,
   TSchema extends TablesRelationalConfig = TablesRelationalConfig,
   TTableConfig extends TableRelationalConfig = TableRelationalConfig,
 > = {
@@ -517,17 +520,9 @@ export type BuildRelationResult<
  */
 export type InferModelFromColumns<TColumns> =
   TColumns extends Record<string, ColumnBuilder<any, any, any>>
-    ? Simplify<
-        Merge<
-          {
-            _id: string;
-            _creationTime: number;
-          },
-          {
-            [K in keyof TColumns]: GetColumnData<TColumns[K], 'query'>;
-          }
-        >
-      >
+    ? Simplify<{
+        [K in keyof TColumns]: GetColumnData<TColumns[K], 'query'>;
+      }>
     : never;
 
 /**
@@ -583,3 +578,47 @@ export type NonUndefinedKeysOnly<T> = ExtractObjectValues<{
   [K in keyof T as T[K] extends undefined ? never : K]: K;
 }> &
   keyof T;
+
+// ============================================================================
+// M7 Mutations - Insert/Update/Delete Types
+// ============================================================================
+
+type TableColumnsForTable<TTable extends ConvexTable<any>> =
+  TTable['_']['columns'] & SystemFields<TTable['_']['name']>;
+
+export type ReturningSelection<TTable extends ConvexTable<any>> = Record<
+  string,
+  TableColumnsForTable<TTable>[keyof TableColumnsForTable<TTable>]
+>;
+
+export type ReturningResult<
+  TSelection extends Record<string, ColumnBuilder<any, any, any>>,
+> = Simplify<{
+  [K in keyof TSelection]: TSelection[K] extends ColumnBuilder<any, any, any>
+    ? GetColumnData<TSelection[K], 'query'>
+    : never;
+}>;
+
+export type ReturningAll<TTable extends ConvexTable<any>> =
+  InferSelectModel<TTable>;
+
+export type MutationReturning =
+  | true
+  | Record<string, ColumnBuilder<any, any, any>>
+  | undefined;
+
+export type MutationResult<
+  TTable extends ConvexTable<any>,
+  TReturning extends MutationReturning,
+> = TReturning extends true
+  ? ReturningAll<TTable>[]
+  : TReturning extends Record<string, ColumnBuilder<any, any, any>>
+    ? ReturningResult<TReturning>[]
+    : undefined;
+
+export type InsertValue<TTable extends ConvexTable<any>> =
+  InferInsertModel<TTable>;
+
+export type UpdateSet<TTable extends ConvexTable<any>> = Partial<
+  InferInsertModel<TTable>
+>;

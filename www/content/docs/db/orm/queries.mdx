@@ -7,390 +7,175 @@ links:
 
 import { InfoIcon, CheckCircle, AlertTriangle } from "lucide-react"
 
-Query your Convex database using Drizzle's familiar relational query API. Better-Convex ORM provides full type safety and automatic real-time subscriptions.
+Query your Convex database using Drizzle v1’s relational query builder API. Better‑Convex keeps the syntax familiar while adapting to Convex’s document model.
 
-## Overview
+## Setup
 
-**Category**: ✅ Drizzle-Compatible (Core + Relations) | ⚠️ Limited (Post-Fetch Constraints)
+```ts title="convex/queries.ts"
+import { createDatabase } from 'better-convex/orm';
+import { ormSchema, ormEdges } from './schema';
 
-| Feature | Drizzle | Better-Convex (M6.5) | Status |
-|---------|---------|---------------|--------|
-| `findMany()` | ✅ | ✅ | Fully implemented |
-| `findFirst()` | ✅ | ✅ | Fully implemented |
-| `paginate()` | ✅ | ✅ | Cursor pagination added |
-| `where` filtering | ✅ | ✅ | All operators working |
-| `limit` / `offset` | ✅ | ✅ | Pagination supported |
-| `orderBy` | ✅ | ✅ | Multi-field with index-aware first sort |
-| String operators | ✅ | ✅ | Post-fetch filtering |
-| `with` relations | ✅ | ✅ | Implemented (depth limit) |
-| `columns` selection | ✅ | ✅ | Post-fetch projection |
+const db = createDatabase(ctx.db, ormSchema, ormEdges);
+```
 
 ## Basic Queries
 
-### Setup (Create Database)
+### findMany
 
-```ts title="convex/queries.ts" showLineNumbers
-import { createDatabase } from 'better-convex/orm';
-import { ormSchema, ormEdges } from './schema';
-
-const db = createDatabase(ctx.db, ormSchema, ormEdges);
-```
-
-### findMany - Query Multiple Records
-
-```ts title="convex/queries.ts" showLineNumbers {1,6-9}
-import { query } from './_generated/server';
-import { createDatabase } from 'better-convex/orm';
-import { ormSchema, ormEdges } from './schema';
-
+```ts title="convex/queries.ts"
 export const getAllUsers = query({
   handler: async (ctx) => {
     const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    const users = await db.query.users.findMany();
-
-    return users;
+    return db.query.users.findMany();
   },
 });
 ```
 
-**Generated Convex Query:**
-```ts
-// Behind the scenes:
-ctx.db.query('users').collect()
-```
+### findFirst
 
-**Type Inference:**
-```ts
-// Return type:
-Array<{
-  _id: Id<'users'>,
-  name: string,
-  email: string,
-  _creationTime: number
-}>
-```
-
-### findFirst - Query Single Record
-
-```ts title="convex/queries.ts" showLineNumbers
+```ts title="convex/queries.ts"
 export const getFirstUser = query({
   handler: async (ctx) => {
     const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    const user = await db.query.users.findFirst();
-
-    return user; // undefined if no users exist
-  },
-});
-```
-
-**Type Inference:**
-```ts
-// Return type:
-{
-  _id: Id<'users'>,
-  name: string,
-  email: string,
-  _creationTime: number
-} | undefined
-```
-
-## Filtering with `where`
-
-### Basic Filtering
-
-Use Drizzle's filter operators via a callback:
-
-```ts title="convex/queries.ts" showLineNumbers {1,7-12}
-import { query } from './_generated/server';
-import { createDatabase } from 'better-convex/orm';
-import { ormSchema, ormEdges } from './schema';
-
-export const getActiveAdmins = query({
-  handler: async (ctx) => {
-    const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    const admins = await db.query.users.findMany({
-      where: (users, { eq, gt, and }) =>
-        and(
-          eq(users.role, 'admin'),
-          gt(users.lastSeen, Date.now() - 86_400_000) // Active in last 24h
-        ),
+    return db.query.users.findFirst({
+      where: { email: 'alice@example.com' },
     });
-
-    return admins;
   },
 });
 ```
 
-### Available Operators
+## Filtering With `where`
 
-**Category 1: ✅ 100% Compatible**
+Use object filters (Drizzle v1 style). The shape mirrors Drizzle but is executed in Convex.
+
+```ts
+const admins = await db.query.users.findMany({
+  where: {
+    role: 'admin',
+    lastSeen: { gt: Date.now() - 86_400_000 },
+  },
+});
+```
+
+### Core Operators
 
 | Operator | Example | Description |
-|----------|---------|-------------|
-| `eq(field, value)` | `eq(users.role, 'admin')` | Equal to |
-| `ne(field, value)` | `ne(users.status, 'banned')` | Not equal to |
-| `gt(field, value)` | `gt(users.age, 18)` | Greater than |
-| `gte(field, value)` | `gte(users.credits, 100)` | Greater than or equal |
-| `lt(field, value)` | `lt(users.age, 65)` | Less than |
-| `lte(field, value)` | `lte(users.loginCount, 10)` | Less than or equal |
-| `inArray(field, values)` | `inArray(users.id, ids)` | Field in array |
-| `notInArray(field, values)` | `notInArray(users.id, ids)` | Field not in array |
-| `and(...)` | `and(eq(...), gt(...))` | Logical AND |
-| `or(...)` | `or(eq(...), eq(...))` | Logical OR |
-| `not(...)` | `not(eq(...))` | Logical NOT |
-| `isNull(field)` | `isNull(users.deletedAt)` | Is null/undefined |
-| `isNotNull(field)` | `isNotNull(users.email)` | Is not null/undefined |
+|---|---|---|
+| `eq` | `{ role: 'admin' }` or `{ role: { eq: 'admin' } }` | Equals |
+| `ne` | `{ status: { ne: 'banned' } }` | Not equal |
+| `gt` | `{ age: { gt: 18 } }` | Greater than |
+| `gte` | `{ credits: { gte: 100 } }` | Greater than or equal |
+| `lt` | `{ age: { lt: 65 } }` | Less than |
+| `lte` | `{ loginCount: { lte: 10 } }` | Less than or equal |
+| `in` | `{ status: { in: ['active', 'pending'] } }` | Value in array |
+| `notIn` | `{ status: { notIn: ['deleted'] } }` | Value not in array |
+| `isNull` | `{ deletedAt: { isNull: true } }` | Null/undefined |
+| `isNotNull` | `{ email: { isNotNull: true } }` | Not null/undefined |
+| `AND` | `{ AND: [ ... ] }` | Logical AND |
+| `OR` | `{ OR: [ ... ] }` | Logical OR |
+| `NOT` | `{ NOT: { ... } }` | Logical NOT |
 
-**Category 2: ✅ String Operators (Post-Fetch)**
+### String Operators (post‑fetch)
 
-| Operator | Example | Description | Notes |
-|----------|---------|-------------|-------|
-| `like(field, pattern)` | `like(posts.title, '%JavaScript%')` | SQL LIKE pattern matching | Post-fetch filter |
-| `ilike(field, pattern)` | `ilike(posts.title, '%javascript%')` | Case-insensitive LIKE | Post-fetch filter |
-| `startsWith(field, prefix)` | `startsWith(posts.title, 'Java')` | Prefix matching | Post-fetch filter |
-| `endsWith(field, suffix)` | `endsWith(posts.title, 'Guide')` | Suffix matching | Post-fetch filter |
-| `contains(field, substring)` | `contains(posts.title, 'Script')` | Substring matching | Post-fetch filter |
+| Operator | Example | Notes |
+|---|---|---|
+| `like` | `{ title: { like: '%JavaScript%' } }` | Post‑fetch |
+| `ilike` | `{ title: { ilike: '%javascript%' } }` | Post‑fetch |
+| `notLike` | `{ title: { notLike: '%draft%' } }` | Post‑fetch |
+| `notIlike` | `{ title: { notIlike: '%draft%' } }` | Post‑fetch |
+| `startsWith` | `{ title: { startsWith: 'Intro' } }` | Post‑fetch |
+| `endsWith` | `{ title: { endsWith: 'Guide' } }` | Post‑fetch |
+| `contains` | `{ title: { contains: 'ORM' } }` | Post‑fetch |
 
 <Callout icon={<InfoIcon />}>
-**String Operators**: Implemented as post-fetch filters using JavaScript string methods. For large datasets, combine with indexed filters first to reduce the dataset before string matching.
+String operators run after data is fetched. For large datasets, filter by indexed fields first or use search indexes.
 </Callout>
 
-### Complex Filtering
-
-```ts title="convex/queries.ts" showLineNumbers
-export const getEligibleUsers = query({
-  handler: async (ctx) => {
-    const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    const users = await db.query.users.findMany({
-      where: (users, { eq, gt, lt, and, or }) =>
-        and(
-          or(eq(users.role, 'premium'), eq(users.role, 'admin')),
-          gt(users.credits, 0),
-          lt(users.loginCount, 100)
-        ),
-    });
-
-    return users;
-  },
-});
-```
-
-### Negative Examples
+### Logical Filters
 
 ```ts
-// ❌ WRONG: where expects a callback
 const users = await db.query.users.findMany({
-  where: eq(users.deletedAt, null), // Type error + wrong shape
-});
-
-// ✅ CORRECT: use a callback + isNull
-const users = await db.query.users.findMany({
-  where: (users, { isNull }) => isNull(users.deletedAt),
-});
-```
-
-## Pagination
-
-### Limit and Offset
-
-```ts title="convex/queries.ts" showLineNumbers {6-9}
-export const getPostsPage = query({
-  args: { page: v.number() },
-  handler: async (ctx, args) => {
-    const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    const posts = await db.query.posts.findMany({
-      limit: 10,
-      offset: (args.page - 1) * 10,
-    });
-
-    return posts;
+  where: {
+    OR: [{ role: 'admin' }, { role: 'premium' }],
+    NOT: { status: 'banned' },
   },
 });
 ```
 
-### Cursor Pagination (`paginate`)
-
-```ts title="convex/queries.ts" showLineNumbers
-export const getPostsPage = query({
-  args: { cursor: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    return db.query.posts.paginate(
-      {
-        where: (posts, { eq }) => eq(posts.published, true),
-        orderBy: (posts, { desc }) => desc(posts._creationTime),
-      },
-      { cursor: args.cursor ?? null, numItems: 20 }
-    );
-  },
-});
-```
-
-<Callout icon={<InfoIcon />}>
-**Pagination**: `limit` and `offset` work for simple pagination. For large datasets or infinite scroll, use `paginate()` for Convex-native cursor pagination.
-</Callout>
-
-## Ordering Results with `orderBy`
-
-Sort query results using `asc()` and `desc()` helpers.
-
-### Basic Ordering
-
-**Ascending Order:**
-```ts title="convex/queries.ts" showLineNumbers {1,8}
-export const getOldestPosts = query({
-  handler: async (ctx) => {
-    const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    const posts = await db.query.posts.findMany({
-      orderBy: (posts, { asc }) => asc(posts._creationTime),
-    });
-
-    return posts; // Oldest first
-  },
-});
-```
-
-**Descending Order:**
-```ts title="convex/queries.ts" showLineNumbers {1,8}
-export const getLatestPosts = query({
-  handler: async (ctx) => {
-    const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    const posts = await db.query.posts.findMany({
-      orderBy: (posts, { desc }) => desc(posts._creationTime),
-    });
-
-    return posts; // Newest first
-  },
-});
-```
-
-### Multi-Field Ordering
+## Ordering
 
 ```ts
 const posts = await db.query.posts.findMany({
-  orderBy: (posts, { desc, asc }) => [
-    desc(posts._creationTime),
-    asc(posts.title),
-  ],
+  orderBy: { _creationTime: 'desc', title: 'asc' },
 });
 ```
 
-**Execution Order:**
-1. WHERE filtering (uses Convex index if available)
-2. OrderBy sorting (index-aware for the first field, post-fetch for secondary fields)
-3. Offset/Limit pagination (post-fetch slicing)
+**Notes:**
+- The first `orderBy` field should have an index for stable ordering
+- Secondary sort fields are applied post‑fetch
+- `paginate()` uses only the first `orderBy` field for cursor ordering
 
-<Callout icon={<InfoIcon />}>
-**Pagination Note**: When using `paginate()`, only the first `orderBy` field is used for cursor ordering. Secondary fields are applied per page.
-</Callout>
+## Pagination
 
-## String Operators
-
-Search and filter text fields using SQL-like operators. These are implemented as post-fetch filters (JavaScript string methods) since Convex doesn't support SQL LIKE natively.
-
-### LIKE Pattern Matching
-
-```ts title="convex/queries.ts" showLineNumbers {1,8}
-import { like } from 'better-convex/orm';
-
-export const searchPosts = query({
-  args: { keyword: v.string() },
-  handler: async (ctx, args) => {
-    const db = createDatabase(ctx.db, ormSchema, ormEdges);
-    const posts = await db.query.posts.findMany({
-      where: (posts, { like }) => like(posts.title, `%${args.keyword}%`),
-    });
-
-    return posts;
-  },
-});
-```
-
-**Pattern syntax:**
-- `%text%` - Contains substring (anywhere)
-- `text%` - Starts with prefix
-- `%text` - Ends with suffix
-- `text` - Exact match
-
-### Performance Considerations
-
-<Callout icon={<InfoIcon />}>
-**Post-Fetch Filtering**: String operators are applied AFTER fetching rows from Convex. For large tables, filter by indexed fields first or use Convex search indexes.
-</Callout>
-
-## Relation Loading
-
-### Loading with `with:`
+### Limit / Offset
 
 ```ts
-const db = createDatabase(ctx.db, ormSchema, ormEdges);
+const posts = await db.query.posts.findMany({
+  limit: 10,
+  offset: 20,
+});
+```
 
-const usersWithPosts = await db.query.users.findMany({
+### Cursor Pagination
+
+```ts
+return db.query.posts.paginate(
+  { where: { published: true }, orderBy: { _creationTime: 'desc' } },
+  { cursor: args.cursor ?? null, numItems: 20 }
+);
+```
+
+## Relation Loading With `with`
+
+```ts
+const users = await db.query.users.findMany({
   with: {
     posts: {
       limit: 5,
-      orderBy: (posts, { desc }) => desc(posts._creationTime),
+      orderBy: { _creationTime: 'desc' },
     },
   },
 });
 ```
 
-## Column Selection
-
-<Callout icon={<AlertTriangle />}>
-**⚠️ Limitation**: Column selection trims results post-fetch. Convex still reads full documents.
+<Callout icon={<InfoIcon />}>
+Relation filters for `many()` are applied post‑fetch. Nested `with` has a depth limit to prevent infinite recursion.
 </Callout>
+
+## Column Selection
 
 ```ts
 const users = await db.query.users.findMany({
-  columns: {
-    name: true,
-    email: true,
-  },
+  columns: { name: true, email: true },
 });
 ```
 
-## Performance Considerations
+<Callout icon={<AlertTriangle />}>
+`columns` is a post‑fetch projection. Convex still reads full documents.
+</Callout>
 
-### Use Indexes for Filtering and Ordering
+## Performance Tips
 
-Convex requires indexes for fast filters and ordering on custom fields:
-
-```ts title="convex/schema.ts"
-import { convexTable, text, integer } from 'better-convex/orm';
-
-const users = convexTable('users', {
-  name: text().notNull(),
-  role: text().notNull(),
-  createdAt: integer(),
-}).index('by_role', ['role']);
-```
-
-### Avoid N+1 Queries
-
-Use `with` to batch relation loading and avoid per-row queries:
-
-```ts
-// ❌ BAD: N+1 query (slow)
-const users = await db.query.users.findMany();
-for (const user of users) {
-  user.posts = await db.query.posts.findMany({
-    where: (posts, { eq }) => eq(posts.userId, user._id),
-  });
-}
-
-// ✅ GOOD: Batched relation loading
-const usersWithPosts = await db.query.users.findMany({
-  with: { posts: true },
-});
-```
+- Add `.index()` for fields used in filters or primary ordering
+- Use `paginate()` for large lists
+- Prefer `with` over per‑row queries to avoid N+1
 
 ## Common Gotchas
 
-| Issue | Solution |
-|-------|----------|
-| **`where` is not a function** | Use callback form: `where: (cols, ops) => ...` |
-| **`where: eq(field, null)` type error** | Use `isNull(field)` instead |
-| **Slow queries without indexes** | Add `.index()` for frequently filtered or ordered fields |
-| **`columns` doesn't reduce reads** | Projection is post-fetch; Convex reads full documents |
-| **`with:` not working** | Ensure relations are defined and `ormEdges` is passed to `createDatabase` |
+| Issue | Fix |
+|---|---|
+| `where` expects an object | Use `where: { field: value }` |
+| `eq(field, null)` | Use `{ isNull: true }` |
+| Slow ordering | Add an index on the primary `orderBy` field |
+| `columns` doesn’t reduce reads | Projection is post‑fetch |
+| Relations not loading | Pass `ormEdges` to `createDatabase` |

@@ -12,9 +12,11 @@ import {
   type InferInsertModel,
   type InferSelectModel,
   id,
+  index,
   integer,
   number,
   text,
+  uniqueIndex,
 } from 'better-convex/orm';
 import type { GenericId } from 'convex/values';
 import { type Equal, Expect, IsAny, IsNever, Not } from './utils';
@@ -144,6 +146,47 @@ import { type Equal, Expect, IsAny, IsNever, Not } from './utils';
 // ============================================================================
 // B. INFERINSERTMODEL TESTS
 // ============================================================================
+
+// Test 6b: Drizzle-style indexes in table definition
+{
+  const users = convexTable(
+    'users',
+    {
+      name: text().notNull(),
+      email: text().notNull(),
+    },
+    (t) => [
+      index('users_name_idx').on(t.name),
+      uniqueIndex('users_email_idx').on(t.email),
+    ]
+  );
+
+  type Result = InferSelectModel<typeof users>;
+
+  Expect<
+    Equal<
+      Result,
+      {
+        _id: GenericId<'users'>;
+        _creationTime: number;
+        name: string;
+        email: string;
+      }
+    >
+  >;
+}
+
+convexTable(
+  'users',
+  {
+    name: text().notNull(),
+  },
+  // @ts-expect-error - index() must be followed by .on(...)
+  () => [index('missing_on')]
+);
+
+// @ts-expect-error - index().on requires at least one column
+index('missing_columns').on();
 
 // Test 7: InferInsertModel equivalence with $inferInsert property
 {

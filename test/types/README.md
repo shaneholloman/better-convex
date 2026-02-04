@@ -13,6 +13,9 @@ bun typecheck  # Runs tsc --noEmit on all test files
 - `utils.ts` - Shared test utilities (Equal<>, Expect<>)
 - `tables-rel.ts` - Test table fixtures with relations
 - `select.ts` - Query result type tests (WHERE, ORDER BY, LIMIT, columns)
+- `insert.ts` - Insert mutation type tests (values, returning, onConflict)
+- `update.ts` - Update mutation type tests (set, where, returning)
+- `delete.ts` - Delete mutation type tests (where, returning)
 - `filter-operators.ts` - Operator type tests
 - `get-column-data.ts` - GetColumnData utility tests
 - `minimal-*.ts` - Minimal focused tests for specific utilities
@@ -115,12 +118,13 @@ Current coverage (Phases 0-5 complete):
 - ✅ Filter operators: eq, gt, lt, inArray, isNull, isNotNull
 - ✅ M5 features: String operators, extended orderBy (9 assertions)
 - ✅ M6 features: Method chaining, defaults (included in tables)
-- ✅ Negative tests: 20+ @ts-expect-error tests
+- ✅ Mutations: Insert/update/delete returning types (6 assertions)
+- ✅ Negative tests: 40+ @ts-expect-error tests
 - ✅ Edge cases: Empty results, null handling, GenericId preservation (5 assertions)
 - ⏸️ Relation loading: Deferred to Phase 4
 - ⏸️ Column exclusion: Deferred to M5+
 
-**Progress**: 126 assertions / 144 target = **88% toward 65% Drizzle parity**
+**Progress**: 141 assertions / 144 target = **98% toward 65% Drizzle parity**
 
 ## Methodology
 
@@ -150,14 +154,14 @@ Current coverage (Phases 0-5 complete):
 # Count all Expect<Equal<> assertions in test files
 grep -r "Expect<Equal<" convex/test-types/*.ts | wc -l
 
-# Result: 126 assertions (60 baseline + 66 new from Phases 0-5)
+# Result: 141 assertions (60 baseline + 81 new from Phases 0-7)
 ```
 
 **Step 4: Calculate Progress**
 ```
 Progress = (Current / Target) × 100
-         = (126 / 144) × 100
-         = 87.5% ≈ 88%
+         = (141 / 144) × 100
+         = 97.9% ≈ 98%
 ```
 
 ### How to Mirror Drizzle for New Milestones
