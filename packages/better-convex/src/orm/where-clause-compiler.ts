@@ -864,8 +864,8 @@ export class WhereClauseCompiler {
    * Split filters into index-compatible and post-filters
    *
    * Index-compatible filters:
-   * - Binary eq operations on indexed fields
-   * - Range operations (gt/gte/lt/lte) on the leading index field
+   * - Binary eq operations that satisfy compound index prefix order
+   * - Optional range operations (gt/gte/lt/lte) on the first non-eq prefix field
    * - Can be pushed into .withIndex() for efficient scanning
    *
    * Post-filters:
@@ -891,60 +891,92 @@ export class WhereClauseCompiler {
       };
     }
 
-    const indexableFields = new Set(selectedIndex.indexFields);
-    const indexFilters: FilterExpression<boolean>[] = [];
+    const indexFields = selectedIndex.indexFields;
+    const indexFieldSet = new Set(indexFields);
+    const binaryFilters: BinaryExpression[] = [];
     const postFilters: FilterExpression<boolean>[] = [];
-
-    const isRangeOperator = (operator: string) =>
-      operator === 'gt' ||
-      operator === 'gte' ||
-      operator === 'lt' ||
-      operator === 'lte';
-
     const isBinaryExpression = (
       expr: FilterExpression<boolean>
     ): expr is BinaryExpression => expr.type === 'binary';
 
-    const isIndexable = (expr: BinaryExpression) => {
-      const [field] = expr.operands;
-      if (!isFieldReference(field)) {
-        return false;
-      }
-      if (!indexableFields.has(field.fieldName)) {
-        return false;
-      }
-      if (expr.operator === 'eq') {
-        return true;
-      }
-      if (isRangeOperator(expr.operator)) {
-        return selectedIndex.indexFields[0] === field.fieldName;
-      }
-      return false;
-    };
-
-    const visit = (expr: FilterExpression<boolean>) => {
+    const collect = (expr: FilterExpression<boolean>) => {
       if (isBinaryExpression(expr)) {
-        if (isIndexable(expr)) {
-          indexFilters.push(expr);
-        } else {
-          postFilters.push(expr);
-        }
+        binaryFilters.push(expr);
         return;
       }
-      if (expr.type === 'logical') {
-        if (expr.operator === 'and') {
-          for (const operand of expr.operands) {
-            visit(operand);
-          }
-        } else {
-          postFilters.push(expr);
+      if (expr.type === 'logical' && expr.operator === 'and') {
+        for (const operand of expr.operands) {
+          collect(operand);
         }
         return;
       }
       postFilters.push(expr);
     };
 
-    visit(expression);
+    collect(expression);
+
+    const binariesByField = new Map<string, BinaryExpression[]>();
+    for (const binary of binaryFilters) {
+      const [field] = binary.operands;
+      if (!isFieldReference(field) || !indexFieldSet.has(field.fieldName)) {
+        postFilters.push(binary);
+        continue;
+      }
+      const existing = binariesByField.get(field.fieldName) ?? [];
+      existing.push(binary);
+      binariesByField.set(field.fieldName, existing);
+    }
+
+    const indexFilters: FilterExpression<boolean>[] = [];
+    const consumed = new Set<FilterExpression<boolean>>();
+    const takeEq = (fieldName: string): boolean => {
+      const filters = binariesByField.get(fieldName) ?? [];
+      const eqFilter = filters.find((filter) => filter.operator === 'eq');
+      if (!eqFilter) {
+        return false;
+      }
+      indexFilters.push(eqFilter);
+      consumed.add(eqFilter);
+      return true;
+    };
+
+    const takeRange = (fieldName: string): boolean => {
+      const filters = binariesByField.get(fieldName) ?? [];
+      const lower =
+        filters.find((filter) => filter.operator === 'gte') ??
+        filters.find((filter) => filter.operator === 'gt');
+      const upper =
+        filters.find((filter) => filter.operator === 'lte') ??
+        filters.find((filter) => filter.operator === 'lt');
+
+      if (!lower && !upper) {
+        return false;
+      }
+
+      if (lower) {
+        indexFilters.push(lower);
+        consumed.add(lower);
+      }
+      if (upper) {
+        indexFilters.push(upper);
+        consumed.add(upper);
+      }
+      return true;
+    };
+
+    for (const fieldName of indexFields) {
+      if (takeEq(fieldName)) {
+        continue;
+      }
+      takeRange(fieldName);
+      break;
+    }
+
+    for (const binary of binaryFilters) {
+      if (!consumed.has(binary) && !postFilters.includes(binary)) {
+        postFilters.push(binary);
+      }
+    }
 
     return { indexFilters, postFilters };
   }

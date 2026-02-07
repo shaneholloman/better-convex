@@ -113,7 +113,7 @@ const firstBatch = await db
 Important behavior:
 - `execute()` in async mode returns the same type shape as sync `execute()` (with `.returning()`, rows from the first batch only).
 - Remaining batches are scheduled asynchronously.
-- Explicit async APIs (`execute({ mode: 'async' })` / `executeAsync()`) cannot be combined with `.paginate()` or `.scheduled(...)`.
+- Explicit async APIs (`execute({ mode: 'async' })` / `executeAsync()`) cannot be combined with `.paginate()` or resolved scheduled delete mode (`.scheduled(...)` or table-level `deletion('scheduled')`).
 - `.paginate()` remains the caller-controlled execution path.
 - `batchSize` resolves as: per-call `batchSize` → `defaults.mutationBatchSize` → `100`.
 - `delayMs` resolves as: per-call `delayMs` → `defaults.mutationAsyncDelayMs` → `0`.
@@ -123,6 +123,30 @@ Important behavior:
 - Async fan-out stops at `mutationMaxBytesPerBatch` and may throw after `mutationScheduleCallCap` schedule calls in one mutation invocation.
 
 Async execution requires wiring `scheduler` + `scheduledMutationBatch` when building `ctx.orm`.
+
+## Table Default Delete Mode
+
+Use table-level deletion config when a table should always default to soft/scheduled semantics.
+
+```ts
+import { convexTable, deletion, integer, text } from 'better-convex/orm';
+
+const users = convexTable(
+  'users',
+  {
+    slug: text().notNull(),
+    deletionTime: integer(),
+  },
+  () => [deletion('scheduled', { delayMs: 60_000 })]
+);
+```
+
+Delete mode precedence:
+- per-query override (`.hard()`, `.soft()`, `.scheduled({ delayMs })`)
+- table default via `deletion(...)`
+- fallback `'hard'`
+
+When a table defaults to scheduled mode, use `.hard()` to opt out for a specific delete (including `.hard().executeAsync(...)`).
 
 ## Scheduled Delete Cancellation
 

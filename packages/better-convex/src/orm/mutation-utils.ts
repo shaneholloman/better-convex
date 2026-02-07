@@ -19,8 +19,12 @@ import { fieldRef, isFieldReference } from './filter-expression';
 import { findIndexForColumns, getIndexes } from './index-utils';
 import type { TablesRelationalConfig } from './relations';
 import type { RlsContext } from './rls/types';
-import type { OrmRuntimeDefaults } from './symbols';
-import { Columns, OrmContext, TableName } from './symbols';
+import type {
+  OrmDeleteMode,
+  OrmRuntimeDefaults,
+  OrmTableDeleteConfig,
+} from './symbols';
+import { Columns, OrmContext, TableDeleteConfig, TableName } from './symbols';
 import type { ConvexTable } from './table';
 
 type UniqueIndexDefinition = {
@@ -430,6 +434,12 @@ export function getTableName(table: ConvexTable<any>): string {
   return name;
 }
 
+export function getTableDeleteConfig(
+  table: ConvexTable<any>
+): OrmTableDeleteConfig | undefined {
+  return (table as any)[TableDeleteConfig] as OrmTableDeleteConfig | undefined;
+}
+
 export function getUniqueIndexes(
   table: ConvexTable<any>
 ): UniqueIndexDefinition[] {
@@ -729,7 +739,7 @@ export async function enforceForeignKeys(
   }
 }
 
-export type DeleteMode = 'hard' | 'soft' | 'scheduled';
+export type DeleteMode = OrmDeleteMode;
 export type CascadeMode = 'hard' | 'soft';
 
 function getIndexForForeignKey(
@@ -1040,6 +1050,8 @@ export async function applyIncomingForeignKeyActionsOnDelete(
       continue;
     }
 
+    // Contract: once the root mutation row is authorized, FK fan-out writes
+    // execute as system mutations and intentionally bypass child-table RLS.
     if (action === 'set null') {
       ensureNullableColumns(
         foreignKey.sourceTable,
@@ -1238,6 +1250,8 @@ export async function applyIncomingForeignKeyActionsOnUpdate(
       continue;
     }
 
+    // Contract: once the root mutation row is authorized, FK fan-out writes
+    // execute as system mutations and intentionally bypass child-table RLS.
     if (action === 'set null') {
       ensureNullableColumns(
         foreignKey.sourceTable,

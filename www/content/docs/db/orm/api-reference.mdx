@@ -164,6 +164,28 @@ const posts = convexTable(
 
 Vector indexes require `.dimensions(n)` and can be staged with `.staged()`.
 
+### `deletion()`
+
+```ts
+import { deletion } from 'better-convex/orm';
+
+const users = convexTable(
+  'users',
+  {
+    slug: text().notNull(),
+    deletionTime: integer(),
+  },
+  () => [deletion('scheduled', { delayMs: 60_000 })]
+);
+```
+
+Sets table-level default delete mode:
+- `deletion('hard')`
+- `deletion('soft')`
+- `deletion('scheduled', { delayMs? })`
+
+Per-query delete mode methods still take precedence: `.hard()`, `.soft()`, `.scheduled({ delayMs })`.
+
 ### `vector()`
 
 ```ts
@@ -475,7 +497,7 @@ await db.delete(users).where(eq(users._id, userId));
 - Override defaults via `defineSchema(..., { defaults: { mutationMaxRows, mutationBatchSize, mutationLeafBatchSize, mutationMaxBytesPerBatch, mutationScheduleCallCap, mutationExecutionMode, mutationAsyncDelayMs } })`.
 - For large workloads, use `.paginate({ cursor, numItems })` to execute one batch per mutation call.
 - Use `execute({ mode: 'async', batchSize?, delayMs? })` (or `.executeAsync(...)`) to run the first batch inline and schedule continuation.
-- Explicit async APIs cannot be combined with `.paginate()` (and delete `.scheduled(...)`).
+- Explicit async APIs cannot be combined with `.paginate()` or resolved scheduled delete mode (`.scheduled(...)` or table-level `deletion('scheduled')`).
 - Paged mode returns `{ continueCursor, isDone, numAffected }` (+ `page` when using `.returning()`).
 - Async `execute()` returns the same shape as sync `execute()` (`void` or first-batch `returning()` rows).
 - Paged mode currently supports single-range index plans only.
@@ -492,6 +514,9 @@ await db
 ```ts
 // Soft delete (sets deletionTime)
 await db.delete(users).where(eq(users._id, userId)).soft();
+
+// Force hard delete even if table default is soft/scheduled
+await db.delete(users).where(eq(users._id, userId)).hard();
 
 // Cascade behavior for FK actions
 await db.delete(users).where(eq(users._id, userId)).cascade({ mode: 'hard' });

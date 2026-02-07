@@ -85,6 +85,7 @@ const users = await db.query.users.findMany({
 - Sorting without an index falls back to `_creationTime` ordering
 - Post-fetch sorting (multi-field or non-indexable orderBy) sorts before `offset`/`limit`, so Better-Convex must read the full filtered candidate set first
 - For these post-fetch sort paths, size non-paginated queries intentionally (`limit`, schema `defaultLimit`, or `allowFullScan: true`)
+- Compound index planning follows prefix validity. Non-leading-only predicates (for example `numLikes` on `[type, numLikes]`) are treated as non-indexable and require `allowFullScan: true`
 - Add `index('...').on(t.field)` on fields used for filter or sort
 
 ```ts
@@ -118,8 +119,9 @@ const posts = convexTable(
 - For large update/delete workloads, use builder-level `paginate({ cursor, numItems })` to process one mutation page at a time
 - Async execution (`execute({ mode: 'async', batchSize?, delayMs? })` or `.executeAsync(...)`) runs the first update/delete batch inline and schedules remaining batches
 - Async execution also applies to FK/cascade fan-out paths; large fan-out is paged and continued via scheduler instead of volume-fail-fast
+- FK cascade fan-out is system-driven after root-row authorization; child-table RLS policies are not re-evaluated during fan-out
 - Explicit async APIs (`execute({ mode: 'async' })` / `.executeAsync(...)`) are incompatible with builder-level `paginate(...)`; use one strategy per call
-- Async execution is incompatible with delete `.scheduled(...)`
+- Async execution is incompatible with resolved scheduled delete mode (`.scheduled(...)` or table-level `deletion('scheduled')`)
 - Paged update/delete currently does not support multi-probe filter plans (`inArray`, some `OR`, complement ranges)
 - Check constraints follow SQL-like NULL semantics: the check fails only when the expression is `false` (and passes on `unknown`)
 - Defaults are applied only by Better‑Convex ORM inserts/updates (`.default(...)`, `$defaultFn(...)`, `$onUpdateFn(...)`)
@@ -143,6 +145,8 @@ Recommended patterns:
 
 - Soft/scheduled deletes are **optional helpers** and not part of Drizzle v1
 - Soft deletes require a `deletionTime` field in your table
+- Table-level defaults are supported via `deletion('hard'|'soft'|'scheduled', options?)` in `convexTable(...)` extra config
+- Per-query delete mode methods (`.hard()`, `.soft()`, `.scheduled(...)`) override table defaults
 - Scheduled deletes require wiring `scheduler` + `scheduledDelete` when you build `ctx.orm`
 - Async mutation batches require wiring `scheduler` + `scheduledMutationBatch` when you build `ctx.orm`
 

@@ -131,3 +131,9 @@ const ormDb = orm.db(ctx, {
 RLS policies are evaluated after query filters. They also apply to nested
 relation loading.
 </Callout>
+
+<Callout icon={<AlertTriangle />}>
+Foreign-key cascade fan-out (`cascade`, `set null`, `set default`) runs after the
+root mutation row passes RLS. Fan-out writes are executed as system actions and
+do not re-check child-table RLS policies.
+</Callout>

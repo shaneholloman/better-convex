@@ -294,6 +294,55 @@ test('pagination with index-union filter works with allowFullScan', async () => 
   });
 });
 
+test('pagination on non-leading compound field requires allowFullScan opt-in', async () => {
+  const t = convexTest(schema);
+
+  await t.run(async (baseCtx) => {
+    await baseCtx.db.insert('posts', {
+      text: 'A',
+      type: 'news',
+      numLikes: 10,
+    });
+    await baseCtx.db.insert('posts', {
+      text: 'B',
+      type: 'blog',
+      numLikes: 10,
+    });
+    await baseCtx.db.insert('posts', {
+      text: 'C',
+      type: 'news',
+      numLikes: 50,
+    });
+  });
+
+  await t.run(async (baseCtx) => {
+    const ctx = await runCtx(baseCtx);
+    const db = ctx.orm;
+
+    await expect(
+      db.query.posts.findMany({
+        where: { numLikes: 10 },
+        paginate: {
+          cursor: null,
+          numItems: 2,
+        },
+      })
+    ).rejects.toThrow(/allowFullScan: true/i);
+
+    const page = await db.query.posts.findMany({
+      where: { numLikes: 10 },
+      paginate: {
+        cursor: null,
+        numItems: 2,
+      },
+      allowFullScan: true,
+    });
+
+    expect(page.page).toHaveLength(2);
+    expect(page.page.every((row: any) => row.numLikes === 10)).toBe(true);
+  });
+});
+
 test('pagination with ORDER BY ascending', async () => {
   const t = convexTest(schema);
 

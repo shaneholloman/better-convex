@@ -12,6 +12,7 @@ import {
   getMutationCollectionLimits,
   getMutationExecutionMode,
   getOrmContext,
+  getTableDeleteConfig,
   getTableName,
   hardDeleteRow,
   selectReturningRow,
@@ -78,7 +79,7 @@ export class ConvexDeleteBuilder<
   private whereExpression?: FilterExpression<boolean>;
   private returningFields?: TReturning;
   private allowFullScanFlag = false;
-  private deleteMode: DeleteMode = 'hard';
+  private deleteModeOverride?: DeleteMode;
   private cascadeMode?: CascadeMode;
   private scheduledDelayMs?: number;
   private executionModeOverride?: 'sync' | 'async';
@@ -153,7 +154,14 @@ export class ConvexDeleteBuilder<
   }
 
   soft(): this {
-    this.deleteMode = 'soft';
+    this.deleteModeOverride = 'soft';
+    this.scheduledDelayMs = undefined;
+    return this;
+  }
+
+  hard(): this {
+    this.deleteModeOverride = 'hard';
+    this.scheduledDelayMs = undefined;
     return this;
   }
 
@@ -161,9 +169,25 @@ export class ConvexDeleteBuilder<
     if (!Number.isFinite(config.delayMs) || config.delayMs < 0) {
       throw new Error('scheduled() delayMs must be a non-negative number.');
     }
-    this.deleteMode = 'scheduled';
+    this.deleteModeOverride = 'scheduled';
     this.scheduledDelayMs = config.delayMs;
     return this;
+  }
+
+  private resolveDeleteModeAndDelay(): {
+    deleteMode: DeleteMode;
+    scheduledDelayMs: number;
+  } {
+    const tableDeleteConfig = getTableDeleteConfig(this.table);
+    const deleteMode =
+      this.deleteModeOverride ?? tableDeleteConfig?.mode ?? 'hard';
+    const scheduledDelayMs =
+      this.scheduledDelayMs ??
+      (deleteMode === 'scheduled' ? (tableDeleteConfig?.delayMs ?? 0) : 0);
+    return {
+      deleteMode,
+      scheduledDelayMs,
+    };
   }
 
   cascade(config: { mode: CascadeMode }): this {
@@ -214,9 +238,10 @@ export class ConvexDeleteBuilder<
       config?.mode ?? this.executionModeOverride
     );
     const delayMs = getMutationAsyncDelayMs(ormContext, config?.delayMs);
+    const { deleteMode, scheduledDelayMs } = this.resolveDeleteModeAndDelay();
 
     if (!isPaginated && resolvedMode === 'async') {
-      if (this.deleteMode === 'scheduled') {
+      if (deleteMode === 'scheduled') {
         throw new Error(
           'executeAsync() cannot be combined with scheduled() delete mode.'
         );
@@ -260,7 +285,7 @@ export class ConvexDeleteBuilder<
               table: getTableName(this.table),
               where: serializeFilterExpression(this.whereExpression),
               allowFullScan: this.allowFullScanFlag,
-              deleteMode: this.deleteMode,
+              deleteMode,
               cascadeMode: this.cascadeMode,
               cursor: firstBatch.continueCursor,
               batchSize: asyncBatchSize,
@@ -463,9 +488,7 @@ export class ConvexDeleteBuilder<
 
     const cascadeMode: CascadeMode =
       this.cascadeMode ??
-      (this.deleteMode === 'soft' || this.deleteMode === 'scheduled'
-        ? 'soft'
-        : 'hard');
+      (deleteMode === 'soft' || deleteMode === 'scheduled' ? 'soft' : 'hard');
 
     const visited = new Set<string>();
     const scheduleState = {
@@ -502,7 +525,7 @@ export class ConvexDeleteBuilder<
         row as Record<string, unknown>,
         {
           graph: foreignKeyGraph,
-          deleteMode: this.deleteMode,
+          deleteMode,
           cascadeMode,
           visited,
           batchSize: fkBatchSize,
@@ -519,7 +542,7 @@ export class ConvexDeleteBuilder<
         }
       );
 
-      if (this.deleteMode === 'soft') {
+      if (deleteMode === 'soft') {
         await softDeleteRow(
           this.db,
           this.table,
@@ -529,7 +552,7 @@ export class ConvexDeleteBuilder<
         continue;
       }
 
-      if (this.deleteMode === 'scheduled') {
+      if (deleteMode === 'scheduled') {
         const deletionTime = await softDeleteRow(
           this.db,
           this.table,
@@ -540,9 +563,8 @@ export class ConvexDeleteBuilder<
             'scheduled() requires orm.db(ctx) configured with scheduling (ormFunctions.scheduledDelete).'
           );
         }
-        const delayMs = this.scheduledDelayMs ?? 0;
         await ormContext.scheduler.runAfter(
-          delayMs,
+          scheduledDelayMs,
           ormContext.scheduledDelete,
           {
             table: tableName,

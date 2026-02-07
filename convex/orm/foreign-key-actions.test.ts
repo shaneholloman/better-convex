@@ -10,6 +10,7 @@ import {
   id,
   index,
   integer,
+  rlsPolicy,
   scheduledDeleteFactory,
   scheduledMutationBatchFactory,
   text,
@@ -134,6 +135,67 @@ const membershipsNoIndex = convexTable(
     foreignKey({ columns: [t.userId], foreignColumns: [users._id] }).onDelete(
       'cascade'
     ),
+  ]
+);
+
+const rlsParents = convexTable(
+  'fk_action_rls_parents',
+  {
+    slug: text().notNull(),
+    owner: text().notNull(),
+  },
+  (t) => [
+    index('by_slug').on(t.slug),
+    rlsPolicy('parent_delete', {
+      for: 'delete',
+      using: (ctx) => eq(t.owner, (ctx as any).viewer),
+    }),
+    rlsPolicy('parent_update', {
+      for: 'update',
+      using: (ctx) => eq(t.owner, (ctx as any).viewer),
+      withCheck: (ctx) => eq(t.owner, (ctx as any).viewer),
+    }),
+  ]
+);
+
+const rlsDeleteChildren = convexTable(
+  'fk_action_rls_children_delete',
+  {
+    parentSlug: text().notNull(),
+    visibility: text().notNull(),
+  },
+  (t) => [
+    index('by_parent').on(t.parentSlug),
+    foreignKey({
+      columns: [t.parentSlug],
+      foreignColumns: [rlsParents.slug],
+    }).onDelete('cascade'),
+    // Contract test: child delete policy denies this row.
+    rlsPolicy('child_delete_policy', {
+      for: 'delete',
+      using: () => eq(t.visibility, 'allow'),
+    }),
+  ]
+);
+
+const rlsUpdateChildren = convexTable(
+  'fk_action_rls_children_update',
+  {
+    parentSlug: text().notNull(),
+    visibility: text().notNull(),
+  },
+  (t) => [
+    index('by_parent').on(t.parentSlug),
+    foreignKey({
+      columns: [t.parentSlug],
+      foreignColumns: [rlsParents.slug],
+    }).onUpdate('cascade'),
+    // Contract test: child update policy denies this row.
+    rlsPolicy('child_update_policy', {
+      for: 'update',
+      using: () => eq(t.visibility, 'allow'),
+      withCheck: () => eq(t.visibility, 'allow'),
+    }),
   ]
 );
 
@@ -321,6 +383,29 @@ const withScheduleCapCtx = async <T>(
     options
   );
 
+const rlsSchemaTables = {
+  ...baseSchemaTables,
+  fk_action_rls_parents: rlsParents,
+  fk_action_rls_children_delete: rlsDeleteChildren,
+  fk_action_rls_children_update: rlsUpdateChildren,
+};
+const rlsSchema = defineSchema(rlsSchemaTables);
+const rlsRelations = defineRelations(rlsSchemaTables);
+
+const withRlsCtx = async <T>(
+  fn: (ctx: {
+    orm: DatabaseWithMutations<typeof rlsRelations>;
+    db: GenericDatabaseWriter<any>;
+  }) => Promise<T>,
+  options?: CreateOrmDbOptions
+) =>
+  withOrmCtx(
+    rlsSchema,
+    rlsRelations,
+    async ({ orm, db }) => fn({ orm, db }),
+    options
+  );
+
 describe('foreign key actions', () => {
   it('cascades deletes', async () =>
     withCtx(async ({ orm, db }) => {
@@ -413,6 +498,78 @@ describe('foreign key actions', () => {
       const updated = await db.get(member._id);
       expect(updated?.userSlug).toBe('ada-lovelace');
     }));
+
+  it('enforces RLS on root delete before applying cascade fan-out', async () =>
+    withRlsCtx(
+      async ({ orm, db }) => {
+        const parentId = await db.insert('fk_action_rls_parents', {
+          slug: 'root-a',
+          owner: 'owner-a',
+        });
+        const childId = await db.insert('fk_action_rls_children_delete', {
+          parentSlug: 'root-a',
+          visibility: 'deny',
+        });
+
+        await orm
+          .delete(rlsParents)
+          .where(eq(rlsParents._id, parentId))
+          .execute();
+
+        const parent = await db.get(parentId);
+        const child = await db.get(childId);
+        expect(parent).not.toBeNull();
+        expect(child).not.toBeNull();
+      },
+      { rls: { ctx: { viewer: 'owner-b' } } as any }
+    ));
+
+  it('applies cascade delete fan-out even when child delete RLS policy denies', async () =>
+    withRlsCtx(
+      async ({ orm, db }) => {
+        const parentId = await db.insert('fk_action_rls_parents', {
+          slug: 'root-a',
+          owner: 'owner-a',
+        });
+        const childId = await db.insert('fk_action_rls_children_delete', {
+          parentSlug: 'root-a',
+          visibility: 'deny',
+        });
+
+        await orm
+          .delete(rlsParents)
+          .where(eq(rlsParents._id, parentId))
+          .execute();
+
+        const child = await db.get(childId);
+        expect(child).toBeNull();
+      },
+      { rls: { ctx: { viewer: 'owner-a' } } as any }
+    ));
+
+  it('applies cascade update fan-out even when child update RLS policy denies', async () =>
+    withRlsCtx(
+      async ({ orm, db }) => {
+        const parentId = await db.insert('fk_action_rls_parents', {
+          slug: 'root-a',
+          owner: 'owner-a',
+        });
+        const childId = await db.insert('fk_action_rls_children_update', {
+          parentSlug: 'root-a',
+          visibility: 'deny',
+        });
+
+        await orm
+          .update(rlsParents)
+          .set({ slug: 'root-b' })
+          .where(eq(rlsParents._id, parentId))
+          .execute();
+
+        const child = await db.get(childId);
+        expect(child?.parentSlug).toBe('root-b');
+      },
+      { rls: { ctx: { viewer: 'owner-a' } } as any }
+    ));
 
   it('restricts updates', async () =>
     withCtx(async ({ orm }) => {

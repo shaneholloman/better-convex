@@ -106,6 +106,13 @@ Most string operators run post-fetch. For large datasets, prefer indexed filters
 `between` and `notBetween` are also index-compiled when the field is indexed.
 </Callout>
 
+<Callout icon={<InfoIcon />}>
+Compound indexes follow Convex prefix rules. For an index on `[type, numLikes]`,
+`where: { numLikes: 10 }` is treated as non-indexable and requires `allowFullScan: true`
+unless you also constrain the leading field (`type`). Reversed `AND` equality order is normalized
+to index field order before query execution.
+</Callout>
+
 ### SQL Subquery Operators (`exists`, `notExists`)
 
 Drizzle exposes `exists(query)` and `notExists(query)` as SQL subquery operators.

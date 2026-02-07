@@ -207,6 +207,7 @@ There is no per‑field write rule hook; enforce invariants in mutations or `che
 
 - Ents auto‑cascade deletes based on edge definitions.
 - Ents only batches high-volume hard deletes when you opt into `.deletion("scheduled")` on the table.
+- ORM equivalent table opt-in is `deletion('scheduled', { delayMs })` in `convexTable(...)` extra config.
 - ORM requires explicit `foreignKey(...).onDelete('cascade')` and/or manual cleanup.
 - For large fan-out in ORM, use async execution (`execute({ mode: 'async' })` / `executeAsync()`).
 - Soft/scheduled deletes are mutation‑time helpers:
@@ -220,6 +221,22 @@ await ctx.orm
 ```
 
 Scheduled hard deletes are cancellation-safe: if `deletionTime` is cleared or changed before the scheduled worker runs, the hard delete is skipped.
+
+Table-default scheduled mode with per-query hard override:
+
+```ts
+const users = convexTable(
+  'users',
+  {
+    slug: text().notNull(),
+    deletionTime: integer(),
+  },
+  () => [deletion('scheduled', { delayMs: 60_000 })]
+);
+
+await ctx.orm.delete(users).where(eq(users._id, userId)).execute(); // scheduled by default
+await ctx.orm.delete(users).where(eq(users._id, userId)).hard().execute(); // force hard delete
+```
 
 ## Notes on Ents Gaps
 

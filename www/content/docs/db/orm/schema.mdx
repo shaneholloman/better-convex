@@ -46,6 +46,28 @@ const users = convexTable('users', {
 });
 ```
 
+### Table-Level Delete Defaults
+
+Configure default delete semantics per table with `deletion(...)`.
+
+```ts
+import { convexTable, deletion, integer, text } from 'better-convex/orm';
+
+const users = convexTable(
+  'users',
+  {
+    slug: text().notNull(),
+    deletionTime: integer(),
+  },
+  () => [deletion('scheduled', { delayMs: 60_000 })]
+);
+```
+
+Available modes:
+- `deletion('hard')`
+- `deletion('soft')`
+- `deletion('scheduled', { delayMs? })`
+
 ### Column Builder Types
 
 | TypeScript Type | Builder |

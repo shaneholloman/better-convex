@@ -12,6 +12,7 @@ import {
   convexTable,
   defineRelations,
   defineSchema,
+  deletion,
   eq,
   extractRelationsConfig,
   inArray,
@@ -883,6 +884,228 @@ describe('M7 Mutations', () => {
         }
       )
     ).rejects.toThrow(/cannot be combined with scheduled\(\)/i);
+  });
+
+  it('should apply table default scheduled delete mode on execute()', async () => {
+    const scheduledUsers = convexTable(
+      'table_default_scheduled_users',
+      {
+        name: text().notNull(),
+        deletionTime: integer(),
+      },
+      () => [deletion('scheduled', { delayMs: 250 })]
+    );
+    const tables = { table_default_scheduled_users: scheduledUsers };
+    const scheduledSchema = defineSchema(tables);
+    const scheduledRelations = defineRelations(tables);
+
+    const scheduler = {
+      runAfter: vi.fn(async () => 'scheduled'),
+      runAt: vi.fn(async () => 'scheduled'),
+      cancel: vi.fn(async () => undefined),
+    };
+    const scheduledDelete = {} as SchedulableFunctionReference;
+
+    await withOrmCtx(
+      scheduledSchema,
+      scheduledRelations,
+      async (ctx) => {
+        const userId = await ctx.db.insert('table_default_scheduled_users', {
+          name: 'Ada',
+        });
+
+        await ctx.orm
+          .delete(scheduledUsers)
+          .where(eq(scheduledUsers._id, userId))
+          .execute();
+
+        const updated = await ctx.db.get(userId);
+        expect(updated?.deletionTime).toBeTypeOf('number');
+        expect(scheduler.runAfter).toHaveBeenCalledWith(
+          250,
+          scheduledDelete,
+          expect.objectContaining({
+            table: 'table_default_scheduled_users',
+            id: userId,
+            cascadeMode: 'hard',
+            deletionTime: updated?.deletionTime,
+          })
+        );
+      },
+      { scheduler: scheduler as any, scheduledDelete }
+    );
+  });
+
+  it('should allow hard() override on table default scheduled delete mode', async () => {
+    const scheduledUsers = convexTable(
+      'table_default_scheduled_users_hard_override',
+      {
+        name: text().notNull(),
+        deletionTime: integer(),
+      },
+      () => [deletion('scheduled', { delayMs: 250 })]
+    );
+    const tables = {
+      table_default_scheduled_users_hard_override: scheduledUsers,
+    };
+    const scheduledSchema = defineSchema(tables);
+    const scheduledRelations = defineRelations(tables);
+
+    const scheduler = {
+      runAfter: vi.fn(async () => 'scheduled'),
+      runAt: vi.fn(async () => 'scheduled'),
+      cancel: vi.fn(async () => undefined),
+    };
+    const scheduledDelete = {} as SchedulableFunctionReference;
+
+    await withOrmCtx(
+      scheduledSchema,
+      scheduledRelations,
+      async (ctx) => {
+        const userId = await ctx.db.insert(
+          'table_default_scheduled_users_hard_override',
+          {
+            name: 'Ada',
+          }
+        );
+
+        await ctx.orm
+          .delete(scheduledUsers)
+          .hard()
+          .where(eq(scheduledUsers._id, userId))
+          .execute();
+
+        expect(await ctx.db.get(userId)).toBeNull();
+        expect(scheduler.runAfter).not.toHaveBeenCalled();
+      },
+      { scheduler: scheduler as any, scheduledDelete }
+    );
+  });
+
+  it('should apply table default soft delete mode on execute()', async () => {
+    const softUsers = convexTable(
+      'table_default_soft_users',
+      {
+        name: text().notNull(),
+        deletionTime: integer(),
+      },
+      () => [deletion('soft')]
+    );
+    const tables = { table_default_soft_users: softUsers };
+    const softSchema = defineSchema(tables);
+    const softRelations = defineRelations(tables);
+
+    await withOrmCtx(softSchema, softRelations, async (ctx) => {
+      const userId = await ctx.db.insert('table_default_soft_users', {
+        name: 'Ada',
+      });
+
+      await ctx.orm
+        .delete(softUsers)
+        .where(eq(softUsers._id, userId))
+        .execute();
+
+      const updated = await ctx.db.get(userId);
+      expect(updated).not.toBeNull();
+      expect(updated?.deletionTime).toBeTypeOf('number');
+    });
+  });
+
+  it('should reject executeAsync for table default scheduled delete mode', async () => {
+    const scheduledUsers = convexTable(
+      'table_default_scheduled_users_async_reject',
+      {
+        name: text().notNull(),
+        deletionTime: integer(),
+      },
+      () => [deletion('scheduled', { delayMs: 0 })]
+    );
+    const tables = {
+      table_default_scheduled_users_async_reject: scheduledUsers,
+    };
+    const scheduledSchema = defineSchema(tables);
+    const scheduledRelations = defineRelations(tables);
+
+    const scheduler = {
+      runAfter: vi.fn(async () => 'scheduled'),
+      runAt: vi.fn(async () => 'scheduled'),
+      cancel: vi.fn(async () => undefined),
+    };
+    const scheduledMutationBatch = {} as SchedulableFunctionReference;
+
+    await expect(
+      withOrmCtx(
+        scheduledSchema,
+        scheduledRelations,
+        async (ctx) => {
+          const userId = await ctx.db.insert(
+            'table_default_scheduled_users_async_reject',
+            {
+              name: 'Ada',
+            }
+          );
+
+          await ctx.orm
+            .delete(scheduledUsers)
+            .where(eq(scheduledUsers._id, userId))
+            .executeAsync();
+        },
+        {
+          scheduler: scheduler as any,
+          scheduledMutationBatch,
+        }
+      )
+    ).rejects.toThrow(/cannot be combined with scheduled\(\)/i);
+  });
+
+  it('should allow hard() override with executeAsync for table default scheduled mode', async () => {
+    const scheduledUsers = convexTable(
+      'table_default_scheduled_users_async_hard_override',
+      {
+        name: text().notNull(),
+        deletionTime: integer(),
+      },
+      () => [deletion('scheduled', { delayMs: 0 })]
+    );
+    const tables = {
+      table_default_scheduled_users_async_hard_override: scheduledUsers,
+    };
+    const scheduledSchema = defineSchema(tables, {
+      defaults: { mutationBatchSize: 1, mutationMaxRows: 100 },
+    });
+    const scheduledRelations = defineRelations(tables);
+
+    const scheduler = {
+      runAfter: vi.fn(async () => 'scheduled'),
+      runAt: vi.fn(async () => 'scheduled'),
+      cancel: vi.fn(async () => undefined),
+    };
+    const scheduledMutationBatch = {} as SchedulableFunctionReference;
+
+    await withOrmCtx(
+      scheduledSchema,
+      scheduledRelations,
+      async (ctx) => {
+        const userId = await ctx.db.insert(
+          'table_default_scheduled_users_async_hard_override',
+          {
+            name: 'Ada',
+          }
+        );
+
+        await ctx.orm
+          .delete(scheduledUsers)
+          .hard()
+          .where(eq(scheduledUsers._id, userId))
+          .executeAsync({ batchSize: 1, delayMs: 0 });
+
+        expect(await ctx.db.get(userId)).toBeNull();
+      },
+      {
+        scheduler: scheduler as any,
+        scheduledMutationBatch,
+      }
+    );
   });
 
   it('should use global async execution mode for execute()', async () => {

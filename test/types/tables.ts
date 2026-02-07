@@ -11,6 +11,7 @@ import {
   type ConvexTable,
   convexTable,
   defineSchema,
+  deletion,
   foreignKey,
   type InferInsertModel,
   type InferSelectModel,
@@ -94,6 +95,45 @@ import { type Equal, Expect, IsAny, IsNever, Not } from './utils';
       },
     }
   );
+}
+
+{
+  const users = convexTable(
+    'scheduled_users',
+    {
+      slug: text().notNull(),
+      deletionTime: integer(),
+    },
+    () => [deletion('scheduled', { delayMs: 60_000 })]
+  );
+
+  defineSchema({ users });
+}
+
+{
+  const users = convexTable(
+    'soft_users',
+    {
+      slug: text().notNull(),
+      deletionTime: integer(),
+    },
+    () => [deletion('soft')]
+  );
+
+  defineSchema({ users });
+}
+
+{
+  const users = convexTable('invalid_mode_users', {
+    slug: text().notNull(),
+  });
+
+  defineSchema({
+    users,
+  });
+
+  // @ts-expect-error - invalid deletion mode
+  deletion('eventual');
 }
 
 {

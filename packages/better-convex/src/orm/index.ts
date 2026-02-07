@@ -217,7 +217,12 @@ export {
   TableName,
 } from './symbols';
 export type { ConvexTable, TableConfig } from './table';
-export { convexTable } from './table';
+export {
+  type ConvexDeletionBuilder,
+  type ConvexDeletionConfig,
+  convexTable,
+  deletion,
+} from './table';
 // M3: Query Builder Types
 export type {
   BuildQueryResult,

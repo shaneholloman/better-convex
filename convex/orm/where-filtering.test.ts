@@ -431,6 +431,76 @@ describe('M4 Where Filtering - Logical Operators', () => {
     expect(result[0].name).toBe('Alice');
   });
 
+  test('requires allowFullScan when filtering by non-leading compound index field', async ({
+    ctx,
+  }) => {
+    const db = ctx.orm;
+
+    await ctx.db.insert('posts', {
+      text: 'post-a',
+      numLikes: 10,
+      type: 'news',
+    });
+    await ctx.db.insert('posts', {
+      text: 'post-b',
+      numLikes: 10,
+      type: 'blog',
+    });
+    await ctx.db.insert('posts', {
+      text: 'post-c',
+      numLikes: 99,
+      type: 'news',
+    });
+
+    await expect(
+      db.query.posts.findMany({
+        where: { numLikes: 10 },
+      })
+    ).rejects.toThrow(/allowFullScan: true/i);
+
+    const result = await db.query.posts.findMany({
+      where: { numLikes: 10 },
+      allowFullScan: true,
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result.map((post: any) => post.text).sort()).toEqual([
+      'post-a',
+      'post-b',
+    ]);
+  });
+
+  test('normalizes reversed AND equality clauses to valid compound index order', async ({
+    ctx,
+  }) => {
+    const db = ctx.orm;
+
+    await ctx.db.insert('posts', {
+      text: 'post-a',
+      numLikes: 10,
+      type: 'news',
+    });
+    await ctx.db.insert('posts', {
+      text: 'post-b',
+      numLikes: 10,
+      type: 'blog',
+    });
+    await ctx.db.insert('posts', {
+      text: 'post-c',
+      numLikes: 50,
+      type: 'news',
+    });
+
+    const result = await db.query.posts.findMany({
+      where: {
+        AND: [{ numLikes: 10 }, { type: 'news' }],
+      },
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].text).toBe('post-a');
+  });
+
   test('should filter out undefined expressions in and()', async ({ ctx }) => {
     const db = ctx.orm;
 

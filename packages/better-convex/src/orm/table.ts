@@ -35,7 +35,16 @@ import type {
 } from './indexes';
 import type { RlsPolicy } from './rls/policies';
 import { isRlsPolicy } from './rls/policies';
-import { Brand, Columns, EnableRLS, RlsPolicies, TableName } from './symbols';
+import {
+  Brand,
+  Columns,
+  EnableRLS,
+  type OrmDeleteMode,
+  type OrmTableDeleteConfig,
+  RlsPolicies,
+  TableDeleteConfig,
+  TableName,
+} from './symbols';
 
 /**
  * Reserved Convex system table names that cannot be used
@@ -112,6 +121,7 @@ export type ConvexTableExtraConfigValue =
   | ConvexForeignKeyBuilder
   | ConvexCheckBuilder
   | ConvexUniqueConstraintBuilder
+  | ConvexDeletionBuilder
   | RlsPolicy;
 export type ConvexTableExtraConfig = Record<
   string,
@@ -275,6 +285,38 @@ type ForeignKeyDefinition = {
   onDelete?: ForeignKeyAction;
 };
 
+export type ConvexDeletionConfig = {
+  mode: OrmDeleteMode;
+  delayMs?: number;
+};
+
+export class ConvexDeletionBuilder {
+  static readonly [entityKind] = 'ConvexDeletionBuilder';
+  readonly [entityKind] = 'ConvexDeletionBuilder';
+
+  constructor(readonly config: ConvexDeletionConfig) {}
+}
+
+export function deletion(
+  mode: OrmDeleteMode,
+  options?: { delayMs?: number }
+): ConvexDeletionBuilder {
+  if (options?.delayMs !== undefined) {
+    if (mode !== 'scheduled') {
+      throw new Error("deletion() delayMs is only supported for 'scheduled'.");
+    }
+    if (!Number.isInteger(options.delayMs) || options.delayMs < 0) {
+      throw new Error(
+        "deletion() delayMs must be a non-negative integer when mode is 'scheduled'."
+      );
+    }
+  }
+  return new ConvexDeletionBuilder({
+    mode,
+    delayMs: options?.delayMs,
+  });
+}
+
 function isConvexIndexBuilder(value: unknown): value is ConvexIndexBuilder {
   return (
     typeof value === 'object' &&
@@ -373,6 +415,16 @@ function isConvexVectorIndexBuilder(
     value !== null &&
     (value as { [entityKind]?: string })[entityKind] ===
       'ConvexVectorIndexBuilder'
+  );
+}
+
+function isConvexDeletionBuilder(
+  value: unknown
+): value is ConvexDeletionBuilder {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as { [entityKind]?: string })[entityKind] === 'ConvexDeletionBuilder'
   );
 }
 
@@ -498,6 +550,19 @@ function applyExtraConfig<T extends TableConfig>(
         (target as any)[RlsPolicies] = policies;
         (target as any)[EnableRLS] = true;
       }
+      continue;
+    }
+
+    if (isConvexDeletionBuilder(entry)) {
+      if ((table as any)[TableDeleteConfig]) {
+        throw new Error(
+          `Only one deletion(...) config can be defined for '${table.tableName}'.`
+        );
+      }
+      (table as any)[TableDeleteConfig] = {
+        mode: entry.config.mode,
+        delayMs: entry.config.delayMs,
+      } satisfies OrmTableDeleteConfig;
       continue;
     }
 
@@ -698,6 +763,7 @@ class ConvexTableImpl<T extends TableConfig> {
   [Brand] = 'ConvexTable' as const;
   [EnableRLS] = false;
   [RlsPolicies]: RlsPolicy[] = [];
+  [TableDeleteConfig]?: OrmTableDeleteConfig;
 
   /**
    * Public tableName for convenience
@@ -1109,6 +1175,7 @@ export interface ConvexTable<
   [Brand]: 'ConvexTable';
   [RlsPolicies]: RlsPolicy[];
   [EnableRLS]: boolean;
+  [TableDeleteConfig]?: OrmTableDeleteConfig;
 
   /**
    * Convex schema validator

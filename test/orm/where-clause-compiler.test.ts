@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  and,
   between,
   eq,
   fieldRef,
@@ -204,5 +205,38 @@ describe('WhereClauseCompiler advanced index planning', () => {
       compiler.compile(notBetween(fieldRef<number>('age') as any, 18, 65))
         .strategy
     ).toBe('none');
+  });
+
+  test('does not push non-leading compound field into index filters', () => {
+    const compiler = new WhereClauseCompiler('users', [
+      { indexName: 'by_city_status', indexFields: ['city', 'status'] },
+    ]);
+
+    const result = compiler.compile(
+      eq(fieldRef<string>('status') as any, 'active')
+    ) as any;
+
+    expect(result.strategy).toBe('none');
+    expect(result.indexFilters).toHaveLength(0);
+    expect(result.postFilters).toHaveLength(1);
+  });
+
+  test('orders index eq filters by compound index field order', () => {
+    const compiler = new WhereClauseCompiler('users', [
+      { indexName: 'by_city_status', indexFields: ['city', 'status'] },
+    ]);
+
+    const result = compiler.compile(
+      and(
+        eq(fieldRef<string>('status') as any, 'active'),
+        eq(fieldRef<string>('city') as any, 'nyc')
+      )!
+    ) as any;
+
+    expect(result.strategy).toBe('singleIndex');
+    expect(
+      result.indexFilters.map((filter: any) => filter.operands[0].fieldName)
+    ).toEqual(['city', 'status']);
+    expect(result.postFilters).toHaveLength(0);
   });
 });
