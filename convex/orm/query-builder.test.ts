@@ -8,9 +8,23 @@
  * - Basic column selection
  */
 
+import {
+  convexTable,
+  defineRelations,
+  defineSchema,
+  extractRelationsConfig,
+  id,
+  index,
+  text,
+} from 'better-convex/orm';
 import { it as baseIt, describe, expect } from 'vitest';
 import schema from '../schema';
-import { convexTest, runCtx, type TestCtx } from '../setup.testing';
+import {
+  convexTest,
+  runCtx,
+  type TestCtx,
+  withTableCtx,
+} from '../setup.testing';
 
 // Test setup with convexTest
 const it = baseIt.extend<{ ctx: TestCtx }>({
@@ -34,20 +48,23 @@ describe('M3 Query Builder', () => {
       expect(typeof db.query.users.findFirst).toBe('function');
     });
 
-    it('should expose stream wrapper on db', async ({ ctx }) => {
+    it('should require explicit index for predicate where', async ({ ctx }) => {
       await ctx.db.insert('users', {
         name: 'Alice',
         email: 'alice@example.com',
       });
 
       const db = ctx.table;
-      const streamDb = db.stream(schema);
-      await streamDb.query('users').take(1);
-      const rows = await db.stream().query('users').take(1);
-      // @ts-expect-error take expects a number
-      db.stream().query('users').take('nope');
-      // @ts-expect-error unknown field should fail typecheck
-      rows[0].notAField;
+      await expect(
+        (db.query.users.findMany as any)({
+          where: (row: any) => row.name === 'Alice',
+        })
+      ).rejects.toThrow(/index/i);
+
+      const rows = await db.query.users.findMany({
+        where: (row) => row.name === 'Alice',
+        index: { name: 'by_name', range: (q) => q.eq('name', 'Alice') },
+      });
 
       expect(rows).toHaveLength(1);
       expect(rows[0].name).toBe('Alice');
@@ -89,6 +106,114 @@ describe('M3 Query Builder', () => {
       expect(result).toHaveLength(2);
       expect(result[0].name).toBe('Alice');
       expect(result[1].name).toBe('Bob');
+    });
+
+    it('should require explicit sizing when schema has no defaultLimit', async () => {
+      const localUsers = convexTable('localUsers', {
+        name: text().notNull(),
+      });
+      const localTables = { localUsers };
+      const localSchema = defineSchema(localTables);
+      const localRelations = defineRelations(localTables);
+      const localEdges = extractRelationsConfig(localRelations);
+
+      await expect(
+        withTableCtx(localSchema, localRelations, localEdges, async (ctx) => {
+          await ctx.db.insert('localUsers', { name: 'Alice' });
+          await ctx.table.query.localUsers.findMany();
+        })
+      ).rejects.toThrow(/limit|paginate|allowFullScan|defaultLimit/i);
+    });
+
+    it('should allow unsized findMany when allowFullScan is true', async () => {
+      const localUsers = convexTable('localUsers', {
+        name: text().notNull(),
+      });
+      const localTables = { localUsers };
+      const localSchema = defineSchema(localTables);
+      const localRelations = defineRelations(localTables);
+      const localEdges = extractRelationsConfig(localRelations);
+
+      await withTableCtx(
+        localSchema,
+        localRelations,
+        localEdges,
+        async (ctx) => {
+          await ctx.db.insert('localUsers', { name: 'Alice' });
+          await ctx.db.insert('localUsers', { name: 'Bob' });
+          const rows = await ctx.table.query.localUsers.findMany({
+            allowFullScan: true,
+          });
+          expect(rows).toHaveLength(2);
+        }
+      );
+    });
+
+    it('should apply schema defaultLimit for unsized findMany', async () => {
+      const localUsers = convexTable('localUsers', {
+        name: text().notNull(),
+      });
+      const localTables = { localUsers };
+      const localSchema = defineSchema(localTables, {
+        defaults: { defaultLimit: 1 },
+      });
+      const localRelations = defineRelations(localTables);
+      const localEdges = extractRelationsConfig(localRelations);
+
+      await withTableCtx(
+        localSchema,
+        localRelations,
+        localEdges,
+        async (ctx) => {
+          await ctx.db.insert('localUsers', { name: 'Alice' });
+          await ctx.db.insert('localUsers', { name: 'Bob' });
+          const rows = await ctx.table.query.localUsers.findMany();
+          expect(rows).toHaveLength(1);
+        }
+      );
+    });
+
+    it('should require relation limit on nested many when no defaults and no allowFullScan', async () => {
+      const localUsers = convexTable('localUsers', {
+        name: text().notNull(),
+      });
+      const localPosts = convexTable(
+        'localPosts',
+        {
+          userId: id('localUsers').notNull(),
+          title: text().notNull(),
+        },
+        (t) => [index('by_user').on(t.userId)]
+      );
+      const localTables = { localUsers, localPosts };
+      const localSchema = defineSchema(localTables);
+      const localRelations = defineRelations(localTables, (r) => ({
+        localUsers: {
+          posts: r.many.localPosts({
+            from: r.localUsers._id,
+            to: r.localPosts.userId,
+          }),
+        },
+        localPosts: {
+          user: r.one.localUsers({
+            from: r.localPosts.userId,
+            to: r.localUsers._id,
+          }),
+        },
+      }));
+      const localEdges = extractRelationsConfig(localRelations);
+
+      await expect(
+        withTableCtx(localSchema, localRelations, localEdges, async (ctx) => {
+          const userId = await ctx.db.insert('localUsers', { name: 'Alice' });
+          await ctx.db.insert('localPosts', { userId, title: 'P1' });
+          await ctx.db.insert('localPosts', { userId, title: 'P2' });
+          await ctx.table.query.localUsers.findMany({
+            limit: 1,
+            with: { posts: true },
+          });
+        })
+      ).rejects.toThrow(/limit|allowFullScan|defaultLimit/i);
     });
   });
 

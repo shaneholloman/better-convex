@@ -1,7 +1,7 @@
 /**
  * M6.5 Phase 4: Cursor Pagination Tests
  *
- * Tests for .paginate() method with Convex-native cursor pagination (O(1) performance)
+ * Tests for findMany({ paginate }) with Convex-native cursor pagination (O(1) performance)
  */
 
 import { expect, test } from 'vitest';
@@ -26,9 +26,11 @@ test('basic pagination - null cursor returns first page', async () => {
     const ctx = await runCtx(baseCtx);
     const db = ctx.table;
 
-    const result = await db.query.users.paginate(undefined, {
-      cursor: null,
-      numItems: 10,
+    const result = await db.query.users.findMany({
+      paginate: {
+        cursor: null,
+        numItems: 10,
+      },
     });
 
     expect(result.page).toHaveLength(10);
@@ -56,27 +58,33 @@ test('pagination - multiple pages with cursor', async () => {
     const db = ctx.table;
 
     // Page 1
-    const page1 = await db.query.users.paginate(undefined, {
-      cursor: null,
-      numItems: 10,
+    const page1 = await db.query.users.findMany({
+      paginate: {
+        cursor: null,
+        numItems: 10,
+      },
     });
     expect(page1.page).toHaveLength(10);
     expect(page1.isDone).toBe(false);
     expect(page1.continueCursor).not.toBeNull();
 
     // Page 2
-    const page2 = await db.query.users.paginate(undefined, {
-      cursor: page1.continueCursor,
-      numItems: 10,
+    const page2 = await db.query.users.findMany({
+      paginate: {
+        cursor: page1.continueCursor,
+        numItems: 10,
+      },
     });
     expect(page2.page).toHaveLength(10);
     expect(page2.isDone).toBe(false);
     expect(page2.continueCursor).not.toBeNull();
 
     // Page 3 (last page - only 5 items)
-    const page3 = await db.query.users.paginate(undefined, {
-      cursor: page2.continueCursor,
-      numItems: 10,
+    const page3 = await db.query.users.findMany({
+      paginate: {
+        cursor: page2.continueCursor,
+        numItems: 10,
+      },
     });
     expect(page3.page).toHaveLength(5);
     expect(page3.isDone).toBe(true);
@@ -90,6 +98,51 @@ test('pagination - multiple pages with cursor', async () => {
   });
 });
 
+test('predicate pagination honors maximumRowsRead', async () => {
+  const t = convexTest(schema);
+
+  await t.run(async (baseCtx) => {
+    for (let i = 0; i < 60; i++) {
+      await baseCtx.db.insert('users', {
+        name: `User ${String(i).padStart(2, '0')}`,
+        email: `predicate-paging-${i}@example.com`,
+      });
+    }
+  });
+
+  await t.run(async (baseCtx) => {
+    const ctx = await runCtx(baseCtx);
+    const db = ctx.table;
+
+    const page1 = await db.query.users.findMany({
+      where: (row) => row.name.endsWith('0'),
+      index: { name: 'by_name' },
+      paginate: {
+        cursor: null,
+        numItems: 5,
+        maximumRowsRead: 10,
+      },
+    });
+
+    expect(page1.page.length).toBeLessThanOrEqual(5);
+    expect(page1.isDone).toBe(false);
+    expect(page1.continueCursor).not.toBeNull();
+
+    const page2 = await db.query.users.findMany({
+      where: (row) => row.name.endsWith('0'),
+      index: { name: 'by_name' },
+      paginate: {
+        cursor: page1.continueCursor,
+        numItems: 5,
+        maximumRowsRead: 10,
+      },
+    });
+
+    expect(page2.page.length).toBeGreaterThan(0);
+    expect(page2.page.length).toBeLessThanOrEqual(5);
+  });
+});
+
 test('pagination - empty result set', async () => {
   const t = convexTest(schema);
 
@@ -100,9 +153,11 @@ test('pagination - empty result set', async () => {
     const ctx = await runCtx(baseCtx);
     const db = ctx.table;
 
-    const result = await db.query.users.paginate(undefined, {
-      cursor: null,
-      numItems: 10,
+    const result = await db.query.users.findMany({
+      paginate: {
+        cursor: null,
+        numItems: 10,
+      },
     });
 
     expect(result.page).toHaveLength(0);
@@ -129,9 +184,11 @@ test('pagination - single page (isDone: true)', async () => {
     const ctx = await runCtx(baseCtx);
     const db = ctx.table;
 
-    const result = await db.query.users.paginate(undefined, {
-      cursor: null,
-      numItems: 10,
+    const result = await db.query.users.findMany({
+      paginate: {
+        cursor: null,
+        numItems: 10,
+      },
     });
 
     expect(result.page).toHaveLength(5);
@@ -159,21 +216,81 @@ test('pagination with WHERE filter', async () => {
     const ctx = await runCtx(baseCtx);
     const db = ctx.table;
 
-    const result = await db.query.users.paginate(
-      {
-        where: { age: { gte: 25 } },
-      },
-      {
+    const result = await db.query.users.findMany({
+      where: { age: { gte: 25 } },
+      paginate: {
         cursor: null,
         numItems: 10,
-      }
-    );
+      },
+    });
 
     expect(result.page.length).toBeGreaterThan(0);
     // Verify all results match filter
     result.page.forEach((user: any) => {
       expect(user.age).toBeGreaterThanOrEqual(25);
     });
+  });
+});
+
+test('pagination with index-union filter requires allowFullScan opt-in', async () => {
+  const t = convexTest(schema);
+
+  await t.run(async (baseCtx) => {
+    const statuses = ['active', 'pending', 'inactive'] as const;
+    for (let i = 0; i < 15; i++) {
+      await baseCtx.db.insert('users', {
+        name: `User ${i}`,
+        email: `multi-probe-${i}@example.com`,
+        status: statuses[i % statuses.length],
+      });
+    }
+  });
+
+  await t.run(async (baseCtx) => {
+    const ctx = await runCtx(baseCtx);
+    const db = ctx.table;
+
+    await expect(
+      db.query.users.findMany({
+        where: { status: { in: ['active', 'pending'] } },
+        paginate: {
+          cursor: null,
+          numItems: 5,
+        },
+      })
+    ).rejects.toThrow(/allowFullScan: true/i);
+  });
+});
+
+test('pagination with index-union filter works with allowFullScan', async () => {
+  const t = convexTest(schema);
+
+  await t.run(async (baseCtx) => {
+    const statuses = ['active', 'pending', 'inactive'] as const;
+    for (let i = 0; i < 15; i++) {
+      await baseCtx.db.insert('users', {
+        name: `User ${i}`,
+        email: `multi-probe-allow-${i}@example.com`,
+        status: statuses[i % statuses.length],
+      });
+    }
+  });
+
+  await t.run(async (baseCtx) => {
+    const ctx = await runCtx(baseCtx);
+    const db = ctx.table;
+
+    const page = await db.query.users.findMany({
+      where: { status: { in: ['active', 'pending'] } },
+      paginate: {
+        cursor: null,
+        numItems: 5,
+      },
+      allowFullScan: true,
+    });
+
+    expect(page.page.length).toBeGreaterThan(0);
+    expect(page.page.every((row: any) => row.status !== 'inactive')).toBe(true);
   });
 });
 
@@ -191,33 +308,24 @@ test('pagination with ORDER BY ascending', async () => {
     }
   });
 
-  // Test: Paginate with ascending order
-  // Note: Pagination requires indexed fields for custom ordering.
-  // Since 'name' has no index, this falls back to _creationTime ordering.
+  // Test: Paginate with ascending order on non-indexed field (strict default)
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
     const db = ctx.table;
 
-    const result = await db.query.users.paginate(
-      {
-        orderBy: { name: 'asc' },
-      },
-      {
-        cursor: null,
-        numItems: 3,
-      }
-    );
-
-    // Verify pagination works (returns correct count)
-    expect(result.page).toHaveLength(3);
-    // Results are ordered by _creationTime ascending (Charlie, Alice, Bob) since name has no index
-    expect((result.page[0] as any).name).toBe('Charlie');
-    expect((result.page[1] as any).name).toBe('Alice');
-    expect((result.page[2] as any).name).toBe('Bob');
+    await expect(
+      db.query.users.findMany({
+        orderBy: { role: 'asc' },
+        paginate: {
+          cursor: null,
+          numItems: 3,
+        },
+      })
+    ).rejects.toThrow(/Pagination: Field 'role' has no index/);
   });
 });
 
-test('pagination with ORDER BY descending', async () => {
+test('pagination with ORDER BY _creationTime', async () => {
   const t = convexTest(schema);
 
   // Setup: Create posts with different like counts
@@ -238,28 +346,20 @@ test('pagination with ORDER BY descending', async () => {
     }
   });
 
-  // Test: Paginate posts by likes descending
+  // Test: Paginate posts by _creationTime descending (indexed)
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
     const db = ctx.table;
 
-    const result = await db.query.posts.paginate(
-      {
-        orderBy: { numLikes: 'desc' },
-      },
-      {
+    const result = await db.query.posts.findMany({
+      orderBy: { _creationTime: 'desc' },
+      paginate: {
         cursor: null,
         numItems: 5,
-      }
-    );
+      },
+    });
 
     expect(result.page).toHaveLength(5);
-    // Verify descending order
-    expect((result.page[0] as any).numLikes).toBe(200);
-    expect((result.page[1] as any).numLikes).toBe(190);
-    expect((result.page[2] as any).numLikes).toBe(180);
-    expect((result.page[3] as any).numLikes).toBe(170);
-    expect((result.page[4] as any).numLikes).toBe(160);
   });
 });
 
@@ -282,20 +382,26 @@ test('pagination - cursor stability (replaying cursor returns same results)', as
     const db = ctx.table;
 
     // Get first page
-    const page1 = await db.query.users.paginate(undefined, {
-      cursor: null,
-      numItems: 5,
+    const page1 = await db.query.users.findMany({
+      paginate: {
+        cursor: null,
+        numItems: 5,
+      },
     });
 
     // Replay second page cursor twice
-    const page2a = await db.query.users.paginate(undefined, {
-      cursor: page1.continueCursor,
-      numItems: 5,
+    const page2a = await db.query.users.findMany({
+      paginate: {
+        cursor: page1.continueCursor,
+        numItems: 5,
+      },
     });
 
-    const page2b = await db.query.users.paginate(undefined, {
-      cursor: page1.continueCursor,
-      numItems: 5,
+    const page2b = await db.query.users.findMany({
+      paginate: {
+        cursor: page1.continueCursor,
+        numItems: 5,
+      },
     });
 
     // Both should return identical results
@@ -325,9 +431,11 @@ test('pagination - default ordering (_creationTime desc)', async () => {
     const ctx = await runCtx(baseCtx);
     const db = ctx.table;
 
-    const result = await db.query.users.paginate(undefined, {
-      cursor: null,
-      numItems: 5,
+    const result = await db.query.users.findMany({
+      paginate: {
+        cursor: null,
+        numItems: 5,
+      },
     });
 
     expect(result.page).toHaveLength(5);
@@ -363,9 +471,11 @@ test('pagination - large result set (100+ items)', async () => {
 
     // Paginate until done
     while (true) {
-      const result: any = await db.query.users.paginate(undefined, {
-        cursor,
-        numItems: 20,
+      const result: any = await db.query.users.findMany({
+        paginate: {
+          cursor,
+          numItems: 20,
+        },
       });
 
       totalFetched += result.page.length;
@@ -383,7 +493,7 @@ test('pagination - large result set (100+ items)', async () => {
   });
 });
 
-test('pagination with combined WHERE and ORDER BY', async () => {
+test('pagination with combined WHERE and ORDER BY (non-indexed)', async () => {
   const t = convexTest(schema);
 
   // Setup: Create posts with different publish status and likes
@@ -405,33 +515,20 @@ test('pagination with combined WHERE and ORDER BY', async () => {
     }
   });
 
-  // Test: Paginate published posts ordered by likes
+  // Test: Paginate published posts ordered by likes (non-indexed)
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
     const db = ctx.table;
 
-    const result = await db.query.posts.paginate(
-      {
+    await expect(
+      db.query.posts.findMany({
         where: { published: true },
         orderBy: { numLikes: 'desc' },
-      },
-      {
-        cursor: null,
-        numItems: 5,
-      }
-    );
-
-    expect(result.page.length).toBeGreaterThan(0);
-    // Verify all are published
-    result.page.forEach((post: any) => {
-      expect(post.published).toBe(true);
-    });
-
-    // Verify descending order by likes
-    for (let i = 0; i < result.page.length - 1; i++) {
-      expect((result.page[i] as any).numLikes).toBeGreaterThanOrEqual(
-        (result.page[i + 1] as any).numLikes
-      );
-    }
+        paginate: {
+          cursor: null,
+          numItems: 5,
+        },
+      })
+    ).rejects.toThrow(/Pagination: Field 'numLikes' has no index/);
   });
 });

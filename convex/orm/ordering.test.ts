@@ -510,4 +510,68 @@ describe('M5: OrderBy - Multiple Fields', () => {
     expect(posts[1].title).toBe('A Title'); // createdAt 1000, title asc
     expect(posts[2].title).toBe('B Title');
   });
+
+  test('multi-field orderBy applies sort before offset/limit', async ({ ctx }) => {
+    const db = ctx.table;
+
+    const user = await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
+
+    // Same primary sort value to force secondary sort to determine ordering.
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'C Title',
+      content: 'Content',
+      published: true,
+      authorId: user,
+      createdAt: 1000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'A Title',
+      content: 'Content',
+      published: true,
+      authorId: user,
+      createdAt: 1000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'D Title',
+      content: 'Content',
+      published: true,
+      authorId: user,
+      createdAt: 1000,
+    });
+    await ctx.db.insert('posts', {
+      text: 'test',
+      numLikes: 0,
+      type: 'text',
+      title: 'B Title',
+      content: 'Content',
+      published: true,
+      authorId: user,
+      createdAt: 1000,
+    });
+
+    const posts = await db.query.posts.findMany({
+      orderBy: (posts: any, { desc, asc }: any) => [
+        desc(posts.createdAt),
+        asc(posts.title),
+      ],
+      offset: 1,
+      limit: 2,
+    });
+
+    expect(posts).toHaveLength(2);
+    expect(posts[0].title).toBe('B Title');
+    expect(posts[1].title).toBe('C Title');
+  });
 });

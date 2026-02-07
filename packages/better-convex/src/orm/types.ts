@@ -1,3 +1,8 @@
+import type {
+  GenericIndexFields,
+  IndexRange,
+  IndexRangeBuilder,
+} from 'convex/server';
 import type { GenericId, Value } from 'convex/values';
 import type {
   Assume,
@@ -13,6 +18,7 @@ import type {
   Relation,
   RelationsFilter,
   RelationsRecord,
+  TableFilter,
   TableRelationalConfig,
   TablesRelationalConfig,
 } from './relations';
@@ -228,21 +234,246 @@ export type DBQueryConfig<
       >)
     | undefined;
   /**
-   * Relation-aware filter object (v1)
-   */
-  where?: RelationsFilter<TTableConfig, TSchema> | undefined;
-  /**
    * Order results - callback or object syntax
    */
   orderBy?: DBQueryConfigOrderBy<TTableConfig> | undefined;
   /** Skip first N results */
   offset?: number | undefined;
+  /**
+   * Cursor pagination (Convex native)
+   */
+  paginate?: PaginateConfig | undefined;
+  /**
+   * Full-text search query configuration.
+   * Only available on tables that declare search indexes.
+   */
+  search?: SearchQueryConfig<TTableConfig> | undefined;
+  /**
+   * Explicit index for predicate where() path.
+   */
+  index?: PredicateWhereIndexConfig<TTableConfig> | undefined;
 } & (TRelationType extends 'many'
   ? {
       /** Limit number of results */
       limit?: number | undefined;
     }
-  : {});
+  : {}) & {
+    /**
+     * Relation-aware filter object (v1) or predicate (full-scan opt-in).
+     */
+    where?:
+      | RelationsFilter<TTableConfig, TSchema>
+      | WherePredicate<TTableConfig>
+      | undefined;
+    /**
+     * Allow full scans when no index can be used.
+     */
+    allowFullScan?: boolean | undefined;
+  };
+
+export type WherePredicate<TTableConfig extends TableRelationalConfig> = (
+  row: InferModelFromColumns<TableColumns<TTableConfig>>
+) => boolean | Promise<boolean>;
+
+type PredicateWhereIndexMap<TTableConfig extends TableRelationalConfig> =
+  TTableConfig['table'] extends ConvexTable<any, infer TIndexes, any, any>
+    ? TIndexes
+    : Record<string, GenericIndexFields>;
+
+type PredicateWhereIndexName<TTableConfig extends TableRelationalConfig> =
+  Extract<keyof PredicateWhereIndexMap<TTableConfig>, string>;
+
+type PredicateWhereNamedIndex<
+  TTableConfig extends TableRelationalConfig,
+  TIndexName extends string,
+> = TIndexName extends PredicateWhereIndexName<TTableConfig>
+  ? PredicateWhereIndexMap<TTableConfig>[TIndexName] extends GenericIndexFields
+    ? PredicateWhereIndexMap<TTableConfig>[TIndexName]
+    : GenericIndexFields
+  : GenericIndexFields;
+
+export type PredicateWhereIndexConfig<
+  TTableConfig extends TableRelationalConfig = TableRelationalConfig,
+> = [PredicateWhereIndexName<TTableConfig>] extends [never]
+  ? {
+      name: string;
+      range?: (
+        q: IndexRangeBuilder<
+          InferModelFromColumns<TableColumns<TTableConfig>>,
+          GenericIndexFields
+        >
+      ) => IndexRange;
+    }
+  : {
+      [TIndexName in PredicateWhereIndexName<TTableConfig>]: {
+        name: TIndexName;
+        range?: (
+          q: IndexRangeBuilder<
+            InferModelFromColumns<TableColumns<TTableConfig>>,
+            PredicateWhereNamedIndex<TTableConfig, TIndexName>
+          >
+        ) => IndexRange;
+      };
+    }[PredicateWhereIndexName<TTableConfig>];
+
+type SearchIndexMap<TTableConfig extends TableRelationalConfig> =
+  TTableConfig['table'] extends ConvexTable<any, any, infer TSearchIndexes, any>
+    ? TSearchIndexes
+    : Record<string, { searchField: string; filterFields: string }>;
+
+type SearchIndexName<TTableConfig extends TableRelationalConfig> = Extract<
+  keyof SearchIndexMap<TTableConfig>,
+  string
+>;
+
+type SearchIndexConfigByName<
+  TTableConfig extends TableRelationalConfig,
+  TIndexName extends SearchIndexName<TTableConfig>,
+> = SearchIndexMap<TTableConfig>[TIndexName];
+
+type SearchFilterFieldNames<
+  TTableConfig extends TableRelationalConfig,
+  TIndexName extends SearchIndexName<TTableConfig>,
+> = SearchIndexConfigByName<TTableConfig, TIndexName> extends {
+  filterFields: infer TFilterFields extends string;
+}
+  ? TFilterFields
+  : never;
+
+type SearchFilterValueForField<
+  TTableConfig extends TableRelationalConfig,
+  TFieldName extends string,
+> = TFieldName extends keyof TableColumns<TTableConfig>
+  ? TableColumns<TTableConfig>[TFieldName] extends ColumnBuilder<any, any, any>
+    ? GetColumnData<TableColumns<TTableConfig>[TFieldName], 'raw'>
+    : never
+  : never;
+
+type SearchFiltersForIndex<
+  TTableConfig extends TableRelationalConfig,
+  TIndexName extends SearchIndexName<TTableConfig>,
+> = Partial<{
+  [K in SearchFilterFieldNames<
+    TTableConfig,
+    TIndexName
+  >]: SearchFilterValueForField<TTableConfig, K>;
+}>;
+
+export type SearchQueryConfig<
+  TTableConfig extends TableRelationalConfig = TableRelationalConfig,
+> = [SearchIndexName<TTableConfig>] extends [never]
+  ? never
+  : {
+      [TIndexName in SearchIndexName<TTableConfig>]: {
+        index: TIndexName;
+        query: string;
+        filters?: SearchFiltersForIndex<TTableConfig, TIndexName> | undefined;
+      };
+    }[SearchIndexName<TTableConfig>];
+
+export type SearchWhereFilter<TTableConfig extends TableRelationalConfig> =
+  TableFilter<TTableConfig['table']>;
+
+type FullScanOperatorKey =
+  | 'arrayContains'
+  | 'arrayContained'
+  | 'arrayOverlaps'
+  | 'ilike'
+  | 'notLike'
+  | 'notIlike'
+  | 'endsWith'
+  | 'contains'
+  | 'RAW';
+
+type HasFullScanOperatorKey<T> =
+  Extract<keyof T, FullScanOperatorKey> extends never ? false : true;
+
+type DepthPrev = [0, 0, 1, 2, 3, 4, 5, 6, 7, 8];
+
+type HasStaticFullScanWhere<TWhere, TDepth extends number = 6> = [
+  TDepth,
+] extends [0]
+  ? false
+  : TWhere extends (...args: any[]) => any
+    ? false
+    : TWhere extends readonly (infer TItem)[]
+      ? HasStaticFullScanWhere<TItem, DepthPrev[TDepth]>
+      : TWhere extends object
+        ? HasFullScanOperatorKey<TWhere> extends true
+          ? true
+          : 'NOT' extends keyof TWhere
+            ? true
+            : true extends {
+                  [K in keyof TWhere]-?: HasStaticFullScanWhere<
+                    TWhere[K],
+                    DepthPrev[TDepth]
+                  >;
+                }[keyof TWhere]
+              ? true
+              : false
+        : false;
+
+export type EnforceAllowFullScan<
+  TConfig,
+  _TTableConfig extends TableRelationalConfig,
+> = 'search' extends keyof TConfig
+  ? TConfig extends { search: infer TSearch }
+    ? [TSearch] extends [undefined]
+      ? TConfig extends { where: infer TWhere }
+        ? HasStaticFullScanWhere<TWhere> extends true
+          ? TConfig & { allowFullScan: true }
+          : TConfig
+        : TConfig
+      : TConfig
+    : TConfig
+  : TConfig extends { where: infer TWhere }
+    ? HasStaticFullScanWhere<TWhere> extends true
+      ? TConfig & { allowFullScan: true }
+      : TConfig
+    : TConfig;
+
+export type EnforcePredicateIndex<
+  TConfig,
+  TTableConfig extends TableRelationalConfig,
+> = 'search' extends keyof TConfig
+  ? TConfig extends { search: infer TSearch }
+    ? [TSearch] extends [undefined]
+      ? TConfig extends { where: infer TWhere }
+        ? TWhere extends (...args: any[]) => any
+          ? Omit<TConfig, 'allowFullScan' | 'index'> & {
+              where: TWhere;
+              index: PredicateWhereIndexConfig<TTableConfig>;
+              allowFullScan?: never;
+            }
+          : TConfig
+        : TConfig
+      : TConfig
+    : TConfig
+  : TConfig extends { where: infer TWhere }
+    ? TWhere extends (...args: any[]) => any
+      ? Omit<TConfig, 'allowFullScan' | 'index'> & {
+          where: TWhere;
+          index: PredicateWhereIndexConfig<TTableConfig>;
+          allowFullScan?: never;
+        }
+      : TConfig
+    : TConfig;
+
+export type EnforceSearchConstraints<
+  TConfig,
+  TTableConfig extends TableRelationalConfig,
+> = 'search' extends keyof TConfig
+  ? TConfig extends { search: infer TSearch }
+    ? [TSearch] extends [undefined]
+      ? TConfig
+      : Omit<TConfig, 'where' | 'orderBy' | 'index'> & {
+          search: TSearch;
+          where?: SearchWhereFilter<TTableConfig> | undefined;
+          orderBy?: never;
+          index?: never;
+        }
+    : TConfig
+  : TConfig;
 
 /**
  * Filter operators available in where clause
@@ -442,6 +673,18 @@ type TableColumns<TTableConfig extends TableRelationalConfig> =
   TTableConfig['table']['_']['columns'] &
     SystemFields<TTableConfig['table']['_']['name']>;
 
+export type PaginateConfig = {
+  cursor: string | null;
+  numItems: number;
+  maximumRowsRead?: number;
+};
+
+export type PaginatedResult<T> = {
+  page: T[];
+  continueCursor: string | null;
+  isDone: boolean;
+};
+
 export type BuildQueryResult<
   TSchema extends TablesRelationalConfig,
   TTableConfig extends TableRelationalConfig,
@@ -625,6 +868,45 @@ export type MutationResult<
   : TReturning extends Record<string, ColumnBuilder<any, any, any>>
     ? ReturningResult<TReturning>[]
     : undefined;
+
+export type MutationPaginateConfig = {
+  cursor: string | null;
+  numItems: number;
+};
+
+export type MutationRunMode = 'sync' | 'async';
+
+export type MutationExecuteConfig = {
+  mode?: MutationRunMode;
+  batchSize?: number;
+  delayMs?: number;
+};
+
+// Backwards-compatible alias used by executeAsync(...).
+export type MutationAsyncConfig = Omit<MutationExecuteConfig, 'mode'>;
+
+export type MutationExecutionMode = 'single' | 'paged';
+
+export type MutationPaginatedResult<
+  TTable extends ConvexTable<any>,
+  TReturning extends MutationReturning,
+> = Simplify<
+  {
+    continueCursor: string | null;
+    isDone: boolean;
+    numAffected: number;
+  } & (MutationResult<TTable, TReturning> extends undefined
+    ? {}
+    : { page: MutationResult<TTable, TReturning> })
+>;
+
+export type MutationExecuteResult<
+  TTable extends ConvexTable<any>,
+  TReturning extends MutationReturning,
+  TMode extends MutationExecutionMode,
+> = TMode extends 'paged'
+  ? MutationPaginatedResult<TTable, TReturning>
+  : MutationResult<TTable, TReturning>;
 
 export type InsertValue<TTable extends ConvexTable<any>> =
   InferInsertModel<TTable>;

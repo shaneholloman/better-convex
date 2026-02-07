@@ -9,7 +9,11 @@ import type { Simplify } from '../internal/types';
 import type { ColumnBuilder } from './builders/column-builder';
 import { entityKind } from './builders/column-builder';
 import type { SystemFields } from './builders/system-fields';
+import type { OrmRuntimeDefaults, OrmRuntimeOptions } from './symbols';
 import { Columns, OrmSchemaDefinition, OrmSchemaOptions } from './symbols';
+
+export { OrmSchemaDefinition } from './symbols';
+
 import type { ConvexTable } from './table';
 
 // ============================================================================
@@ -446,6 +450,7 @@ export interface TableRelationalConfig {
   name: string;
   relations: RelationsRecord;
   strict?: boolean;
+  defaults?: OrmRuntimeDefaults;
 }
 
 export type TablesRelationalConfig<
@@ -453,21 +458,29 @@ export type TablesRelationalConfig<
     any,
     true
   >,
-> = Record<string, TableRelationalConfig> & {
+  Tables extends Record<string, TableRelationalConfig> = Record<
+    string,
+    TableRelationalConfig
+  >,
+> = Tables & {
   [OrmSchemaDefinition]?: SchemaDef;
 };
 
 type RelationsConfigWithSchema<
   TConfig extends AnyRelationsBuilderConfig,
   TTables extends Schema,
-> = ExtractTablesWithRelations<TConfig, TTables> &
-  TablesRelationalConfig<SchemaDefinition<TTables, true>>;
+> = TablesRelationalConfig<
+  SchemaDefinition<TTables, true>,
+  ExtractTablesWithRelations<TConfig, TTables>
+>;
 
 type RelationsPartsConfigWithSchema<
   TConfig extends AnyRelationsBuilderConfig,
   TTables extends Schema,
-> = ExtractTablesWithRelationsParts<TConfig, TTables> &
-  TablesRelationalConfig<SchemaDefinition<TTables, true>>;
+> = TablesRelationalConfig<
+  SchemaDefinition<TTables, true>,
+  ExtractTablesWithRelationsParts<TConfig, TTables>
+>;
 
 // ============================================================================
 // Relations filter types (v1)
@@ -643,7 +656,8 @@ export function buildRelations<
 >(
   tables: TTables,
   config: TConfig,
-  strict?: boolean
+  strict?: boolean,
+  defaults?: OrmRuntimeDefaults
 ): ExtractTablesWithRelations<TConfig, TTables> {
   const tablesConfig = {} as TablesRelationalConfig;
 
@@ -653,6 +667,7 @@ export function buildRelations<
       name: tsName,
       relations: (config as AnyRelationsBuilderConfig)[tsName] ?? {},
       strict,
+      defaults,
     };
   }
 
@@ -665,7 +680,8 @@ export function buildRelationsParts<
 >(
   tables: TTables,
   config: TConfig,
-  strict?: boolean
+  strict?: boolean,
+  defaults?: OrmRuntimeDefaults
 ): ExtractTablesWithRelationsParts<TConfig, TTables> {
   const tablesConfig = {} as TablesRelationalConfig;
 
@@ -676,6 +692,7 @@ export function buildRelationsParts<
       name: tsName,
       relations,
       strict,
+      defaults,
     };
   }
 
@@ -701,16 +718,22 @@ export function defineRelations(
   relations?: (helpers: RelationsBuilder<Schema>) => AnyRelationsBuilderConfig
 ): TablesRelationalConfig {
   const tables = extractTablesFromSchema(schema);
-  const strict =
-    (schema as { [OrmSchemaOptions]?: { strict?: boolean } })[OrmSchemaOptions]
-      ?.strict ?? true;
+  const schemaOptions = (schema as { [OrmSchemaOptions]?: OrmRuntimeOptions })[
+    OrmSchemaOptions
+  ];
+  const strict = schemaOptions?.strict ?? true;
+  const defaults = schemaOptions?.defaults;
   const schemaDefinition = (schema as { [OrmSchemaDefinition]?: unknown })[
     OrmSchemaDefinition
   ];
   const config = relations
     ? relations(createRelationsHelper(tables) as RelationsBuilder<Schema>)
     : {};
-  const tablesConfig = buildRelations(tables, config, strict);
+  const tablesConfig = buildRelations(tables, config, strict, defaults);
+  Object.defineProperty(tablesConfig, OrmSchemaOptions, {
+    value: { strict, defaults },
+    enumerable: false,
+  });
   if (schemaDefinition) {
     Object.defineProperty(tablesConfig, OrmSchemaDefinition, {
       value: schemaDefinition,
@@ -744,9 +767,11 @@ export function defineRelationsPart(
   relations?: (helpers: RelationsBuilder<Schema>) => AnyRelationsBuilderConfig
 ): TablesRelationalConfig {
   const tables = extractTablesFromSchema(schema);
-  const strict =
-    (schema as { [OrmSchemaOptions]?: { strict?: boolean } })[OrmSchemaOptions]
-      ?.strict ?? true;
+  const schemaOptions = (schema as { [OrmSchemaOptions]?: OrmRuntimeOptions })[
+    OrmSchemaOptions
+  ];
+  const strict = schemaOptions?.strict ?? true;
+  const defaults = schemaOptions?.defaults;
   const schemaDefinition = (schema as { [OrmSchemaDefinition]?: unknown })[
     OrmSchemaDefinition
   ];
@@ -756,7 +781,11 @@ export function defineRelationsPart(
         Object.keys(tables).map((k) => [k, {}])
       ) as AnyRelationsBuilderConfig);
 
-  const tablesConfig = buildRelationsParts(tables, config, strict);
+  const tablesConfig = buildRelationsParts(tables, config, strict, defaults);
+  Object.defineProperty(tablesConfig, OrmSchemaOptions, {
+    value: { strict, defaults },
+    enumerable: false,
+  });
   if (schemaDefinition) {
     Object.defineProperty(tablesConfig, OrmSchemaDefinition, {
       value: schemaDefinition,

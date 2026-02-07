@@ -21,11 +21,12 @@ await db.delete(users).where(eq(users.email, 'dan@example.com'));
 To delete all rows in a table (use with care):
 
 ```ts
-await db.delete(users);
+await db.delete(users).allowFullScan();
 ```
 
 <Callout icon={<AlertTriangle />}>
-With `strict: true` (default), full-table deletes throw unless you set `defineSchema(..., { strict: false })`.
+`delete()` without `.where(...)` throws unless you call `.allowFullScan()`.  
+`strict` controls warning behavior, not whether full scans are allowed.
 </Callout>
 
 ## Returning
@@ -41,6 +42,52 @@ const ids = await db
   .where(eq(users.email, 'dan@example.com'))
   .returning({ id: users._id });
 ```
+
+## Safety Limits
+
+`delete()` collects matching rows in bounded pages before applying writes:
+
+- `mutationBatchSize`: defaults to `100`
+- `mutationMaxRows`: defaults to `1000`
+
+If matched rows exceed `mutationMaxRows`, delete throws.
+
+```ts
+export default defineSchema({ users, posts }, {
+  defaults: {
+    mutationBatchSize: 200,
+    mutationMaxRows: 5000,
+  },
+});
+```
+
+## Paginated Delete Execution
+
+For large workloads, process delete batches with `paginate({ cursor, numItems })`.
+
+```ts
+const page1 = await db
+  .delete(users)
+  .where(eq(users.status, 'inactive'))
+  .paginate({ cursor: null, numItems: 100 });
+
+if (!page1.isDone) {
+  const page2 = await db
+    .delete(users)
+    .where(eq(users.status, 'inactive'))
+    .paginate({ cursor: page1.continueCursor, numItems: 100 });
+}
+```
+
+Paged delete result:
+- `continueCursor`: cursor for the next batch
+- `isDone`: `true` when no more pages remain
+- `numAffected`: rows deleted in this page
+- `page`: returned rows for this page (only when `.returning()` is used)
+
+<Callout icon={<InfoIcon />}>
+`paginate()` currently supports single-range index plans. Multi-probe filters (`inArray`, some `OR` patterns, complement ranges) are not yet supported in paged mutation mode.
+</Callout>
 
 ## Drizzle Differences
 

@@ -2,6 +2,6 @@
   "name": "test",
   "private": true,
   "scripts": {
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   }
 }

@@ -22,7 +22,7 @@ This file provides a structured index of Better‑Convex ORM documentation for A
 - `/docs/db/orm/relations` - One‑to‑one, one‑to‑many, many‑to‑many relations
 
 **Querying Data:**
-- `/docs/db/orm/queries` - findMany(), findFirst(), paginate(), filters, orderBy
+- `/docs/db/orm/queries` - findMany(), findFirst(), findMany({ paginate }), filters, orderBy
 - `/docs/db/orm/operators` - All supported `where` operators (query + mutation)
 
 **Mutations:**
@@ -36,6 +36,7 @@ This file provides a structured index of Better‑Convex ORM documentation for A
 
 ## Migration & Comparison
 
+- `/docs/db/orm/migrate-from-ents` - Convex Ents → ORM migration guide
 - `/docs/db/orm/comparison` - Drizzle v1 mapping and migration guidance
 
 ## Reference
@@ -50,13 +51,14 @@ This file provides a structured index of Better‑Convex ORM documentation for A
 **Schema:**
 ```ts
 convexTable(name, columns)
+defineSchema(tables, { defaults?: { defaultLimit?, mutationBatchSize?, mutationMaxRows? } })
 defineRelations(schema, callback)
 extractRelationsConfig(schema)
 ```
 
 **Queries:**
 ```ts
-const db = createDatabase(ctx.db, ormSchema, ormEdges)
+const db = ctx.table
 
 await db.query.table.findMany({
   where: { field: value },
@@ -69,10 +71,15 @@ await db.query.table.findFirst({
   where: { field: value },
 })
 
-await db.query.table.paginate(
-  { where: { active: true } },
-  { cursor: null, numItems: 20 }
-)
+await db.query.table.findMany({
+  where: { active: true },
+  paginate: { cursor: null, numItems: 20 },
+})
+
+await db.query.table.findMany({
+  where: (row) => row.status === 'active',
+  allowFullScan: true,
+})
 ```
 
 **Mutations:**
@@ -80,11 +87,16 @@ await db.query.table.paginate(
 await db.insert(table).values(data)
 await db.update(table).set(data).where(eq(table._id, id))
 await db.delete(table).where(eq(table._id, id))
+// Full-scan opt-in (only if no index on email)
+await db.update(table).set(data).where(eq(table.email, email)) // indexed
+await db.update(table).set(data).where(eq(table.email, email)).allowFullScan()
+await db.delete(table).where(eq(table.email, email)) // indexed
+await db.delete(table).where(eq(table.email, email)).allowFullScan()
 ```
 
 **RLS:**
 ```ts
-const db = createDatabase(ctx.db, ormSchema, ormEdges, { rls: { ctx } })
+const db = ctx.table
 const secret = convexTable.withRLS('secrets', { /* ... */ }, (t) => [
   rlsPolicy('read_own', { for: 'select', using: (ctx) => eq(t.ownerId, ctx.viewerId) }),
 ])
@@ -146,7 +158,27 @@ isNotNull(field)
 ## Error Messages & Solutions
 
 - `where is not a function` → Use object form: `where: { field: value }`
-- `Property 'query' does not exist` → Use `createDatabase(ctx.db, ormSchema, ormEdges)`
+- `Property 'query' does not exist` → Ensure ORM is attached as `ctx.table`
 - `Type error: missing required field` → Check `.notNull()` in schema
 - `findUnique is not a function` → Use `findFirst` with `where`
 - `'include' does not exist` → Use `with` instead of `include`
+- `findMany() requires explicit sizing` → Add `limit`, use `paginate`, set schema `defaultLimit`, or opt in with `allowFullScan: true`
+- `allowFullScan required` → Predicate `where`, missing relation index, or unbounded update/delete requires `allowFullScan: true`
+- `matched more than mutationMaxRows` → Narrow update/delete filter or raise `defaults.mutationMaxRows`
+- `update/delete pagination does not support multi-probe filters yet` → Rewrite to a single-range index filter, or run non-paginated mode with row cap
+
+**Index-compiled operators (when indexed):**
+- `eq`, `ne`, `gt`, `gte`, `lt`, `lte`
+- `in`, `notIn`
+- `isNull`, `isNotNull`
+- `startsWith`
+- `like('prefix%')`
+- same-field equality `OR` branches
+
+**Still full-scan operators (require explicit opt-in):**
+- `arrayContains`, `arrayContained`, `arrayOverlaps` (use inverted/join tables)
+- `contains` (use search index or tokenized denormalized field)
+- `endsWith` (use reversed-string indexed column + `startsWith`)
+- `ilike`, `notIlike` (use normalized lowercase indexed field)
+- `notLike` (use indexed pre-filter then post-filter)
+- predicate `where` and `RAW` (narrow with indexed pre-filters first)

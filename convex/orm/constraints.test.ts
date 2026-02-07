@@ -8,6 +8,7 @@ import {
   extractRelationsConfig,
   gte,
   inArray,
+  index,
   integer,
   text,
   unique,
@@ -23,19 +24,23 @@ const defaultUsers = convexTable('default_users', {
   nickname: text().default('anon'),
 });
 
-const hookUsers = convexTable('hook_users', {
-  name: text().notNull(),
-  nickname: text().$defaultFn(() => 'anon'),
-  updatedAt: text()
-    .$defaultFn(() => 'initial')
-    .$onUpdateFn(() => {
-      hookUpdatedAtCalls += 1;
-      return `updated_${hookUpdatedAtCalls}`;
-    }),
-  touchedAt: text()
-    .notNull()
-    .$onUpdateFn(() => 'touched'),
-});
+const hookUsers = convexTable(
+  'hook_users',
+  {
+    name: text().notNull(),
+    nickname: text().$defaultFn(() => 'anon'),
+    updatedAt: text()
+      .$defaultFn(() => 'initial')
+      .$onUpdateFn(() => {
+        hookUpdatedAtCalls += 1;
+        return `updated_${hookUpdatedAtCalls}`;
+      }),
+    touchedAt: text()
+      .notNull()
+      .$onUpdateFn(() => 'touched'),
+  },
+  (t) => [index('by_name').on(t.name)]
+);
 
 const checkUsers = convexTable(
   'check_users',

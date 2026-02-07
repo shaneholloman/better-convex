@@ -122,7 +122,7 @@ const membershipsNoIndex = convexTable(
   ]
 );
 
-const rawSchema = {
+const baseSchemaTables = {
   fk_action_users: users,
   fk_action_memberships_cascade: membershipsCascade,
   fk_action_memberships_restrict: membershipsRestrict,
@@ -130,12 +130,33 @@ const rawSchema = {
   fk_action_memberships_default: membershipsSetDefault,
   fk_action_memberships_update_cascade: membershipsUpdateCascade,
   fk_action_memberships_update_restrict: membershipsUpdateRestrict,
-  fk_action_memberships_no_index: membershipsNoIndex,
 };
 
-const schema = defineSchema(rawSchema);
-const relations = defineRelations(rawSchema);
-const edges = extractRelationsConfig(relations);
+const createSchemaArtifacts = (
+  options?: Parameters<typeof defineSchema>[1]
+) => {
+  const tables = { ...baseSchemaTables };
+  const schema = defineSchema(tables, options);
+  const relations = defineRelations(tables);
+  const edges = extractRelationsConfig(relations);
+  return { schema, relations, edges };
+};
+
+const { schema, relations, edges } = createSchemaArtifacts();
+const {
+  schema: cappedSchema,
+  relations: cappedRelations,
+  edges: cappedEdges,
+} = createSchemaArtifacts({
+  defaults: { mutationBatchSize: 1, mutationMaxRows: 2 },
+});
+const {
+  schema: relaxedCapSchema,
+  relations: relaxedCapRelations,
+  edges: relaxedCapEdges,
+} = createSchemaArtifacts({
+  defaults: { mutationBatchSize: 1, mutationMaxRows: 5 },
+});
 
 const withCtx = async <T>(
   fn: (ctx: {
@@ -148,6 +169,36 @@ const withCtx = async <T>(
     schema,
     relations,
     edges,
+    async ({ table, db }) => fn({ table, db }),
+    options
+  );
+
+const withCappedCtx = async <T>(
+  fn: (ctx: {
+    table: DatabaseWithMutations<typeof cappedRelations>;
+    db: GenericDatabaseWriter<any>;
+  }) => Promise<T>,
+  options?: CreateDatabaseOptions
+) =>
+  withTableCtx(
+    cappedSchema,
+    cappedRelations,
+    cappedEdges,
+    async ({ table, db }) => fn({ table, db }),
+    options
+  );
+
+const withRelaxedCapCtx = async <T>(
+  fn: (ctx: {
+    table: DatabaseWithMutations<typeof relaxedCapRelations>;
+    db: GenericDatabaseWriter<any>;
+  }) => Promise<T>,
+  options?: CreateDatabaseOptions
+) =>
+  withTableCtx(
+    relaxedCapSchema,
+    relaxedCapRelations,
+    relaxedCapEdges,
     async ({ table, db }) => fn({ table, db }),
     options
   );
@@ -266,21 +317,105 @@ describe('foreign key actions', () => {
       ).rejects.toThrow(/restrict/i);
     }));
 
-  it('requires indexes for cascading actions', async () =>
-    withCtx(async ({ table }) => {
+  it('requires indexes for cascading actions', async () => {
+    const schemaWithNoIndex = defineSchema({
+      ...baseSchemaTables,
+      fk_action_memberships_no_index: membershipsNoIndex,
+    });
+    const relationsWithNoIndex = defineRelations({
+      ...baseSchemaTables,
+      fk_action_memberships_no_index: membershipsNoIndex,
+    });
+    const edgesWithNoIndex = extractRelationsConfig(relationsWithNoIndex);
+
+    await withTableCtx(
+      schemaWithNoIndex,
+      relationsWithNoIndex,
+      edgesWithNoIndex,
+      async ({ table }) => {
+        const [user] = await table
+          .insert(users)
+          .values({ slug: 'ada' })
+          .returning();
+
+        await table
+          .insert(membershipsNoIndex)
+          .values({ userId: user._id })
+          .returning();
+
+        await expect(
+          table.delete(users).where(eq(users._id, user._id)).execute()
+        ).rejects.toThrow(/index/i);
+      }
+    );
+  });
+
+  it('fails fast when cascade delete exceeds mutationMaxRows', async () =>
+    withCappedCtx(async ({ table }) => {
       const [user] = await table
         .insert(users)
         .values({ slug: 'ada' })
         .returning();
 
       await table
-        .insert(membershipsNoIndex)
-        .values({ userId: user._id })
-        .returning();
+        .insert(membershipsCascade)
+        .values([
+          { userId: user._id },
+          { userId: user._id },
+          { userId: user._id },
+        ]);
 
       await expect(
         table.delete(users).where(eq(users._id, user._id)).execute()
-      ).rejects.toThrow(/index/i);
+      ).rejects.toThrow(/mutationMaxRows|matched more than|exceed/i);
+    }));
+
+  it('fails fast when cascade update exceeds mutationMaxRows', async () =>
+    withCappedCtx(async ({ table }) => {
+      const [user] = await table
+        .insert(users)
+        .values({ slug: 'ada' })
+        .returning();
+
+      await table
+        .insert(membershipsUpdateCascade)
+        .values([
+          { userSlug: 'ada' },
+          { userSlug: 'ada' },
+          { userSlug: 'ada' },
+        ]);
+
+      await expect(
+        table
+          .update(users)
+          .set({ slug: 'ada-lovelace' })
+          .where(eq(users._id, user._id))
+          .execute()
+      ).rejects.toThrow(/mutationMaxRows|matched more than|exceed/i);
+    }));
+
+  it('allows larger cascade fan-out when mutationMaxRows is increased', async () =>
+    withRelaxedCapCtx(async ({ table, db }) => {
+      const [user] = await table
+        .insert(users)
+        .values({ slug: 'ada' })
+        .returning();
+
+      await table
+        .insert(membershipsCascade)
+        .values([
+          { userId: user._id },
+          { userId: user._id },
+          { userId: user._id },
+        ]);
+
+      await table.delete(users).where(eq(users._id, user._id)).execute();
+
+      const remaining = await db
+        .query('fk_action_memberships_cascade')
+        .withIndex('by_user', (q) => q.eq('userId', user._id))
+        .collect();
+      expect(remaining).toHaveLength(0);
     }));
 });
 

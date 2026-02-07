@@ -1,6 +1,7 @@
 import type { GenericDatabaseWriter } from 'convex/server';
 import type { ColumnBuilder } from './builders/column-builder';
 import type { FilterExpression } from './filter-expression';
+import { findIndexForColumns, getIndexes } from './index-utils';
 import {
   applyDefaults,
   enforceCheckConstraints,
@@ -67,6 +68,7 @@ export class ConvexInsertBuilder<
   private valuesList: InsertValue<TTable>[] = [];
   private returningFields?: TReturning;
   private conflictConfig?: InsertConflictConfig<TTable>;
+  private allowFullScanFlag = false;
 
   constructor(
     private db: GenericDatabaseWriter<any>,
@@ -99,6 +101,11 @@ export class ConvexInsertBuilder<
   > {
     this.returningFields = (fields ?? true) as TReturning;
     return this as any;
+  }
+
+  allowFullScan(): this {
+    this.allowFullScanFlag = true;
+    return this;
   }
 
   onConflictDoNothing(
@@ -341,14 +348,46 @@ export class ConvexInsertBuilder<
       filterValuePairs.push([columnName, columnValue]);
     }
 
-    const query = this.db.query(tableName).filter((q: any) => {
-      let expr = q.eq(q.field(filterValuePairs[0][0]), filterValuePairs[0][1]);
-      for (let i = 1; i < filterValuePairs.length; i++) {
-        const [field, fieldValue] = filterValuePairs[i];
-        expr = q.and(expr, q.eq(q.field(field), fieldValue));
+    const allowFullScan = this.allowFullScanFlag;
+    const ormContext = getOrmContext(this.db);
+    const strict = ormContext?.strict ?? true;
+    const indexName = findIndexForColumns(
+      getIndexes(this.table),
+      filterValuePairs.map(([field]) => field)
+    );
+
+    let query: any = this.db.query(tableName);
+
+    if (indexName) {
+      query = query.withIndex(indexName, (q: any) => {
+        let builder = q.eq(filterValuePairs[0][0], filterValuePairs[0][1]);
+        for (let i = 1; i < filterValuePairs.length; i++) {
+          const [field, fieldValue] = filterValuePairs[i];
+          builder = builder.eq(field, fieldValue);
+        }
+        return builder;
+      });
+    } else {
+      if (!allowFullScan) {
+        throw new Error(
+          'onConflict requires allowFullScan: true when no index is available.'
+        );
       }
-      return expr;
-    });
+      if (strict) {
+        console.warn('onConflict running without index (allowFullScan: true).');
+      }
+      query = query.filter((q: any) => {
+        let expr = q.eq(
+          q.field(filterValuePairs[0][0]),
+          filterValuePairs[0][1]
+        );
+        for (let i = 1; i < filterValuePairs.length; i++) {
+          const [field, fieldValue] = filterValuePairs[i];
+          expr = q.and(expr, q.eq(q.field(field), fieldValue));
+        }
+        return expr;
+      });
+    }
 
     const row = await query.first();
     return row ? (row as any) : null;

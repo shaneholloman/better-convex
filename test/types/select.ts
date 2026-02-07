@@ -7,6 +7,7 @@ import {
   type InferSelectModel,
   id,
   integer,
+  type PredicateWhereIndexConfig,
   text,
 } from 'better-convex/orm';
 import type { GenericDatabaseReader } from 'convex/server';
@@ -31,7 +32,7 @@ const edgeMetadata = extractRelationsConfig(relations);
 type SchemaUsersName = typeof schemaConfig.users.name;
 Expect<Equal<SchemaUsersName, 'users'>>;
 
-type SchemaKeys = keyof typeof schemaConfig;
+type SchemaKeys = Extract<keyof typeof schemaConfig, string>;
 type ExpectedSchemaKeys =
   | 'users'
   | 'cities'
@@ -86,6 +87,27 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
   Expect<Equal<Expected, typeof result>>;
 }
 
+// ============================================================================
+// WHERE (FUNCTION) TYPE TESTS
+// ============================================================================
+
+{
+  const result = await db.query.users.findMany({
+    where: (row) => row.name === 'Alice',
+    index: { name: 'by_name' },
+  });
+  type Row = (typeof result)[number];
+  Expect<Equal<Row, UserRow>>;
+}
+
+{
+  db.query.users.findMany({
+    // @ts-expect-error - unknown field in where()
+    where: (row) => row.unknownField === 'x',
+    index: { name: 'by_name' },
+  });
+}
+
 // Test 2: Multiple filter operators
 {
   const result = await db.query.users.findMany({
@@ -123,6 +145,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 {
   const result = await db.query.users.findMany({
     where: { name: { notIn: ['Alice', 'Bob'] } },
+    allowFullScan: true,
   });
 
   type Expected = UserRow[];
@@ -166,6 +189,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     where: {
       NOT: { age: { isNull: true } },
     },
+    allowFullScan: true,
   });
 
   type Expected = UserRow[];
@@ -205,6 +229,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
     where: {
       age: { NOT: { isNull: true } },
     },
+    allowFullScan: true,
   });
 
   type Expected = UserRow[];
@@ -655,6 +680,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 {
   const result = await db.query.users.findMany({
     where: { email: { endsWith: '@example.com' } },
+    allowFullScan: true,
   });
 
   type Expected = UserRow[];
@@ -666,6 +692,7 @@ const db = createDatabase(mockDb, schemaConfig, edgeMetadata);
 {
   const result = await db.query.users.findMany({
     where: { name: { contains: 'ice' } },
+    allowFullScan: true,
   });
 
   type Expected = UserRow[];
@@ -849,16 +876,6 @@ db.query.users.findMany({
     age: {
       // @ts-expect-error - isNull only accepts true
       isNull: false,
-    },
-  },
-});
-
-// NOT must be a single filter, not an array
-db.query.users.findMany({
-  where: {
-    age: {
-      // @ts-expect-error - NOT expects a single field filter
-      NOT: [{ gt: 18 }],
     },
   },
 });
@@ -1079,15 +1096,15 @@ db.query.users.findMany({
 }
 
 // ============================================================================
-// PAGINATE TYPE TESTS
+// FINDMANY PAGINATE TYPE TESTS
 // ============================================================================
 
 // Paginate returns page + cursor metadata
 {
-  const result = await db.query.users.paginate(
-    { where: { name: 'Alice' } },
-    { cursor: null, numItems: 10 }
-  );
+  const result = await db.query.users.findMany({
+    where: { name: 'Alice' },
+    paginate: { cursor: null, numItems: 10 },
+  });
 
   type Expected = {
     page: UserRow[];
@@ -1099,18 +1116,17 @@ db.query.users.findMany({
 }
 
 // Paginate config should not accept limit/offset
-db.query.users.paginate(
-  // @ts-expect-error - limit is not allowed in paginate config
-  { limit: 10 },
-  { cursor: null, numItems: 5 }
-);
+db.query.users.findMany({
+  limit: 10,
+  // @ts-expect-error - limit is not allowed with paginate
+  paginate: { cursor: null, numItems: 5 },
+});
 
 // Paginate requires numItems when options provided
-db.query.users.paginate(
-  {},
+db.query.users.findMany({
   // @ts-expect-error - numItems is required
-  { cursor: null }
-);
+  paginate: { cursor: null },
+});
 
 // ============================================================================
 // EXTRAS TYPE TESTS (runtime-computed fields)
@@ -1186,14 +1202,302 @@ db.query.users.paginate(
   Expect<Not<IsAny<Row>>>;
 }
 
-// paginate row type should not be any
+// findMany paginate row type should not be any
 {
-  const result = await db.query.users.paginate(
-    {},
-    { cursor: null, numItems: 1 }
-  );
+  const result = await db.query.users.findMany({
+    paginate: { cursor: null, numItems: 1 },
+  });
   type Row = (typeof result)['page'][number];
   Expect<Not<IsAny<Row>>>;
+}
+
+// stream query row type should not be any
+{
+  const result = await db.stream().query('users').take(1);
+  type Row = (typeof result)[number];
+  Expect<Not<IsAny<Row>>>;
+}
+
+// stream query should be table-name safe
+{
+  // @ts-expect-error - invalid table name should not be allowed
+  db.stream().query('nonExistentTable');
+}
+
+// predicate where requires explicit index and forbids allowFullScan
+{
+  type UsersPredicateIndexConfig = PredicateWhereIndexConfig<
+    typeof schemaConfig.users
+  >;
+  type UsersByNameRange = NonNullable<
+    Extract<UsersPredicateIndexConfig, { name: 'by_name' }>['range']
+  >;
+  type PostsPredicateIndexConfig = PredicateWhereIndexConfig<
+    typeof schemaConfig.posts
+  >;
+  type PostsNumLikesAndTypeRange = NonNullable<
+    Extract<PostsPredicateIndexConfig, { name: 'numLikesAndType' }>['range']
+  >;
+
+  const usersByNameRange: UsersByNameRange = (q) => q.eq('name', 'Alice');
+  const usersByNameCreationRange: UsersByNameRange = (q) =>
+    q.eq('name', 'Alice').gt('_creationTime', 0);
+  const postsTypeLikesRange: PostsNumLikesAndTypeRange = (q) =>
+    q.eq('type', 'article').gte('numLikes', 10);
+
+  const usersByNameWrongStart: UsersByNameRange = (q) =>
+    // @ts-expect-error - by_name range must start on indexed field sequence (name first)
+    q.eq('_creationTime', 0);
+  const usersByNameWrongField: UsersByNameRange = (q) =>
+    // @ts-expect-error - by_name range cannot use non-indexed field
+    q.eq('email', 'alice@example.com');
+  // @ts-expect-error - by_name range value must match field type
+  const usersByNameWrongValue: UsersByNameRange = (q) => q.eq('name', 123);
+  const postsWrongStart: PostsNumLikesAndTypeRange = (q) =>
+    // @ts-expect-error - compound index must start with first field 'type'
+    q.eq('numLikes', 10);
+  void usersByNameWrongStart;
+  void usersByNameWrongField;
+  void usersByNameWrongValue;
+  void postsWrongStart;
+
+  // @ts-expect-error - index is required for predicate where
+  await db.query.users.findMany({ where: (row) => row.name === 'Alice' });
+  await db.query.users.findMany({
+    where: (row) => row.name === 'Alice',
+    index: { name: 'by_name' },
+  });
+  await db.query.users.findMany({
+    where: (row) => row.name === 'Alice',
+    index: { name: 'by_name', range: usersByNameRange },
+  });
+  await db.query.users.findMany({
+    where: (row) => row.name === 'Alice',
+    index: {
+      name: 'by_name',
+      range: (q) => q.eq('name', 'Alice').gt('_creationTime', 0),
+    },
+  });
+  await db.query.users.findMany({
+    where: (row) => row.name === 'Alice',
+    index: {
+      name: 'by_name',
+      range: usersByNameCreationRange,
+    },
+  });
+  await db.query.users.findMany({
+    where: (row) => row.name === 'Alice',
+    // @ts-expect-error - invalid index name should be rejected
+    index: { name: 'by_nope' },
+  });
+  await db.query.posts.findMany({
+    where: (row) => row.type === 'article',
+    index: {
+      name: 'numLikesAndType',
+      range: postsTypeLikesRange,
+    },
+  });
+  await db.query.posts.findMany({
+    where: (row) => row.type === 'article',
+    index: {
+      name: 'numLikesAndType',
+      range: (q) => q.eq('type', 'article').gte('numLikes', 10),
+    },
+  });
+  await db.query.posts.findMany({
+    where: (row) => row.type === 'article',
+    index: {
+      name: 'numLikesAndType',
+      range: (q) =>
+        // @ts-expect-error - inline compound range must start with first field 'type'
+        q.eq('numLikes', 10),
+    },
+  });
+
+  // @ts-expect-error - allowFullScan must not be provided with predicate where
+  await db.query.users.findMany({
+    where: (row: any) => row.name === 'Alice',
+    index: { name: 'by_name' },
+    allowFullScan: true,
+  });
+
+  // @ts-expect-error - index is required for predicate where (findFirst)
+  await db.query.users.findFirst({ where: (row) => row.name === 'Alice' });
+  await db.query.users.findFirst({
+    where: (row) => row.name === 'Alice',
+    index: { name: 'by_name' },
+  });
+
+  // @ts-expect-error - allowFullScan must not be provided with predicate where (findFirst)
+  await db.query.users.findFirst({
+    where: (row: any) => row.name === 'Alice',
+    index: { name: 'by_name' },
+    allowFullScan: true,
+  });
+}
+
+// predicate where paginate supports maximumRowsRead
+{
+  const result = await db.query.users.findMany({
+    where: (row) => row.name.startsWith('A'),
+    index: { name: 'by_name' },
+    paginate: { cursor: null, numItems: 1, maximumRowsRead: 50 },
+  });
+
+  type Row = (typeof result)['page'][number];
+  Expect<Equal<Row, UserRow>>;
+}
+
+// index-compiled operators should not require allowFullScan
+{
+  await db.query.users.findMany({
+    where: { name: { ne: 'Alice' } },
+  });
+  await db.query.users.findMany({
+    where: { name: { notIn: ['Alice', 'Bob'] } },
+  });
+  await db.query.users.findMany({
+    where: { deletedAt: { isNotNull: true } },
+  });
+}
+
+// non-indexable operators require allowFullScan
+{
+  // @ts-expect-error - allowFullScan required for non-indexable operator (endsWith)
+  await db.query.users.findMany({
+    where: { email: { endsWith: '@example.com' } },
+  });
+  await db.query.users.findMany({
+    where: { email: { endsWith: '@example.com' } },
+    allowFullScan: true,
+  });
+
+  // @ts-expect-error - allowFullScan required for non-indexable operator (NOT)
+  await db.query.users.findMany({
+    where: { NOT: { name: 'Alice' } },
+  });
+  await db.query.users.findMany({
+    where: { NOT: { name: 'Alice' } },
+    allowFullScan: true,
+  });
+}
+
+// ============================================================================
+// SEARCH QUERY TYPE TESTS
+// ============================================================================
+
+// search works on tables with search indexes
+{
+  const result = await db.query.posts.findMany({
+    search: {
+      index: 'text_search',
+      query: 'galaxy',
+    },
+  });
+
+  type Row = (typeof result)[number];
+  Expect<Equal<Row['text'], string>>;
+}
+
+// search filters are typed from filterFields
+{
+  await db.query.posts.findMany({
+    search: {
+      index: 'text_search',
+      query: 'galaxy',
+      filters: {
+        type: 'article',
+      },
+    },
+  });
+
+  await db.query.posts.findMany({
+    // @ts-expect-error - only search filterFields are allowed
+    search: {
+      index: 'text_search',
+      query: 'galaxy',
+      filters: {
+        published: true,
+      },
+    },
+  });
+}
+
+// search index name is strongly typed
+{
+  await db.query.posts.findMany({
+    // @ts-expect-error - invalid search index name
+    search: {
+      index: 'by_title',
+      query: 'galaxy',
+    },
+  });
+}
+
+// search is disallowed on tables with no search indexes
+{
+  await db.query.users.findMany({
+    // @ts-expect-error - users table has no search indexes
+    search: {
+      index: 'text_search',
+      query: 'alice',
+    },
+  });
+}
+
+// search + orderBy is disallowed
+{
+  await db.query.posts.findMany({
+    // @ts-expect-error - search results are relevance ordered and do not allow orderBy
+    search: {
+      index: 'text_search',
+      query: 'galaxy',
+    },
+    orderBy: { _creationTime: 'desc' },
+  });
+}
+
+// search + where(fn) is disallowed
+{
+  await db.query.posts.findMany({
+    // @ts-expect-error - predicate where is not allowed with search
+    search: {
+      index: 'text_search',
+      query: 'galaxy',
+    },
+    where: (row: any) => row.type === 'article',
+  });
+}
+
+// search + relation where is disallowed
+{
+  await db.query.posts.findMany({
+    // @ts-expect-error - relation-based where is not allowed with search
+    search: {
+      index: 'text_search',
+      query: 'galaxy',
+    },
+    where: {
+      author: { name: 'Alice' },
+    },
+  });
+}
+
+// search + with is allowed for eager loading
+{
+  const result = await db.query.posts.findMany({
+    search: {
+      index: 'text_search',
+      query: 'galaxy',
+    },
+    with: {
+      author: true,
+    },
+  });
+
+  type Row = (typeof result)[number];
+  type Author = Row['author'];
+  Expect<Equal<Author extends object | null ? true : false, true>>;
 }
 
 export {};

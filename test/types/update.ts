@@ -77,6 +77,86 @@ const baseUpdate = {
     .returning();
 }
 
+// Test 6: paginated update without returning
+{
+  const result = await db
+    .update(users)
+    .set({ ...baseUpdate })
+    .paginate({ cursor: null, numItems: 10 });
+
+  type Expected = {
+    continueCursor: string | null;
+    isDone: boolean;
+    numAffected: number;
+  };
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// Test 7: paginated update with returning
+{
+  const result = await db
+    .update(users)
+    .set({ ...baseUpdate })
+    .returning({ name: users.name })
+    .paginate({ cursor: null, numItems: 10 });
+
+  type Expected = {
+    continueCursor: string | null;
+    isDone: boolean;
+    numAffected: number;
+    page: Array<{
+      name: string;
+    }>;
+  };
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// Test 8: executeAsync without returning matches execute() result type
+{
+  const result = await db
+    .update(users)
+    .set({ ...baseUpdate })
+    .executeAsync();
+
+  Expect<Equal<undefined, typeof result>>;
+}
+
+// Test 9: executeAsync with returning matches execute() result type
+{
+  const result = await db
+    .update(users)
+    .set({ ...baseUpdate })
+    .returning({
+      name: users.name,
+    })
+    .executeAsync();
+
+  type Expected = Array<{
+    name: string;
+  }>;
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// Test 10: execute({ mode: 'async' }) matches executeAsync() result type
+{
+  const result = await db
+    .update(users)
+    .set({ ...baseUpdate })
+    .returning({
+      name: users.name,
+    })
+    .execute({ mode: 'async' });
+
+  type Expected = Array<{
+    name: string;
+  }>;
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
 // ============================================================================
 // NEGATIVE TYPE TESTS
 // ============================================================================
@@ -125,6 +205,49 @@ const baseUpdate = {
     .set({ ...baseUpdate })
     // @ts-expect-error - where() requires a filter expression
     .where();
+}
+
+// paginate() should reject invalid cursor type
+{
+  db.update(users)
+    .set({ ...baseUpdate })
+    // @ts-expect-error - cursor must be string | null
+    .paginate({ cursor: 123, numItems: 10 });
+}
+
+// paginate() should reject invalid numItems type
+{
+  db.update(users)
+    .set({ ...baseUpdate })
+    // @ts-expect-error - numItems must be number
+    .paginate({ cursor: null, numItems: '10' });
+}
+
+// paginate() cannot be called twice
+{
+  db.update(users)
+    .set({ ...baseUpdate })
+    .paginate({ cursor: null, numItems: 10 })
+    // @ts-expect-error - paginate already called
+    .paginate({ cursor: null, numItems: 10 });
+}
+
+// executeAsync() is not available on paginated update builders
+{
+  db.update(users)
+    .set({ ...baseUpdate })
+    .paginate({ cursor: null, numItems: 10 })
+    // @ts-expect-error - executeAsync is not available after paginate()
+    .executeAsync();
+}
+
+// execute(config) is not available on paginated update builders
+{
+  db.update(users)
+    .set({ ...baseUpdate })
+    .paginate({ cursor: null, numItems: 10 })
+    // @ts-expect-error - execute config is not available after paginate()
+    .execute({ mode: 'async' });
 }
 
 // returning selection must use column builders

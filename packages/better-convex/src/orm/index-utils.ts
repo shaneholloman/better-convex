@@ -1,6 +1,11 @@
 import type { ConvexTable } from './table';
 
 export type TableIndex = { name: string; fields: string[] };
+export type TableSearchIndex = {
+  name: string;
+  searchField: string;
+  filterFields: string[];
+};
 
 export function getIndexes(
   table: ConvexTable<any>
@@ -18,6 +23,39 @@ export function getIndexes(
       name: entry.indexDescriptor,
       fields: entry.fields,
     })
+  );
+}
+
+export function getSearchIndexes(table: ConvexTable<any>): TableSearchIndex[] {
+  const fromMethod = (table as any).getSearchIndexes?.();
+  if (Array.isArray(fromMethod)) {
+    return fromMethod;
+  }
+
+  const fromField = (table as any).searchIndexes;
+  if (!Array.isArray(fromField)) {
+    return [];
+  }
+
+  return fromField.map(
+    (entry: {
+      indexDescriptor: string;
+      searchField: string;
+      filterFields: string[];
+    }) => ({
+      name: entry.indexDescriptor,
+      searchField: entry.searchField,
+      filterFields: entry.filterFields ?? [],
+    })
+  );
+}
+
+export function findSearchIndexByName(
+  table: ConvexTable<any>,
+  indexName: string
+): TableSearchIndex | null {
+  return (
+    getSearchIndexes(table).find((index) => index.name === indexName) ?? null
   );
 }
 
@@ -47,19 +85,22 @@ export function findRelationIndexOrThrow(
   table: ConvexTable<any>,
   columns: string[],
   relationName: string,
-  targetTableName: string
+  targetTableName: string,
+  allowFullScan = false
 ): string {
   const index = findRelationIndex(
     table,
     columns,
     relationName,
-    targetTableName
+    targetTableName,
+    true,
+    allowFullScan
   );
   if (!index) {
     throw new Error(
       `Relation ${relationName} requires index on '${targetTableName}(${columns.join(
         ', '
-      )})'.`
+      )})'. Set allowFullScan: true to override.`
     );
   }
   return index;
@@ -70,14 +111,20 @@ export function findRelationIndex(
   columns: string[],
   relationName: string,
   targetTableName: string,
-  strict = true
+  strict = true,
+  allowFullScan = false
 ): string | null {
   const index = findIndexForColumns(getIndexes(table), columns);
-  if (!index && strict) {
+  if (!index && !allowFullScan) {
     throw new Error(
       `Relation ${relationName} requires index on '${targetTableName}(${columns.join(
         ', '
-      )})'.`
+      )})'. Set allowFullScan: true to override.`
+    );
+  }
+  if (!index && strict) {
+    console.warn(
+      `Relation ${relationName} running without index (allowFullScan: true).`
     );
   }
   return index;

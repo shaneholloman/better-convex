@@ -10,7 +10,8 @@ import { InfoIcon, AlertTriangle } from "lucide-react"
 Better-Convex ORM provides a Drizzle-style `update()` builder for Convex mutations.
 
 <Callout icon={<AlertTriangle />}>
-With `strict: true` (default), `update()` requires `.where(...)`. Full-table updates throw. Set `defineSchema(..., { strict: false })` to allow full scans (warns).
+`update()` without `.where(...)` throws unless you call `.allowFullScan()`.  
+`strict` controls warning behavior, not whether full scans are allowed.
 </Callout>
 
 ## Basic Update
@@ -49,6 +50,55 @@ const ids = await db
   .where(eq(users.email, 'dan@example.com'))
   .returning({ id: users._id });
 ```
+
+## Safety Limits
+
+`update()` collects matching rows in bounded pages before applying writes:
+
+- `mutationBatchSize`: defaults to `100`
+- `mutationMaxRows`: defaults to `1000`
+
+If matched rows exceed `mutationMaxRows`, update throws.
+
+```ts
+export default defineSchema({ users, posts }, {
+  defaults: {
+    mutationBatchSize: 200,
+    mutationMaxRows: 5000,
+  },
+});
+```
+
+## Paginated Update Execution
+
+For large workloads, process updates page-by-page with `paginate({ cursor, numItems })`.
+This follows Convex’s batching pattern and avoids one large transaction.
+
+```ts
+const page1 = await db
+  .update(users)
+  .set({ role: 'member' })
+  .where(eq(users.status, 'pending'))
+  .paginate({ cursor: null, numItems: 100 });
+
+if (!page1.isDone) {
+  const page2 = await db
+    .update(users)
+    .set({ role: 'member' })
+    .where(eq(users.status, 'pending'))
+    .paginate({ cursor: page1.continueCursor, numItems: 100 });
+}
+```
+
+Paged update result:
+- `continueCursor`: cursor for the next batch
+- `isDone`: `true` when no more pages remain
+- `numAffected`: rows updated in this page
+- `page`: returned rows for this page (only when `.returning()` is used)
+
+<Callout icon={<InfoIcon />}>
+`paginate()` currently supports single-range index plans. Multi-probe filters (`inArray`, some `OR` patterns, complement ranges) are not yet supported in paged mutation mode.
+</Callout>
 
 ## Drizzle Differences
 

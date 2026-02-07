@@ -31,7 +31,14 @@ export const users = convexTable(
     cityId: id('cities'),
     homeCityId: id('cities'),
   },
-  (t) => [index('by_city').on(t.cityId)]
+  (t) => [
+    index('by_city').on(t.cityId),
+    index('by_name').on(t.name),
+    index('by_email').on(t.email),
+    index('by_status').on(t.status),
+    index('by_age').on(t.age),
+    index('by_deleted_at').on(t.deletedAt),
+  ]
 );
 
 export const cities = convexTable('cities', {
@@ -53,6 +60,9 @@ export const posts = convexTable(
   },
   (t) => [
     index('by_author').on(t.authorId),
+    index('by_published').on(t.published),
+    index('by_created_at').on(t.createdAt),
+    index('by_title').on(t.title),
     index('numLikesAndType').on(t.type, t.numLikes),
     searchIndex('text_search').on(t.text).filter(t.type),
     vectorIndex('embedding_vec')
@@ -114,7 +124,12 @@ export const tables = {
   metrics,
 };
 
-export default defineSchema(tables);
+export default defineSchema(tables, {
+  defaults: {
+    defaultLimit: 1000,
+    mutationMaxRows: 10000,
+  },
+});
 
 // ============================================================================
 // ORM Relations Config

@@ -11,6 +11,7 @@ import {
   eq,
   extractRelationsConfig,
   id,
+  index,
   rlsPolicy,
   rlsRole,
   text,
@@ -29,6 +30,7 @@ const secrets = convexTable(
     ownerId: id('rls_users').notNull(),
   },
   (t) => [
+    index('by_owner').on(t.ownerId),
     rlsPolicy('secrets_read', {
       for: 'select',
       using: (ctx) => eq(t.ownerId, ctx.viewerId),
@@ -107,7 +109,11 @@ const tables = {
   rls_linked: linked,
   rls_role_docs: roleDocs,
 };
-const schema = defineSchema(tables);
+const schema = defineSchema(tables, {
+  defaults: {
+    defaultLimit: 100,
+  },
+});
 const relations = defineRelations(tables);
 const edges = extractRelationsConfig(relations);
 

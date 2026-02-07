@@ -44,22 +44,32 @@ import {
   or,
   startsWith,
 } from './filter-expression';
-import { findRelationIndex } from './index-utils';
+import {
+  findRelationIndex,
+  findSearchIndexByName,
+  getIndexes,
+} from './index-utils';
 import { asc, desc } from './order-by';
 import { QueryPromise } from './query-promise';
 import type { RelationsFieldFilter, RelationsFilter } from './relations';
 import { filterSelectRows } from './rls/evaluator';
 import type { RlsContext } from './rls/types';
-import { Columns } from './symbols';
+import { stream } from './stream';
+import { Columns, OrmSchemaDefinition } from './symbols';
 import type {
   DBQueryConfig,
   OrderByClause,
   OrderByValue,
+  PaginateConfig,
+  PredicateWhereIndexConfig,
   TableRelationalConfig,
   TablesRelationalConfig,
   ValueOrArray,
 } from './types';
-import { WhereClauseCompiler } from './where-clause-compiler';
+import {
+  type IndexStrategy,
+  WhereClauseCompiler,
+} from './where-clause-compiler';
 
 /**
  * Relational query builder with promise-based execution
@@ -81,6 +91,7 @@ export class GelRelationalQuery<
   declare readonly _: {
     readonly result: TResult;
   };
+  private allowFullScan: boolean;
 
   constructor(
     private schema: TSchema,
@@ -93,13 +104,13 @@ export class GelRelationalQuery<
       TSchema,
       TTableConfig
     >,
-    private mode: 'many' | 'first' | 'paginate',
+    private mode: 'many' | 'first',
     private _allEdges?: EdgeMetadata[], // M6.5 Phase 2: All edges for nested loading
     private rls?: RlsContext,
-    private paginationOpts?: { cursor: string | null; numItems: number }, // M6.5 Phase 4: Cursor pagination options
     private relationLoading?: { concurrency?: number }
   ) {
     super();
+    this.allowFullScan = (config as any).allowFullScan === true;
   }
 
   private _applyRlsSelectFilter(
@@ -180,6 +191,29 @@ export class GelRelationalQuery<
       field: clause.column.columnName,
       direction: clause.direction,
     }));
+  }
+
+  private _resolveNonPaginatedLimit(config: any): number | undefined {
+    const explicitLimit = config.limit;
+    const defaultLimit = this.tableConfig.defaults?.defaultLimit;
+    const resolvedLimit = explicitLimit ?? defaultLimit;
+
+    if (resolvedLimit === undefined) {
+      if (this.allowFullScan) {
+        return;
+      }
+      throw new Error(
+        'findMany() requires explicit sizing. Provide limit, paginate, allowFullScan: true, or defineSchema(..., { defaults: { defaultLimit } }).'
+      );
+    }
+
+    if (!Number.isInteger(resolvedLimit) || resolvedLimit < 1) {
+      throw new Error(
+        'Only positive integer limit is supported in Better Convex ORM.'
+      );
+    }
+
+    return resolvedLimit;
   }
 
   private _compareByOrderSpecs(
@@ -886,6 +920,7 @@ export class GelRelationalQuery<
     }
 
     if (!parts.length) return;
+    if (parts.length === 1) return parts[0];
     return and(...parts);
   }
 
@@ -947,6 +982,7 @@ export class GelRelationalQuery<
     }
 
     if (!parts.length) return;
+    if (parts.length === 1) return parts[0];
     return and(...parts);
   }
 
@@ -1059,6 +1095,153 @@ export class GelRelationalQuery<
     }
   }
 
+  private _hasSearchDisallowedRelationFilter(
+    filter: RelationsFilter<any, any> | undefined,
+    tableConfig: TableRelationalConfig
+  ): boolean {
+    if (!this._isRecord(filter)) {
+      return false;
+    }
+
+    const columns = this._getColumns(tableConfig);
+    for (const [key, value] of Object.entries(filter)) {
+      if (value === undefined) {
+        continue;
+      }
+
+      if (key === 'OR' || key === 'AND') {
+        if (!Array.isArray(value)) {
+          continue;
+        }
+        if (
+          value.some((sub) =>
+            this._hasSearchDisallowedRelationFilter(
+              sub as RelationsFilter<any, any>,
+              tableConfig
+            )
+          )
+        ) {
+          return true;
+        }
+        continue;
+      }
+
+      if (key === 'NOT') {
+        if (
+          this._hasSearchDisallowedRelationFilter(
+            value as RelationsFilter<any, any>,
+            tableConfig
+          )
+        ) {
+          return true;
+        }
+        continue;
+      }
+
+      if (key === 'RAW') {
+        continue;
+      }
+
+      if (key in columns) {
+        continue;
+      }
+
+      if (key in tableConfig.relations) {
+        return true;
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+  private _searchFilterValuesEqual(a: unknown, b: unknown): boolean {
+    if (Object.is(a, b)) {
+      return true;
+    }
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      return false;
+    }
+  }
+
+  private _extractSearchEqFromWhereField(value: unknown): unknown {
+    if (value === undefined) {
+      return;
+    }
+
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return value;
+    }
+
+    const record = value as Record<string, unknown>;
+    if (!('eq' in record)) {
+      return;
+    }
+
+    for (const [key, fieldValue] of Object.entries(record)) {
+      if (key === 'eq') {
+        continue;
+      }
+      if (fieldValue !== undefined) {
+        return;
+      }
+    }
+
+    return record.eq;
+  }
+
+  private _mergeSearchFiltersWithWhereEq(
+    searchFilters: Record<string, unknown> | undefined,
+    whereFilter: RelationsFilter<any, any> | undefined,
+    tableConfig: TableRelationalConfig,
+    allowedFilterFields: Set<string>
+  ): Record<string, unknown> {
+    const merged: Record<string, unknown> = {
+      ...(searchFilters ?? {}),
+    };
+
+    if (!this._isRecord(whereFilter)) {
+      return merged;
+    }
+
+    const columns = this._getColumns(tableConfig);
+    for (const [key, value] of Object.entries(whereFilter)) {
+      if (value === undefined) {
+        continue;
+      }
+      if (key === 'OR' || key === 'AND' || key === 'NOT' || key === 'RAW') {
+        continue;
+      }
+      if (!(key in columns)) {
+        continue;
+      }
+      if (!allowedFilterFields.has(key)) {
+        continue;
+      }
+
+      const eqValue = this._extractSearchEqFromWhereField(value);
+      if (eqValue === undefined) {
+        continue;
+      }
+
+      if (
+        key in merged &&
+        !this._searchFilterValuesEqual(merged[key], eqValue)
+      ) {
+        throw new Error(
+          `Conflict between search.filters.${key} and where.${key}.`
+        );
+      }
+
+      merged[key] = eqValue;
+    }
+
+    return merged;
+  }
+
   private async _applyRelationsFilterToRows(
     rows: any[],
     tableConfig: TableRelationalConfig,
@@ -1102,9 +1285,202 @@ export class GelRelationalQuery<
    */
   async execute(): Promise<TResult> {
     const queryConfig = this._toConvexQuery();
+    const config = this.config as any;
+    const paginate = config.paginate as PaginateConfig | undefined;
+    const searchConfig = config.search as
+      | {
+          index: string;
+          query: string;
+          filters?: Record<string, unknown>;
+        }
+      | undefined;
+    const wherePredicate =
+      typeof config.where === 'function'
+        ? (config.where as (row: any) => boolean | Promise<boolean>)
+        : undefined;
+    const whereFilter =
+      typeof config.where === 'function'
+        ? undefined
+        : (config.where as RelationsFilter<any, any> | undefined);
+    const strict = this.tableConfig.strict !== false;
+    const allowFullScan = this.allowFullScan === true;
 
     // Start Convex query
     let query: any = this.db.query(queryConfig.table);
+
+    if (searchConfig) {
+      if (config.orderBy !== undefined) {
+        throw new Error(
+          'search cannot be combined with orderBy. Search results are ordered by relevance.'
+        );
+      }
+      if (wherePredicate) {
+        throw new Error(
+          'search cannot be combined with where(fn). Use search.filters or object where.'
+        );
+      }
+      if (config.index !== undefined) {
+        throw new Error('search cannot be combined with index.');
+      }
+      if (
+        this._hasSearchDisallowedRelationFilter(whereFilter, this.tableConfig)
+      ) {
+        throw new Error(
+          'search does not support relation-based where filters. Use base table fields only.'
+        );
+      }
+
+      const searchIndex = findSearchIndexByName(
+        this.tableConfig.table as any,
+        searchConfig.index
+      );
+      if (!searchIndex) {
+        throw new Error(
+          `Search index '${searchConfig.index}' was not found on table '${this.tableConfig.name}'.`
+        );
+      }
+
+      const mergedSearchFilters = this._mergeSearchFiltersWithWhereEq(
+        searchConfig.filters as Record<string, unknown> | undefined,
+        whereFilter,
+        this.tableConfig,
+        new Set(searchIndex.filterFields)
+      );
+
+      const searchQuery: any = query.withSearchIndex(
+        searchConfig.index as any,
+        (q: any) => {
+          let builder = q.search(
+            searchIndex.searchField as any,
+            searchConfig.query
+          );
+          for (const [field, value] of Object.entries(mergedSearchFilters)) {
+            builder = builder.eq(field as any, value);
+          }
+          return builder;
+        }
+      );
+
+      if (paginate) {
+        const paginationResult = await searchQuery.paginate({
+          cursor: paginate.cursor ?? null,
+          numItems: paginate.numItems ?? 20,
+        } as any);
+
+        let pageRows = paginationResult.page;
+        pageRows = this._applyRlsSelectFilter(pageRows, this.tableConfig);
+
+        if (whereFilter) {
+          pageRows = await this._applyRelationsFilterToRows(
+            pageRows,
+            this.tableConfig,
+            whereFilter,
+            this.edgeMetadata,
+            0,
+            3,
+            this.config.with as Record<string, unknown> | undefined
+          );
+        }
+
+        let pageWithRelations = pageRows;
+        if (this.config.with) {
+          pageWithRelations = await this._loadRelations(
+            pageRows,
+            this.config.with,
+            0,
+            3,
+            this.edgeMetadata,
+            this.tableConfig
+          );
+        }
+
+        if ((this.config as any).extras) {
+          pageWithRelations = this._applyExtras(
+            pageWithRelations,
+            (this.config as any).extras,
+            this._getColumns(this.tableConfig),
+            this.config.with as Record<string, unknown> | undefined,
+            this.tableConfig.name
+          );
+        }
+
+        const selectedPage = this._selectColumns(
+          pageWithRelations,
+          (this.config as any).columns,
+          this._getColumns(this.tableConfig)
+        );
+
+        return {
+          page: selectedPage,
+          continueCursor: paginationResult.continueCursor,
+          isDone: paginationResult.isDone,
+        } as TResult;
+      }
+
+      const offset = config.offset ?? 0;
+      if (typeof offset !== 'number') {
+        throw new Error(
+          'Only numeric offset is supported in Better Convex ORM.'
+        );
+      }
+      const limit = this._resolveNonPaginatedLimit(config);
+      let rows =
+        limit === undefined
+          ? await searchQuery.collect()
+          : await searchQuery.take(offset > 0 ? offset + limit : limit);
+
+      if (offset > 0) {
+        rows = rows.slice(offset);
+      }
+
+      rows = this._applyRlsSelectFilter(rows, this.tableConfig);
+
+      if (whereFilter) {
+        rows = await this._applyRelationsFilterToRows(
+          rows,
+          this.tableConfig,
+          whereFilter,
+          this.edgeMetadata,
+          0,
+          3,
+          this.config.with as Record<string, unknown> | undefined
+        );
+      }
+
+      let rowsWithRelations = rows;
+      if (this.config.with) {
+        rowsWithRelations = await this._loadRelations(
+          rows,
+          this.config.with,
+          0,
+          3,
+          this.edgeMetadata,
+          this.tableConfig
+        );
+      }
+
+      if ((this.config as any).extras) {
+        rowsWithRelations = this._applyExtras(
+          rowsWithRelations,
+          (this.config as any).extras,
+          this._getColumns(this.tableConfig),
+          this.config.with as Record<string, unknown> | undefined,
+          this.tableConfig.name
+        );
+      }
+
+      const selectedRows = this._selectColumns(
+        rowsWithRelations,
+        (this.config as any).columns,
+        this._getColumns(this.tableConfig)
+      );
+
+      if (this.mode === 'first') {
+        return selectedRows[0] as TResult;
+      }
+
+      return selectedRows as TResult;
+    }
 
     // M5: Index-aware ordering strategy
     // 1. If WHERE uses an index AND orderBy field matches → use .order() on that index
@@ -1115,6 +1491,7 @@ export class GelRelationalQuery<
     const postFetchOrders = queryConfig.order ?? [];
     const primaryOrder = postFetchOrders[0];
     const hasSecondaryOrders = postFetchOrders.length > 1;
+    let orderIndexName: string | null = null;
 
     // Apply index if selected for WHERE filtering
     if (queryConfig.index) {
@@ -1151,13 +1528,17 @@ export class GelRelationalQuery<
         // Default index on _creationTime - no withIndex() needed
         query = query.order(primaryOrder.direction);
       } else {
-        const orderIndex = this.edgeMetadata.find((idx) =>
-          idx.indexFields.includes(orderField)
-        );
+        const orderIndex =
+          getIndexes(this.tableConfig.table).find((idx) =>
+            idx.fields.includes(orderField)
+          ) ??
+          this.edgeMetadata.find((idx) => idx.indexFields.includes(orderField));
 
         if (orderIndex) {
+          orderIndexName =
+            'indexName' in orderIndex ? orderIndex.indexName : orderIndex.name;
           // Use orderBy field's index
-          query = query.withIndex(orderIndex.indexName, (q: any) => q);
+          query = query.withIndex(orderIndexName, (q: any) => q);
           query = query.order(primaryOrder.direction);
         } else {
           // No index for orderBy field - post-fetch sort
@@ -1167,20 +1548,354 @@ export class GelRelationalQuery<
     }
 
     usePostFetchSort = needsPostFetchSortForPrimary || hasSecondaryOrders;
-    const config = this.config as any;
-    const whereFilter = config.where as RelationsFilter<any, any> | undefined;
+
+    if (!queryConfig.index && queryConfig.postFilters.length > 0) {
+      if (!allowFullScan) {
+        throw new Error(
+          'Query requires allowFullScan: true when no index is available.'
+        );
+      }
+      console.warn('Query is running without an index (allowFullScan: true).');
+    }
+
+    if (wherePredicate) {
+      const predicateIndex = config.index as
+        | PredicateWhereIndexConfig<TTableConfig>
+        | undefined;
+      if (!predicateIndex?.name) {
+        throw new Error('Predicate where() requires index: { name, range? }.');
+      }
+      const schemaDefinition = (this.schema as any)[OrmSchemaDefinition];
+      if (!schemaDefinition) {
+        throw new Error(
+          'where (function) requires defineSchema(). Ensure defineSchema(tables) was used with the same tables object passed to defineRelations.'
+        );
+      }
+
+      let streamQuery: any = stream(
+        this.db as GenericDatabaseReader<any>,
+        schemaDefinition
+      )
+        .query(this.tableConfig.name as any)
+        .withIndex(
+          predicateIndex.name as any,
+          predicateIndex.range ? (predicateIndex.range as any) : (q: any) => q
+        );
+
+      if (paginate) {
+        if (needsPostFetchSortForPrimary) {
+          if (strict) {
+            throw new Error(
+              `Pagination: Field '${primaryOrder?.field}' has no index. Add an index or disable strict.`
+            );
+          }
+          console.warn(
+            `Pagination: Field '${primaryOrder?.field}' has no index. ` +
+              'Falling back to _creationTime ordering.'
+          );
+        }
+        if (hasSecondaryOrders) {
+          console.warn(
+            'Pagination: Only the first orderBy field is used for cursor ordering. ' +
+              'Secondary orderBy fields are applied per page and may be unstable across pages.'
+          );
+        }
+      }
+
+      if (primaryOrder && !needsPostFetchSortForPrimary) {
+        streamQuery = streamQuery.order(primaryOrder.direction);
+      } else if (paginate) {
+        streamQuery = streamQuery.order('desc');
+      }
+
+      streamQuery = streamQuery.filterWith(async (row: any) => {
+        for (const filter of queryConfig.postFilters) {
+          if (!this._evaluatePostFetchFilter(row, filter)) {
+            return false;
+          }
+        }
+        return await wherePredicate(row);
+      });
+
+      if (paginate) {
+        const paginationResult = await streamQuery.paginate({
+          cursor: paginate.cursor ?? null,
+          numItems: paginate.numItems ?? 20,
+          maximumRowsRead: paginate.maximumRowsRead,
+        });
+
+        let pageRows = paginationResult.page;
+
+        pageRows = this._applyRlsSelectFilter(pageRows, this.tableConfig);
+
+        if (whereFilter) {
+          pageRows = await this._applyRelationsFilterToRows(
+            pageRows,
+            this.tableConfig,
+            whereFilter,
+            this.edgeMetadata,
+            0,
+            3,
+            this.config.with as Record<string, unknown> | undefined
+          );
+        }
+
+        let pageWithRelations = pageRows;
+        if (this.config.with) {
+          pageWithRelations = await this._loadRelations(
+            pageRows,
+            this.config.with,
+            0,
+            3,
+            this.edgeMetadata,
+            this.tableConfig
+          );
+        }
+
+        if ((this.config as any).extras) {
+          pageWithRelations = this._applyExtras(
+            pageWithRelations,
+            (this.config as any).extras,
+            this._getColumns(this.tableConfig),
+            this.config.with as Record<string, unknown> | undefined,
+            this.tableConfig.name
+          );
+        }
+
+        const selectedPage = this._selectColumns(
+          pageWithRelations,
+          (this.config as any).columns,
+          this._getColumns(this.tableConfig)
+        );
+
+        return {
+          page: selectedPage,
+          continueCursor: paginationResult.continueCursor,
+          isDone: paginationResult.isDone,
+        } as TResult;
+      }
+
+      const offset = config.offset ?? 0;
+      if (typeof offset !== 'number') {
+        throw new Error(
+          'Only numeric offset is supported in Better Convex ORM.'
+        );
+      }
+      const limit = this._resolveNonPaginatedLimit(config);
+      const paginateAfterPostFetchSort =
+        usePostFetchSort && postFetchOrders.length > 0;
+      let rows =
+        limit === undefined || paginateAfterPostFetchSort
+          ? await streamQuery.collect()
+          : await streamQuery.take(offset > 0 ? offset + limit : limit);
+
+      if (!paginateAfterPostFetchSort && offset > 0) {
+        rows = rows.slice(offset);
+      }
+
+      rows = this._applyRlsSelectFilter(rows, this.tableConfig);
+
+      if (whereFilter) {
+        rows = await this._applyRelationsFilterToRows(
+          rows,
+          this.tableConfig,
+          whereFilter,
+          this.edgeMetadata,
+          0,
+          3,
+          this.config.with as Record<string, unknown> | undefined
+        );
+      }
+
+      if (usePostFetchSort && postFetchOrders.length > 0) {
+        rows = rows.sort((a: any, b: any) =>
+          this._compareByOrderSpecs(a, b, postFetchOrders)
+        );
+      }
+
+      if (paginateAfterPostFetchSort) {
+        if (offset > 0) {
+          rows = rows.slice(offset);
+        }
+        if (limit !== undefined) {
+          rows = rows.slice(0, limit);
+        }
+      }
+
+      let rowsWithRelations = rows;
+      if (this.config.with) {
+        rowsWithRelations = await this._loadRelations(
+          rows,
+          this.config.with,
+          0,
+          3,
+          this.edgeMetadata,
+          this.tableConfig
+        );
+      }
+
+      if ((this.config as any).extras) {
+        rowsWithRelations = this._applyExtras(
+          rowsWithRelations,
+          (this.config as any).extras,
+          this._getColumns(this.tableConfig),
+          this.config.with as Record<string, unknown> | undefined,
+          this.tableConfig.name
+        );
+      }
+
+      const selectedRows = this._selectColumns(
+        rowsWithRelations,
+        (this.config as any).columns,
+        this._getColumns(this.tableConfig)
+      );
+
+      if (this.mode === 'first') {
+        return selectedRows[0] as TResult;
+      }
+
+      return selectedRows as TResult;
+    }
+
+    if (
+      queryConfig.strategy === 'multiProbe' &&
+      queryConfig.index &&
+      !paginate
+    ) {
+      const probeRows = await Promise.all(
+        queryConfig.probeFilters.map(async (probeFilters) => {
+          let probeQuery: any = this.db
+            .query(queryConfig.table)
+            .withIndex(queryConfig.index!.name, (q: any) => {
+              let indexQuery = q;
+              for (const filter of probeFilters) {
+                indexQuery = this._applyFilterToQuery(indexQuery, filter);
+              }
+              return indexQuery;
+            });
+
+          if (queryConfig.postFilters.length > 0) {
+            probeQuery = probeQuery.filter((q: any) => {
+              let result: any | null = null;
+              for (const filter of queryConfig.postFilters) {
+                const filterFn = this._toConvexExpression(filter);
+                const expr = filterFn(q);
+                result = result ? q.and(result, expr) : expr;
+              }
+              return result ?? q;
+            });
+          }
+
+          return await probeQuery.collect();
+        })
+      );
+
+      let rows = Array.from(
+        new Map(
+          probeRows.flat().map((row: any) => [String(row._id), row] as const)
+        ).values()
+      );
+
+      if (queryConfig.postFilters.length > 0) {
+        rows = rows.filter((row: any) =>
+          queryConfig.postFilters.every((filter) =>
+            this._evaluatePostFetchFilter(row, filter)
+          )
+        );
+      }
+
+      rows = this._applyRlsSelectFilter(rows, this.tableConfig);
+
+      if (whereFilter) {
+        rows = await this._applyRelationsFilterToRows(
+          rows,
+          this.tableConfig,
+          whereFilter,
+          this.edgeMetadata,
+          0,
+          3,
+          this.config.with as Record<string, unknown> | undefined
+        );
+      }
+
+      if (usePostFetchSort && postFetchOrders.length > 0) {
+        rows = rows.sort((a: any, b: any) =>
+          this._compareByOrderSpecs(a, b, postFetchOrders)
+        );
+      }
+
+      const offset = config.offset ?? 0;
+      if (typeof offset !== 'number') {
+        throw new Error(
+          'Only numeric offset is supported in Better Convex ORM.'
+        );
+      }
+      const limit = this._resolveNonPaginatedLimit(config);
+      if (offset > 0) {
+        rows = rows.slice(offset);
+      }
+      if (limit !== undefined) {
+        rows = rows.slice(0, limit);
+      }
+
+      let rowsWithRelations = rows;
+      if (this.config.with) {
+        rowsWithRelations = await this._loadRelations(
+          rows,
+          this.config.with,
+          0,
+          3,
+          this.edgeMetadata,
+          this.tableConfig
+        );
+      }
+
+      if ((this.config as any).extras) {
+        rowsWithRelations = this._applyExtras(
+          rowsWithRelations,
+          (this.config as any).extras,
+          this._getColumns(this.tableConfig),
+          this.config.with as Record<string, unknown> | undefined,
+          this.tableConfig.name
+        );
+      }
+
+      const selectedRows = this._selectColumns(
+        rowsWithRelations,
+        (this.config as any).columns,
+        this._getColumns(this.tableConfig)
+      );
+
+      if (this.mode === 'first') {
+        return selectedRows[0] as TResult;
+      }
+
+      return selectedRows as TResult;
+    }
 
     // M6.5 Phase 4: Handle cursor pagination separately
-    if (this.mode === 'paginate') {
+    if (paginate) {
+      if (queryConfig.strategy === 'multiProbe') {
+        if (!allowFullScan) {
+          throw new Error(
+            'Pagination with multi-probe index-union filters requires allowFullScan: true. Cursor-stable multi-probe pagination is not implemented yet.'
+          );
+        }
+        console.warn(
+          'Pagination with multi-probe index-union filters is falling back to full-scan pagination (allowFullScan: true).'
+        );
+      }
+
       // Apply post-filters
       if (queryConfig.postFilters.length > 0) {
         query = query.filter((q: any) => {
-          let result = q;
+          let result: any | null = null;
           for (const filter of queryConfig.postFilters) {
             const filterFn = this._toConvexExpression(filter);
-            result = filterFn(result);
+            const expr = filterFn(q);
+            result = result ? q.and(result, expr) : expr;
           }
-          return result;
+          return result ?? q;
         });
       }
 
@@ -1190,10 +1905,14 @@ export class GelRelationalQuery<
         if (needsPostFetchSortForPrimary) {
           // Field has no index - pagination can't use custom orderBy
           // Fall back to _creationTime ordering for cursor stability
+          if (strict) {
+            throw new Error(
+              `Pagination: Field '${primaryOrder.field}' has no index. Add an index or disable strict.`
+            );
+          }
           console.warn(
             `Pagination: Field '${primaryOrder.field}' has no index. ` +
-              'Falling back to _creationTime ordering. ' +
-              'Add an index for custom ordering in pagination.'
+              'Falling back to _creationTime ordering.'
           );
           query = query.order(
             primaryOrder.direction === 'asc' ? 'asc' : 'desc'
@@ -1215,8 +1934,8 @@ export class GelRelationalQuery<
 
       // Use Convex native pagination (O(1) performance)
       const paginationResult = await query.paginate({
-        cursor: this.paginationOpts?.cursor ?? null,
-        numItems: this.paginationOpts?.numItems ?? 20,
+        cursor: paginate.cursor ?? null,
+        numItems: paginate.numItems ?? 20,
       });
 
       let pageRows = paginationResult.page;
@@ -1276,12 +1995,13 @@ export class GelRelationalQuery<
     if (queryConfig.postFilters.length > 0) {
       query = query.filter((q: any) => {
         // Combine all post-filters with AND logic
-        let result = q;
+        let result: any | null = null;
         for (const filter of queryConfig.postFilters) {
           const filterFn = this._toConvexExpression(filter);
-          result = filterFn(result);
+          const expr = filterFn(q);
+          result = result ? q.and(result, expr) : expr;
         }
-        return result;
+        return result ?? q;
       });
     }
 
@@ -1292,15 +2012,16 @@ export class GelRelationalQuery<
     if (typeof offset !== 'number') {
       throw new Error('Only numeric offset is supported in Better Convex ORM.');
     }
-    const limit = config.limit ?? 1000; // Default max 1000 to prevent unbounded queries
-    if (typeof limit !== 'number') {
-      throw new Error('Only numeric limit is supported in Better Convex ORM.');
-    }
-    const fetchLimit = offset > 0 ? offset + limit : limit;
-    let rows = await query.take(fetchLimit);
+    const limit = this._resolveNonPaginatedLimit(config);
+    const paginateAfterPostFetchSort =
+      usePostFetchSort && postFetchOrders.length > 0;
+    let rows =
+      limit === undefined || paginateAfterPostFetchSort
+        ? await query.collect()
+        : await query.take(offset > 0 ? offset + limit : limit);
 
     // Apply offset slicing if needed
-    if (offset > 0) {
+    if (!paginateAfterPostFetchSort && offset > 0) {
       rows = rows.slice(offset);
     }
 
@@ -1333,6 +2054,15 @@ export class GelRelationalQuery<
       rows = rows.sort((a: any, b: any) =>
         this._compareByOrderSpecs(a, b, postFetchOrders)
       );
+    }
+
+    if (paginateAfterPostFetchSort) {
+      if (offset > 0) {
+        rows = rows.slice(offset);
+      }
+      if (limit !== undefined) {
+        rows = rows.slice(0, limit);
+      }
     }
 
     // Load relations if configured
@@ -1379,26 +2109,28 @@ export class GelRelationalQuery<
    */
   private _toConvexQuery(): {
     table: string;
+    strategy: IndexStrategy;
     index?: { name: string; filters: FilterExpression<boolean>[] };
+    probeFilters: FilterExpression<boolean>[][];
     postFilters: FilterExpression<boolean>[];
     order?: { direction: 'asc' | 'desc'; field: string }[];
   } {
     const config = this.config as any;
 
-    // Initialize compiler for this table
+    // Initialize compiler for this table using declared indexes
+    const tableIndexes = getIndexes(this.tableConfig.table).map((index) => ({
+      indexName: index.name,
+      indexFields: index.fields,
+    }));
+
     const compiler = new WhereClauseCompiler(
       this.tableConfig.table.tableName,
-      this.edgeMetadata
+      tableIndexes
     );
 
     // Compile where clause to FilterExpression (if present)
     let whereExpression: FilterExpression<boolean> | undefined;
-    if (config.where) {
-      if (typeof config.where === 'function') {
-        throw new Error(
-          'Function-style where clauses are not supported in Drizzle v1 mode.'
-        );
-      }
+    if (config.where && typeof config.where !== 'function') {
       whereExpression = this._buildFilterExpression(
         config.where as RelationsFilter<any, any>,
         this.tableConfig
@@ -1411,16 +2143,23 @@ export class GelRelationalQuery<
     // Build query config
     const result: {
       table: string;
+      strategy: IndexStrategy;
       index?: { name: string; filters: FilterExpression<boolean>[] };
+      probeFilters: FilterExpression<boolean>[][];
       postFilters: FilterExpression<boolean>[];
       order?: { direction: 'asc' | 'desc'; field: string }[];
     } = {
       table: this.tableConfig.table.tableName,
+      strategy: compiled.strategy,
+      probeFilters: compiled.probeFilters,
       postFilters: compiled.postFilters,
     };
 
     // Add index if selected
-    if (compiled.selectedIndex && compiled.indexFilters.length > 0) {
+    if (
+      compiled.selectedIndex &&
+      (compiled.indexFilters.length > 0 || compiled.probeFilters.length > 0)
+    ) {
       result.index = {
         name: compiled.selectedIndex.indexName,
         filters: compiled.indexFilters,
@@ -1524,11 +2263,24 @@ export class GelRelationalQuery<
     query: any,
     filter: FilterExpression<boolean>
   ): any {
-    // For index filters, we only handle binary eq expressions
-    if (filter.type === 'binary' && filter.operator === 'eq') {
+    if (filter.type === 'binary') {
       const [field, value] = filter.operands;
-      if (isFieldReference(field)) {
-        return query.eq(field.fieldName, value);
+      if (!isFieldReference(field)) {
+        return query;
+      }
+      switch (filter.operator) {
+        case 'eq':
+          return query.eq(field.fieldName, value);
+        case 'gt':
+          return query.gt(field.fieldName, value);
+        case 'gte':
+          return query.gte(field.fieldName, value);
+        case 'lt':
+          return query.lt(field.fieldName, value);
+        case 'lte':
+          return query.lte(field.fieldName, value);
+        default:
+          return query;
       }
     }
     return query;
@@ -1866,7 +2618,8 @@ export class GelRelationalQuery<
           targetFields,
           `${tableConfig.name}.${relationName}`,
           edge.targetTable,
-          strict
+          strict,
+          this.allowFullScan
         );
 
     const entries = Array.from(sourceKeyMap.entries());
@@ -2064,8 +2817,21 @@ export class GelRelationalQuery<
       'limit' in relationConfig
         ? (relationConfig as any).limit
         : undefined;
-    if (perParentLimit !== undefined && typeof perParentLimit !== 'number') {
-      throw new Error('Only numeric limit is supported in Better Convex ORM.');
+    const effectivePerParentLimit =
+      perParentLimit ?? tableConfig.defaults?.defaultLimit;
+    if (
+      effectivePerParentLimit !== undefined &&
+      (!Number.isInteger(effectivePerParentLimit) ||
+        effectivePerParentLimit < 1)
+    ) {
+      throw new Error(
+        'Only positive integer limit is supported in Better Convex ORM.'
+      );
+    }
+    if (effectivePerParentLimit === undefined && !this.allowFullScan) {
+      throw new Error(
+        `Relation "${tableConfig.name}.${relationName}" requires limit, allowFullScan: true, or defineSchema(..., { defaults: { defaultLimit } }).`
+      );
     }
 
     const perParentOffset =
@@ -2083,8 +2849,8 @@ export class GelRelationalQuery<
       if (perParentOffset !== undefined && perParentOffset > 0) {
         result = result.slice(perParentOffset);
       }
-      if (perParentLimit !== undefined) {
-        result = result.slice(0, perParentLimit);
+      if (effectivePerParentLimit !== undefined) {
+        result = result.slice(0, effectivePerParentLimit);
       }
       return result;
     };
@@ -2107,7 +2873,8 @@ export class GelRelationalQuery<
         edge.through.sourceFields,
         `${tableConfig.name}.${relationName}`,
         edge.through.table,
-        strict
+        strict,
+        this.allowFullScan
       );
 
       const entries = Array.from(sourceKeyMap.entries());
@@ -2151,7 +2918,8 @@ export class GelRelationalQuery<
               targetFields,
               `${tableConfig.name}.${relationName}`,
               edge.targetTable,
-              strict
+              strict,
+              this.allowFullScan
             );
 
         const targetEntries = Array.from(targetKeyMap.entries());
@@ -2184,7 +2952,8 @@ export class GelRelationalQuery<
         targetFields,
         `${tableConfig.name}.${relationName}`,
         edge.targetTable,
-        strict
+        strict,
+        this.allowFullScan
       );
 
       const entries = Array.from(sourceKeyMap.entries());
@@ -2198,8 +2967,12 @@ export class GelRelationalQuery<
             indexName
           );
 
-          if (orderSpecs.length === 0 && perParentLimit !== undefined) {
-            const fetchLimit = (perParentOffset ?? 0) + (perParentLimit ?? 0);
+          if (
+            orderSpecs.length === 0 &&
+            effectivePerParentLimit !== undefined
+          ) {
+            const fetchLimit =
+              (perParentOffset ?? 0) + (effectivePerParentLimit ?? 0);
             return await query.take(fetchLimit);
           }
 
@@ -2357,7 +3130,10 @@ export class GelRelationalQuery<
       }
 
       // M6.5 Phase 3: Apply per-parent offset/limit
-      if (perParentOffset !== undefined || perParentLimit !== undefined) {
+      if (
+        perParentOffset !== undefined ||
+        effectivePerParentLimit !== undefined
+      ) {
         for (const [parentKey, children] of byParentKey.entries()) {
           byParentKey.set(parentKey, applyOffsetAndLimit(children));
         }

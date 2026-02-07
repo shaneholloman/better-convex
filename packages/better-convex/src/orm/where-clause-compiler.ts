@@ -9,15 +9,20 @@
  * Pattern from Drizzle: drizzle-orm/mysql-core/query-builders/select.ts
  */
 
-import type { EdgeMetadata } from './extractRelationsConfig';
 import type {
   BinaryExpression,
-  ExpressionVisitor,
   FilterExpression,
   LogicalExpression,
   UnaryExpression,
 } from './filter-expression';
-import { isFieldReference } from './filter-expression';
+import {
+  eq,
+  fieldRef,
+  gt,
+  gte,
+  isFieldReference,
+  lt,
+} from './filter-expression';
 
 // ============================================================================
 // Compilation Result
@@ -28,19 +33,29 @@ import { isFieldReference } from './filter-expression';
  * Contains index selection and filter expressions
  */
 export interface WhereClauseResult {
+  /** Planning strategy used for index compilation */
+  strategy: IndexStrategy;
   /** Selected index for query optimization (null if no suitable index) */
-  selectedIndex: EdgeMetadata | null;
-  /** Filters that can use the index (eq on indexed fields) */
+  selectedIndex: IndexLike | null;
+  /** Filters that can use the index (eq/range on indexed fields) */
   indexFilters: FilterExpression<boolean>[];
+  /** Multi-probe filter groups for OR/inArray index union plans */
+  probeFilters: FilterExpression<boolean>[][];
   /** Filters applied after index scan (gt, lt, and, or, not) */
   postFilters: FilterExpression<boolean>[];
 }
+
+export type IndexStrategy =
+  | 'none'
+  | 'singleIndex'
+  | 'rangeIndex'
+  | 'multiProbe';
 
 /**
  * Index match score for ranking candidate indexes
  */
 interface IndexScore {
-  index: EdgeMetadata;
+  index: IndexLike;
   score: number;
   matchType: 'exact' | 'prefix' | 'partial';
   matchedFields: string[];
@@ -59,10 +74,15 @@ interface IndexScore {
  * 3. Select best index (exact > prefix > partial)
  * 4. Split filters into index-compatible vs post-filters
  */
+export interface IndexLike {
+  indexName: string;
+  indexFields: string[];
+}
+
 export class WhereClauseCompiler {
   constructor(
     _tableName: string,
-    private availableIndexes: EdgeMetadata[]
+    private availableIndexes: IndexLike[]
   ) {}
 
   /**
@@ -77,10 +97,17 @@ export class WhereClauseCompiler {
     // No filter - return empty result
     if (!expression) {
       return {
+        strategy: 'none',
         selectedIndex: null,
         indexFilters: [],
+        probeFilters: [],
         postFilters: [],
       };
+    }
+
+    const specialCase = this.tryCompileSpecialCase(expression);
+    if (specialCase) {
+      return specialCase;
     }
 
     // Extract all field references from expression
@@ -96,10 +123,472 @@ export class WhereClauseCompiler {
     );
 
     return {
+      strategy:
+        selectedIndex && indexFilters.length > 0 ? 'singleIndex' : 'none',
       selectedIndex,
       indexFilters,
+      probeFilters: [],
       postFilters,
     };
+  }
+
+  private tryCompileSpecialCase(
+    expression: FilterExpression<boolean>
+  ): WhereClauseResult | null {
+    if (expression.type === 'binary') {
+      const binaryExpression = expression as BinaryExpression;
+      return (
+        this.tryCompileInArray(binaryExpression) ??
+        this.tryCompileNe(binaryExpression) ??
+        this.tryCompileNotIn(binaryExpression) ??
+        this.tryCompileStartsWith(binaryExpression) ??
+        this.tryCompileLikePrefix(binaryExpression)
+      );
+    }
+
+    if (expression.type === 'unary') {
+      return (
+        this.tryCompileIsNull(expression as UnaryExpression) ??
+        this.tryCompileIsNotNull(expression as UnaryExpression)
+      );
+    }
+
+    if (expression.type === 'logical') {
+      return this.tryCompileOrEquality(expression as LogicalExpression);
+    }
+
+    return null;
+  }
+
+  private tryCompileInArray(
+    expression: BinaryExpression
+  ): WhereClauseResult | null {
+    if (expression.operator !== 'inArray') {
+      return null;
+    }
+    const [field, values] = expression.operands;
+    if (
+      !isFieldReference(field) ||
+      !Array.isArray(values) ||
+      values.length < 1
+    ) {
+      return null;
+    }
+    const selectedIndex = this.findLeadingIndex(field.fieldName);
+    if (!selectedIndex) {
+      return null;
+    }
+
+    const uniqueValues = Array.from(new Set(values));
+    return {
+      strategy: 'multiProbe',
+      selectedIndex,
+      indexFilters: [],
+      probeFilters: uniqueValues.map((value) => [
+        eq(fieldRef(field.fieldName) as any, value as any),
+      ]),
+      postFilters: [expression],
+    };
+  }
+
+  private tryCompileNe(expression: BinaryExpression): WhereClauseResult | null {
+    if (expression.operator !== 'ne') {
+      return null;
+    }
+    const [field, value] = expression.operands;
+    if (!isFieldReference(field)) {
+      return null;
+    }
+    const selectedIndex = this.findLeadingIndex(field.fieldName);
+    if (!selectedIndex) {
+      return null;
+    }
+
+    const probeFilters = this.buildComplementProbeFilters(field.fieldName, [
+      value,
+    ]);
+    if (!probeFilters || probeFilters.length === 0) {
+      return null;
+    }
+
+    return {
+      strategy: 'multiProbe',
+      selectedIndex,
+      indexFilters: [],
+      probeFilters,
+      postFilters: [expression],
+    };
+  }
+
+  private tryCompileNotIn(
+    expression: BinaryExpression
+  ): WhereClauseResult | null {
+    if (expression.operator !== 'notInArray') {
+      return null;
+    }
+    const [field, values] = expression.operands;
+    if (
+      !isFieldReference(field) ||
+      !Array.isArray(values) ||
+      values.length < 1
+    ) {
+      return null;
+    }
+    const selectedIndex = this.findLeadingIndex(field.fieldName);
+    if (!selectedIndex) {
+      return null;
+    }
+
+    const probeFilters = this.buildComplementProbeFilters(
+      field.fieldName,
+      values
+    );
+    if (!probeFilters || probeFilters.length === 0) {
+      return null;
+    }
+
+    return {
+      strategy: 'multiProbe',
+      selectedIndex,
+      indexFilters: [],
+      probeFilters,
+      postFilters: [expression],
+    };
+  }
+
+  private tryCompileIsNull(
+    expression: UnaryExpression
+  ): WhereClauseResult | null {
+    if (expression.operator !== 'isNull') {
+      return null;
+    }
+    const [operand] = expression.operands;
+    if (!isFieldReference(operand)) {
+      return null;
+    }
+    const selectedIndex = this.findLeadingIndex(operand.fieldName);
+    if (!selectedIndex) {
+      return null;
+    }
+
+    return {
+      strategy: 'singleIndex',
+      selectedIndex,
+      indexFilters: [eq(fieldRef(operand.fieldName) as any, null)],
+      probeFilters: [],
+      postFilters: [],
+    };
+  }
+
+  private tryCompileIsNotNull(
+    expression: UnaryExpression
+  ): WhereClauseResult | null {
+    if (expression.operator !== 'isNotNull') {
+      return null;
+    }
+    const [operand] = expression.operands;
+    if (!isFieldReference(operand)) {
+      return null;
+    }
+    const selectedIndex = this.findLeadingIndex(operand.fieldName);
+    if (!selectedIndex) {
+      return null;
+    }
+
+    const probeFilters = this.buildComplementProbeFilters(operand.fieldName, [
+      null,
+    ]);
+    if (!probeFilters || probeFilters.length === 0) {
+      return null;
+    }
+
+    return {
+      strategy: 'multiProbe',
+      selectedIndex,
+      indexFilters: [],
+      probeFilters,
+      postFilters: [expression],
+    };
+  }
+
+  private tryCompileStartsWith(
+    expression: BinaryExpression
+  ): WhereClauseResult | null {
+    if (expression.operator !== 'startsWith') {
+      return null;
+    }
+    const [field, value] = expression.operands;
+    if (!isFieldReference(field) || typeof value !== 'string' || !value) {
+      return null;
+    }
+
+    const selectedIndex = this.findLeadingIndex(field.fieldName);
+    if (!selectedIndex) {
+      return null;
+    }
+
+    const upperBound = this.getPrefixUpperBound(value);
+    const rangeFilters: FilterExpression<boolean>[] = [
+      gte(fieldRef(field.fieldName) as any, value as any),
+    ];
+    if (upperBound) {
+      rangeFilters.push(
+        lt(fieldRef(field.fieldName) as any, upperBound as any)
+      );
+    }
+
+    return {
+      strategy: 'rangeIndex',
+      selectedIndex,
+      indexFilters: rangeFilters,
+      probeFilters: [],
+      postFilters: [expression],
+    };
+  }
+
+  private tryCompileLikePrefix(
+    expression: BinaryExpression
+  ): WhereClauseResult | null {
+    if (expression.operator !== 'like') {
+      return null;
+    }
+
+    const [field, value] = expression.operands;
+    if (!isFieldReference(field) || typeof value !== 'string') {
+      return null;
+    }
+
+    const prefix = this.getLikePrefix(value);
+    if (!prefix) {
+      return null;
+    }
+
+    const selectedIndex = this.findLeadingIndex(field.fieldName);
+    if (!selectedIndex) {
+      return null;
+    }
+
+    const upperBound = this.getPrefixUpperBound(prefix);
+    const rangeFilters: FilterExpression<boolean>[] = [
+      gte(fieldRef(field.fieldName) as any, prefix as any),
+    ];
+    if (upperBound) {
+      rangeFilters.push(
+        lt(fieldRef(field.fieldName) as any, upperBound as any)
+      );
+    }
+
+    return {
+      strategy: 'rangeIndex',
+      selectedIndex,
+      indexFilters: rangeFilters,
+      probeFilters: [],
+      postFilters: [expression],
+    };
+  }
+
+  private tryCompileOrEquality(
+    expression: LogicalExpression
+  ): WhereClauseResult | null {
+    if (expression.operator !== 'or' || expression.operands.length < 1) {
+      return null;
+    }
+
+    let fieldName: string | null = null;
+    const values: unknown[] = [];
+    for (const operand of expression.operands) {
+      if (operand.type === 'binary') {
+        const [field, value] = operand.operands;
+        if (!isFieldReference(field)) {
+          return null;
+        }
+        if (operand.operator === 'eq') {
+          if (fieldName && fieldName !== field.fieldName) {
+            return null;
+          }
+          fieldName = field.fieldName;
+          values.push(value);
+          continue;
+        }
+        if (operand.operator === 'inArray' && Array.isArray(value)) {
+          if (fieldName && fieldName !== field.fieldName) {
+            return null;
+          }
+          fieldName = field.fieldName;
+          values.push(...value);
+          continue;
+        }
+      }
+      return null;
+    }
+
+    if (!fieldName || values.length === 0) {
+      return null;
+    }
+
+    const selectedIndex = this.findLeadingIndex(fieldName);
+    if (!selectedIndex) {
+      return null;
+    }
+
+    const uniqueValues = Array.from(new Set(values));
+    return {
+      strategy: 'multiProbe',
+      selectedIndex,
+      indexFilters: [],
+      probeFilters: uniqueValues.map((value) => [
+        eq(fieldRef(fieldName) as any, value as any),
+      ]),
+      postFilters: [expression],
+    };
+  }
+
+  private findLeadingIndex(fieldName: string): IndexLike | null {
+    const candidates = this.availableIndexes
+      .filter((index) => index.indexFields[0] === fieldName)
+      .sort((a, b) => a.indexFields.length - b.indexFields.length);
+    return candidates[0] ?? null;
+  }
+
+  private getLikePrefix(pattern: string): string | null {
+    if (!pattern || pattern.startsWith('%') || pattern.includes('_')) {
+      return null;
+    }
+    const wildcardIndex = pattern.indexOf('%');
+    if (wildcardIndex === -1) {
+      return null;
+    }
+    if (wildcardIndex !== pattern.length - 1) {
+      return null;
+    }
+    const prefix = pattern.slice(0, -1);
+    return prefix || null;
+  }
+
+  private getPrefixUpperBound(prefix: string): string | null {
+    if (!prefix) {
+      return null;
+    }
+    const chars = Array.from(prefix);
+    for (let index = chars.length - 1; index >= 0; index -= 1) {
+      const codePoint = chars[index].codePointAt(0);
+      if (codePoint === undefined) {
+        continue;
+      }
+      if (codePoint < 0x10_ff_ff) {
+        chars[index] = String.fromCodePoint(codePoint + 1);
+        return chars.slice(0, index + 1).join('');
+      }
+    }
+    return null;
+  }
+
+  private buildComplementProbeFilters(
+    fieldName: string,
+    excludedValues: unknown[]
+  ): FilterExpression<boolean>[][] | null {
+    const sortedValues = this.sortComparableValues(excludedValues);
+    if (!sortedValues || sortedValues.length === 0) {
+      return null;
+    }
+
+    const field = fieldRef(fieldName) as any;
+    const probes: FilterExpression<boolean>[][] = [];
+
+    const first = sortedValues[0];
+    probes.push([lt(field, first as any)]);
+
+    for (let i = 1; i < sortedValues.length; i += 1) {
+      const previous = sortedValues[i - 1];
+      const current = sortedValues[i];
+      probes.push([gt(field, previous as any), lt(field, current as any)]);
+    }
+
+    const last = sortedValues.at(-1)!;
+    probes.push([gt(field, last as any)]);
+
+    return probes;
+  }
+
+  private sortComparableValues(values: unknown[]): unknown[] | null {
+    const comparableValues: unknown[] = [];
+    for (const value of values) {
+      if (!this.isComparableIndexValue(value)) {
+        return null;
+      }
+      comparableValues.push(value);
+    }
+
+    const sorted = [...comparableValues].sort((a, b) => {
+      const comparison = this.compareIndexValues(a, b);
+      if (comparison === null) {
+        throw new Error('Index value comparison is not supported.');
+      }
+      return comparison;
+    });
+
+    const deduped: unknown[] = [];
+    for (const value of sorted) {
+      if (deduped.length === 0) {
+        deduped.push(value);
+        continue;
+      }
+      const last = deduped.at(-1)!;
+      const comparison = this.compareIndexValues(last, value);
+      if (comparison !== 0) {
+        deduped.push(value);
+      }
+    }
+    return deduped;
+  }
+
+  private isComparableIndexValue(value: unknown): boolean {
+    if (value === null) {
+      return true;
+    }
+    if (typeof value === 'string') {
+      return true;
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value);
+    }
+    if (typeof value === 'bigint') {
+      return true;
+    }
+    if (typeof value === 'boolean') {
+      return true;
+    }
+    return false;
+  }
+
+  private compareIndexValues(a: unknown, b: unknown): number | null {
+    if (a === b) {
+      return 0;
+    }
+    if (a === null) {
+      return -1;
+    }
+    if (b === null) {
+      return 1;
+    }
+    if (typeof a !== typeof b) {
+      return null;
+    }
+    switch (typeof a) {
+      case 'string':
+        return a < (b as string) ? -1 : 1;
+      case 'number':
+        if (!Number.isFinite(a) || !Number.isFinite(b as number)) {
+          return null;
+        }
+        return a < (b as number) ? -1 : 1;
+      case 'bigint':
+        return a < (b as bigint) ? -1 : 1;
+      case 'boolean':
+        return Number(a) - Number(b as boolean);
+      default:
+        return null;
+    }
   }
 
   /**
@@ -114,33 +603,45 @@ export class WhereClauseCompiler {
   ): Set<string> {
     const fields = new Set<string>();
 
-    const visitor: ExpressionVisitor<void> = {
-      visitBinary: (expr: BinaryExpression) => {
+    const isIndexableOperator = (operator: string) =>
+      operator === 'eq' ||
+      operator === 'gt' ||
+      operator === 'gte' ||
+      operator === 'lt' ||
+      operator === 'lte';
+
+    const visit = (expr: FilterExpression<boolean>, indexable: boolean) => {
+      if (expr.type === 'binary') {
         const [field] = expr.operands;
-        if (isFieldReference(field)) {
+        if (
+          indexable &&
+          isIndexableOperator(expr.operator) &&
+          isFieldReference(field)
+        ) {
           fields.add(field.fieldName);
         }
-      },
-      visitLogical: (expr: LogicalExpression) => {
-        // Recursively traverse nested expressions
-        for (const operand of expr.operands) {
-          operand.accept(visitor);
+        return;
+      }
+      if (expr.type === 'logical') {
+        if (expr.operator === 'and') {
+          for (const operand of expr.operands) {
+            visit(operand, indexable);
+          }
+        } else {
+          // OR is not indexable - skip fields inside OR
+          for (const operand of expr.operands) {
+            visit(operand, false);
+          }
         }
-      },
-      visitUnary: (expr: UnaryExpression) => {
-        // Recursively traverse nested expression
-        const operand = expr.operands[0];
-        // Only FilterExpression has accept method, not FieldReference
-        if ('accept' in operand && typeof operand.accept === 'function') {
-          operand.accept(visitor);
-        } else if (isFieldReference(operand)) {
-          // FieldReference in unary expression (isNull, isNotNull) - just extract field name
-          fields.add(operand.fieldName);
-        }
-      },
+        return;
+      }
+      if (expr.type === 'unary') {
+        // Unary operators are not indexable
+        return;
+      }
     };
 
-    expression.accept(visitor);
+    visit(expression, true);
     return fields;
   }
 
@@ -156,7 +657,7 @@ export class WhereClauseCompiler {
    * @param referencedFields - Fields referenced in filter expression
    * @returns Best matching index or null
    */
-  private selectIndex(referencedFields: Set<string>): EdgeMetadata | null {
+  private selectIndex(referencedFields: Set<string>): IndexLike | null {
     if (referencedFields.size === 0 || this.availableIndexes.length === 0) {
       return null;
     }
@@ -191,7 +692,7 @@ export class WhereClauseCompiler {
    * @returns Score or null if no match
    */
   private scoreIndex(
-    index: EdgeMetadata,
+    index: IndexLike,
     referencedFields: Set<string>
   ): IndexScore | null {
     const indexFields = index.indexFields;
@@ -227,7 +728,9 @@ export class WhereClauseCompiler {
         index,
         score: 50 * overlapRatio,
         matchType: 'partial',
-        matchedFields: indexFields.filter((f) => referencedFields.has(f)),
+        matchedFields: indexFields.filter((f: string) =>
+          referencedFields.has(f)
+        ),
       };
     }
 
@@ -281,6 +784,7 @@ export class WhereClauseCompiler {
    *
    * Index-compatible filters:
    * - Binary eq operations on indexed fields
+   * - Range operations (gt/gte/lt/lte) on the leading index field
    * - Can be pushed into .withIndex() for efficient scanning
    *
    * Post-filters:
@@ -293,7 +797,7 @@ export class WhereClauseCompiler {
    */
   private splitFilters(
     expression: FilterExpression<boolean>,
-    selectedIndex: EdgeMetadata | null
+    selectedIndex: IndexLike | null
   ): {
     indexFilters: FilterExpression<boolean>[];
     postFilters: FilterExpression<boolean>[];
@@ -310,33 +814,56 @@ export class WhereClauseCompiler {
     const indexFilters: FilterExpression<boolean>[] = [];
     const postFilters: FilterExpression<boolean>[] = [];
 
-    // Traverse expression tree and categorize filters
-    const visitor: ExpressionVisitor<void> = {
-      visitBinary: (expr: BinaryExpression) => {
-        const [field] = expr.operands;
-        const isIndexable =
-          expr.operator === 'eq' &&
-          isFieldReference(field) &&
-          indexableFields.has(field.fieldName);
+    const isRangeOperator = (operator: string) =>
+      operator === 'gt' ||
+      operator === 'gte' ||
+      operator === 'lt' ||
+      operator === 'lte';
 
-        if (isIndexable) {
+    const isBinaryExpression = (
+      expr: FilterExpression<boolean>
+    ): expr is BinaryExpression => expr.type === 'binary';
+
+    const isIndexable = (expr: BinaryExpression) => {
+      const [field] = expr.operands;
+      if (!isFieldReference(field)) {
+        return false;
+      }
+      if (!indexableFields.has(field.fieldName)) {
+        return false;
+      }
+      if (expr.operator === 'eq') {
+        return true;
+      }
+      if (isRangeOperator(expr.operator)) {
+        return selectedIndex.indexFields[0] === field.fieldName;
+      }
+      return false;
+    };
+
+    const visit = (expr: FilterExpression<boolean>) => {
+      if (isBinaryExpression(expr)) {
+        if (isIndexable(expr)) {
           indexFilters.push(expr);
         } else {
           postFilters.push(expr);
         }
-      },
-      visitLogical: (expr: LogicalExpression) => {
-        // Logical operators are always post-filters
-        // They combine multiple conditions, can't push into index
-        postFilters.push(expr);
-      },
-      visitUnary: (expr: UnaryExpression) => {
-        // Unary operators (not) are always post-filters
-        postFilters.push(expr);
-      },
+        return;
+      }
+      if (expr.type === 'logical') {
+        if (expr.operator === 'and') {
+          for (const operand of expr.operands) {
+            visit(operand);
+          }
+        } else {
+          postFilters.push(expr);
+        }
+        return;
+      }
+      postFilters.push(expr);
     };
 
-    expression.accept(visitor);
+    visit(expression);
 
     return { indexFilters, postFilters };
   }

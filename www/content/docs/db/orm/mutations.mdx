@@ -123,6 +123,24 @@ const deleted = await db
   .returning();
 ```
 
+## Paginated Mutation Batches
+
+For large update/delete workloads, run one page per mutation call:
+
+```ts
+const batch = await db
+  .update(users)
+  .set({ role: 'member' })
+  .where(eq(users.status, 'pending'))
+  .paginate({ cursor: null, numItems: 100 });
+```
+
+Batch result shape:
+- `continueCursor`
+- `isDone`
+- `numAffected`
+- `page` (only when `.returning()` is used)
+
 <Callout icon={<CheckCircle />}>
 Convex mutations are atomic: all changes succeed or fail together.
 </Callout>

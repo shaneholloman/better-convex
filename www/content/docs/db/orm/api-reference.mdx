@@ -278,27 +278,72 @@ await db.query.users.findMany({
 ```
 
 **Options**
-- `where`: object filter (Drizzle v1 shape)
+- `where`: object filter (Drizzle v1 shape) or predicate function
+- `search`: `{ index, query, filters? }` (full‑text search mode; only on tables with search indexes)
+- `index`: required when `where` is a function (`{ name, range? }`)
 - `orderBy`: `{ field: 'asc' | 'desc' }`
 - `limit`, `offset`
+- `paginate`: `{ cursor, numItems, maximumRowsRead? }` (cursor pagination)
+- `allowFullScan`: opt‑in for object-filter full scans when no index is available (not used with predicate `where` or `search`)
 - `with`: relation loading
 - `columns`: post‑fetch projection
 - `extras`: post‑fetch computed fields
+
+**Sizing rules (non-paginated)**
+- Provide `limit`, or
+- Use `paginate`, or
+- Configure `defineSchema(..., { defaults: { defaultLimit } })`, or
+- Use `allowFullScan: true` to opt into unbounded collection.
+
+For `with` + `many()` relations, set relation `limit` or `defaults.defaultLimit`; otherwise use `allowFullScan: true`.
+
+**Search mode constraints**
+- `orderBy` is not allowed (results stay in Convex relevance order)
+- predicate `where` is not allowed
+- relation-based `where` is not allowed
+- object `where` on base table fields is allowed (post-search filter)
+- `with` is allowed
+
+### `findMany({ search })`
+
+```ts
+await db.query.posts.findMany({
+  search: {
+    index: 'text_search',
+    query: 'galaxy',
+    filters: { type: 'news' },
+  },
+  paginate: { cursor: null, numItems: 20 },
+});
+```
 
 ### `findFirst()`
 
 ```ts
 await db.query.users.findFirst({ where: { email: 'a@b.com' } });
+await db.query.posts.findFirst({
+  search: { index: 'text_search', query: 'galaxy' },
+});
 ```
 
-### `paginate()`
+### `findMany({ paginate })`
 
 ```ts
-await db.query.posts.paginate(
-  { where: { published: true }, orderBy: { _creationTime: 'desc' } },
-  { cursor: null, numItems: 20 }
-);
+await db.query.posts.findMany({
+  where: { published: true },
+  orderBy: { _creationTime: 'desc' },
+  paginate: { cursor: null, numItems: 20 },
+});
 ```
+
+### `db.stream()` (advanced)
+
+```ts
+const rows = await db.stream().query('users').take(1);
+```
+
+`db.stream()` returns a stream reader bound to your schema. Use it for advanced stream operations.
+Most queries should use `findMany()` / `findFirst()`.
 
 ## Query Filters (object `where`)
 
@@ -311,6 +356,20 @@ await db.query.posts.paginate(
 **String operators (post‑fetch)**
 - `like`, `ilike`, `notLike`, `notIlike`
 - `startsWith`, `endsWith`, `contains`
+
+**Index compilation**
+- Index-backed by default when possible.
+- Currently index-compiled: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `notIn`, `isNull`, `isNotNull`, `startsWith`, `like('prefix%')`, and same-field equality `OR`.
+- Remaining operators still require `.allowFullScan()` when no indexable path exists.
+
+**Workarounds for remaining full-scan operators**
+- `arrayContains` / `arrayContained` / `arrayOverlaps`: use an inverted/join table indexed by element.
+- `contains`: use a search index or tokenized denormalized field.
+- `endsWith`: store and index a reversed-string column, then use `startsWith`.
+- `ilike` / `notIlike`: normalize to lowercase in a dedicated indexed field.
+- `notLike`: index a positive pre-filter, then post-filter with `notLike`.
+- `RAW`: keep explicit full-scan opt-in and narrow with indexed filters first.
+- Predicate `where`: provide `index: { name, range? }` and use `paginate.maximumRowsRead` for bounded scans.
 
 ## Mutations
 
@@ -329,10 +388,45 @@ await db
   .where(eq(users._id, userId));
 ```
 
+**Full-scan guardrail**
+- `update()` without `where()` throws unless you call `.allowFullScan()`.
+- Non‑`_id` filters require `.allowFullScan()` only when no index is available.
+- Matched rows are capped by `mutationMaxRows` (default `1000`), collected in `mutationBatchSize` pages (default `100`).
+- Override caps via `defineSchema(..., { defaults: { mutationMaxRows, mutationBatchSize } })`.
+- For large workloads, use `.paginate({ cursor, numItems })` to execute one batch per mutation call.
+- Paged mode returns `{ continueCursor, isDone, numAffected }` (+ `page` when using `.returning()`).
+- Paged mode currently supports single-range index plans only.
+
+```ts
+await db
+  .update(users)
+  .set({ name: 'Ada Lovelace' })
+  .where(eq(users.email, email));
+// If email is not indexed:
+// .allowFullScan();
+```
+
 ### `delete()`
 
 ```ts
 await db.delete(users).where(eq(users._id, userId));
+```
+
+**Full-scan guardrail**
+- `delete()` without `where()` throws unless you call `.allowFullScan()`.
+- Non‑`_id` filters require `.allowFullScan()` only when no index is available.
+- Matched rows are capped by `mutationMaxRows` (default `1000`), collected in `mutationBatchSize` pages (default `100`).
+- Override caps via `defineSchema(..., { defaults: { mutationMaxRows, mutationBatchSize } })`.
+- For large workloads, use `.paginate({ cursor, numItems })` to execute one batch per mutation call.
+- Paged mode returns `{ continueCursor, isDone, numAffected }` (+ `page` when using `.returning()`).
+- Paged mode currently supports single-range index plans only.
+
+```ts
+await db
+  .delete(users)
+  .where(eq(users.email, email));
+// If email is not indexed:
+// .allowFullScan();
 ```
 
 **Delete helpers**
@@ -374,6 +468,16 @@ await db
   });
 ```
 
+If the conflict target has no index, call `.allowFullScan()` to opt in:
+
+```ts
+await db
+  .insert(users)
+  .values({ email: 'ada@example.com', name: 'Ada' })
+  .onConflictDoUpdate({ target: users.email, set: { name: 'Ada' } })
+  .allowFullScan();
+```
+
 ## Filter Expression Helpers
 
 Use these in mutation `where(...)` clauses:
@@ -410,23 +514,9 @@ getTableColumns(users) // includes _id/_creationTime
 getTableConfig(users)  // indexes/unique/fks/rls/checks
 ```
 
-## Stream & Pagination Helpers
-
-Native fork of `convex-helpers` stream utilities, exported from `better-convex/orm`:
-
-```ts
-db.stream() // preferred entrypoint
-db.stream(schema) // optional explicit schema
-stream(ctx.db, schema)
-mergedStream(streams, indexFields)
-streamIndexRange(db, schema, table, index, bounds, order)
-getPage(ctx, request)
-paginator(db, schema)
-```
-
 ## Notes
 
 - `columns` projection is post‑fetch
 - String operators are post‑fetch
 - `extras` are computed post‑fetch
-- `paginate()` uses the first `orderBy` field for cursor ordering
+- `findMany({ paginate })` uses the first `orderBy` field for cursor ordering

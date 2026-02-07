@@ -1,5 +1,3 @@
-/* eslint-disable no-unexpected-multiline */
-
 import type {
   DataModelFromSchemaDefinition,
   DocumentByInfo,

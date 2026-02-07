@@ -6,11 +6,8 @@
  */
 
 import type {
-  DataModelFromSchemaDefinition,
   GenericDatabaseReader,
   GenericDatabaseWriter,
-  PaginationOptions,
-  PaginationResult,
   SchedulableFunctionReference,
   Scheduler,
   SchemaDefinition,
@@ -22,14 +19,15 @@ import { buildForeignKeyGraph, type OrmContextValue } from './mutation-utils';
 import { RelationalQueryBuilder } from './query-builder';
 import { defineRelations, type TablesRelationalConfig } from './relations';
 import type { RlsContext } from './rls/types';
+import { type StreamDatabaseReader, stream } from './stream';
 import {
-  type StreamDatabaseReader,
-  type StreamQueryInitializer,
-  stream,
-} from './stream';
-import { Brand, OrmContext, OrmSchemaDefinition } from './symbols';
+  Brand,
+  OrmContext,
+  type OrmRuntimeOptions,
+  OrmSchemaDefinition,
+  OrmSchemaOptions,
+} from './symbols';
 import type { ConvexTable } from './table';
-import type { InferSelectModel } from './types';
 import { ConvexUpdateBuilder } from './update';
 
 /**
@@ -44,38 +42,13 @@ import { ConvexUpdateBuilder } from './update';
  * Pattern from: drizzle-orm/src/pg-core/db.ts lines 50-54
  * Key insight: TSchema[K] must be captured at mapping time, not evaluated in conditionals later.
  */
-type SchemaDefinitionFromConfig<TSchema extends TablesRelationalConfig<any>> =
-  TSchema extends TablesRelationalConfig<infer SchemaDef>
-    ? SchemaDef
+type SchemaDefOf<TSchema extends TablesRelationalConfig> =
+  NonNullable<TSchema[typeof OrmSchemaDefinition]> extends SchemaDefinition<
+    any,
+    boolean
+  >
+    ? NonNullable<TSchema[typeof OrmSchemaDefinition]>
     : SchemaDefinition<any, boolean>;
-
-type StreamRowForTable<
-  TSchema extends TablesRelationalConfig,
-  TableName extends keyof TSchema & string,
-> = InferSelectModel<TSchema[TableName]['table']>;
-
-type StreamQueryForTable<
-  TSchema extends TablesRelationalConfig,
-  TableName extends keyof TSchema & string,
-> = Omit<
-  StreamQueryInitializer<SchemaDefinitionFromConfig<TSchema>, TableName>,
-  'paginate' | 'collect' | 'take' | 'first' | 'unique'
-> & {
-  paginate(
-    paginationOpts: PaginationOptions
-  ): Promise<PaginationResult<StreamRowForTable<TSchema, TableName>>>;
-  collect(): Promise<StreamRowForTable<TSchema, TableName>[]>;
-  take(n: number): Promise<StreamRowForTable<TSchema, TableName>[]>;
-  first(): Promise<StreamRowForTable<TSchema, TableName> | null>;
-  unique(): Promise<StreamRowForTable<TSchema, TableName> | null>;
-};
-
-type StreamDatabaseReaderForTables<TSchema extends TablesRelationalConfig> =
-  Omit<StreamDatabaseReader<SchemaDefinitionFromConfig<TSchema>>, 'query'> & {
-    query<TableName extends keyof TSchema & string>(
-      tableName: TableName
-    ): StreamQueryForTable<TSchema, TableName>;
-  };
 
 export type DatabaseWithQuery<TSchema extends TablesRelationalConfig> =
   GenericDatabaseReader<any> & {
@@ -84,12 +57,7 @@ export type DatabaseWithQuery<TSchema extends TablesRelationalConfig> =
       : {
           [K in keyof TSchema]: RelationalQueryBuilder<TSchema, TSchema[K]>;
         };
-    stream: {
-      (): StreamDatabaseReaderForTables<TSchema>;
-      <Schema extends SchemaDefinition<any, boolean>>(
-        schema: Schema
-      ): StreamDatabaseReader<Schema>;
-    };
+    stream: () => StreamDatabaseReader<SchemaDefOf<TSchema>>;
   };
 
 export type DatabaseWithSkipRules<T> = T & { skipRules: { table: T } };
@@ -111,6 +79,7 @@ export type DatabaseWithMutations<TSchema extends TablesRelationalConfig> =
 export type CreateDatabaseOptions = {
   scheduler?: Scheduler;
   scheduledDelete?: SchedulableFunctionReference;
+  scheduledMutationBatch?: SchedulableFunctionReference;
   rls?: RlsContext;
   relationLoading?: {
     concurrency?: number;
@@ -163,10 +132,14 @@ export function createDatabase<TSchema extends TablesRelationalConfig>(
   edgeMetadata: EdgeMetadata[],
   options?: CreateDatabaseOptions
 ): DatabaseWithSkipRules<DatabaseWithQuery<TSchema>> {
-  const strict = Object.values(schema)[0]?.strict ?? true;
-  const schemaDefinition = (
-    schema as TablesRelationalConfig<SchemaDefinitionFromConfig<TSchema>>
-  )[OrmSchemaDefinition] as SchemaDefinitionFromConfig<TSchema> | undefined;
+  const schemaOptions = (schema as { [OrmSchemaOptions]?: OrmRuntimeOptions })[
+    OrmSchemaOptions
+  ];
+  const strict = schemaOptions?.strict ?? true;
+  const defaults = schemaOptions?.defaults;
+  const schemaDefinition = (schema as { [OrmSchemaDefinition]?: unknown })[
+    OrmSchemaDefinition
+  ];
   const buildDatabase = (rls: RlsContext | undefined) => {
     const query: any = {};
 
@@ -195,8 +168,10 @@ export function createDatabase<TSchema extends TablesRelationalConfig>(
       foreignKeyGraph: buildForeignKeyGraph(schema),
       scheduler: options?.scheduler,
       scheduledDelete: options?.scheduledDelete,
+      scheduledMutationBatch: options?.scheduledMutationBatch,
       rls,
       strict,
+      defaults,
     };
 
     const baseDb = {
@@ -236,28 +211,23 @@ export function createDatabase<TSchema extends TablesRelationalConfig>(
       return rawDelete(...args);
     };
 
-    const streamFn = (<Schema extends SchemaDefinition<any, boolean>>(
-      schemaParam?: Schema
-    ) => {
-      const effectiveSchema = (schemaParam ?? schemaDefinition) as
-        | Schema
-        | undefined;
-      if (!effectiveSchema) {
+    const streamDb = () => {
+      if (!schemaDefinition) {
         throw new Error(
-          'db.stream() requires a schema from defineSchema(). Call defineSchema(tables) on the same tables object used for defineRelations.'
+          'db.stream() requires defineSchema(). Ensure defineSchema(tables) was used with the same tables object passed to defineRelations.'
         );
       }
       return stream(
-        db as GenericDatabaseReader<DataModelFromSchemaDefinition<Schema>>,
-        effectiveSchema
-      ) as unknown as StreamDatabaseReaderForTables<TSchema>;
-    }) as DatabaseWithQuery<TSchema>['stream'];
+        baseDb as GenericDatabaseReader<any>,
+        schemaDefinition as any
+      );
+    };
 
     // Return extended database with query property
     return {
       ...baseDb,
       query,
-      stream: streamFn,
+      stream: streamDb,
       insert,
       update,
       delete: deleteBuilder,
@@ -283,6 +253,6 @@ export function createDatabase<TSchema extends TablesRelationalConfig>(
  */
 export function buildSchema<TSchema extends Record<string, any>>(
   rawSchema: TSchema
-) {
-  return defineRelations(rawSchema);
+): TablesRelationalConfig {
+  return defineRelations(rawSchema) as TablesRelationalConfig;
 }

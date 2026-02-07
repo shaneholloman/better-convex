@@ -88,7 +88,7 @@ export const ormEdges = extractRelationsConfig(ormSchema);
 
 ## Schema Options
 
-`defineSchema` accepts Convex's schema options and a Better‑Convex `strict` flag.
+`defineSchema` accepts Convex schema options plus Better‑Convex runtime guardrail options.
 
 ```ts
 import { defineSchema } from 'better-convex/orm';
@@ -96,18 +96,43 @@ import { defineSchema } from 'better-convex/orm';
 export default defineSchema({ users, posts }, { strict: false });
 ```
 
-- `strict` (default `true`): missing relation indexes throw at runtime.
-- `strict: false`: relation loading falls back to full‑scan `filter` queries and lets Convex emit warnings.
+- `strict` (default `true`): missing indexes throw unless `allowFullScan: true`.
+- `strict: false`: missing indexes still require `allowFullScan: true`, with fewer warnings.
+
+### Runtime Defaults
+
+Use `defaults` to set global runtime guardrails.
+
+```ts
+export default defineSchema({ users, posts }, {
+  strict: true,
+  defaults: {
+    defaultLimit: 100,      // non-paginated findMany() fallback
+    mutationBatchSize: 100, // update/delete fetch batch size
+    mutationMaxRows: 1000,  // max rows matched by update/delete
+  },
+});
+```
+
+- `defaults.defaultLimit`: used when `findMany()` is non-paginated and `limit` is omitted.
+- `defaults.defaultLimit`: used when `findMany()` is non-paginated and `limit` is omitted. No implicit built-in fallback is applied when this is unset.
+- `defaults.mutationBatchSize`: page size used to collect rows for `update()`/`delete()`. Built-in fallback: `100`.
+- `defaults.mutationMaxRows`: hard cap for matched rows in `update()`/`delete()`. Built-in fallback: `1000`.
+- All defaults must be positive integers.
 
 ### Strict Policy (Guardrails)
 
-Only relation index enforcement is active today. Other guardrails are planned.
+Strict guardrails now cover relation indexes, predicate where(), and unbounded update/delete.
 
-| Area | Current (2026‑02‑05) | Strict `true` | Strict `false` |
+| Area | Current (2026‑02‑06) | Strict `true` | Strict `false` |
 |---|---|---|---|
-| Relation loading missing index | throws | throws | warn + full scan |
+| Relation loading missing index | throws unless `allowFullScan` | throws unless `allowFullScan`; warns when scanning | throws unless `allowFullScan`; no strict warning |
+| Predicate `where` | throws unless `allowFullScan` | throws unless `allowFullScan`; warns when scanning | throws unless `allowFullScan`; warns when scanning |
 | Pagination orderBy missing index | warn + fallback to `_creationTime` | warn + fallback | warn + fallback |
-| Update/delete without `where()` | throws | throws | warn + allow |
+| Unsized non-paginated `findMany()` | throws unless `limit`/`paginate`/`defaultLimit`/`allowFullScan` | same | same |
+| `many()` relation without per-parent limit | throws unless relation `limit`/`defaultLimit`/`allowFullScan` | same | same |
+| Update/delete without `where()` | throws unless `allowFullScan` | throws unless `allowFullScan`; warns when scanning | throws unless `allowFullScan`; no strict warning |
+| Update/delete row count exceeds `mutationMaxRows` | throws | throws | throws |
 
 ## Indexes
 

@@ -14,9 +14,154 @@ import type { RlsContext } from './rls/types';
 import type {
   BuildQueryResult,
   DBQueryConfig,
+  EnforceAllowFullScan,
+  EnforcePredicateIndex,
+  EnforceSearchConstraints,
+  PaginateConfig,
+  PaginatedResult,
+  PredicateWhereIndexConfig,
+  SearchQueryConfig,
+  SearchWhereFilter,
   TableRelationalConfig,
   TablesRelationalConfig,
+  WherePredicate,
 } from './types';
+
+type EnforcedConfig<
+  TConfig,
+  TTableConfig extends TableRelationalConfig,
+> = EnforceSearchConstraints<
+  EnforcePredicateIndex<
+    EnforceAllowFullScan<TConfig, TTableConfig>,
+    TTableConfig
+  >,
+  TTableConfig
+>;
+
+type PredicateIndexName<TTableConfig extends TableRelationalConfig> =
+  PredicateWhereIndexConfig<TTableConfig> extends {
+    name: infer TIndexName extends string;
+  }
+    ? TIndexName
+    : string;
+
+type PredicateIndexConfigByName<
+  TTableConfig extends TableRelationalConfig,
+  TIndexName extends PredicateIndexName<TTableConfig>,
+> = Extract<PredicateWhereIndexConfig<TTableConfig>, { name: TIndexName }>;
+
+type PredicatePaginatedConfig<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+  TIndexName extends PredicateIndexName<TTableConfig>,
+> = Omit<
+  PaginatedConfigNoSearch<TSchema, TTableConfig>,
+  'where' | 'index' | 'allowFullScan' | 'search'
+> & {
+  where: WherePredicate<TTableConfig>;
+  index: PredicateIndexConfigByName<TTableConfig, TIndexName>;
+  allowFullScan?: never;
+};
+
+type PredicateNonPaginatedConfig<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+  TIndexName extends PredicateIndexName<TTableConfig>,
+> = Omit<
+  NonPaginatedConfigNoSearch<TSchema, TTableConfig>,
+  'where' | 'index' | 'allowFullScan' | 'search'
+> & {
+  where: WherePredicate<TTableConfig>;
+  index: PredicateIndexConfigByName<TTableConfig, TIndexName>;
+  allowFullScan?: never;
+};
+
+type SearchPaginatedConfig<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+> = Omit<
+  PaginatedConfig<TSchema, TTableConfig>,
+  'search' | 'where' | 'orderBy' | 'index'
+> & {
+  search: SearchQueryConfig<TTableConfig>;
+  where?: SearchWhereFilter<TTableConfig> | undefined;
+  orderBy?: never;
+  index?: never;
+};
+
+type SearchNonPaginatedConfig<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+> = Omit<
+  NonPaginatedConfig<TSchema, TTableConfig>,
+  'search' | 'where' | 'orderBy' | 'index'
+> & {
+  search: SearchQueryConfig<TTableConfig>;
+  where?: SearchWhereFilter<TTableConfig> | undefined;
+  orderBy?: never;
+  index?: never;
+};
+
+type SearchFindFirstConfig<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+> = Omit<
+  DBQueryConfig<'many', true, TSchema, TTableConfig>,
+  'limit' | 'paginate' | 'search' | 'where' | 'orderBy' | 'index'
+> & {
+  search: SearchQueryConfig<TTableConfig>;
+  where?: SearchWhereFilter<TTableConfig> | undefined;
+  orderBy?: never;
+  index?: never;
+};
+
+type FindManyResult<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+  TConfig,
+> = TConfig extends { paginate: PaginateConfig }
+  ? PaginatedResult<BuildQueryResult<TSchema, TTableConfig, TConfig>>
+  : BuildQueryResult<TSchema, TTableConfig, TConfig>[];
+
+type PaginatedConfig<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+> = DBQueryConfig<'many', true, TSchema, TTableConfig> & {
+  paginate: PaginateConfig;
+  limit?: never;
+  offset?: never;
+};
+
+type NonPaginatedConfig<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+> = Omit<DBQueryConfig<'many', true, TSchema, TTableConfig>, 'paginate'> & {
+  paginate?: never;
+};
+
+type PaginatedConfigNoSearch<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+> = Omit<PaginatedConfig<TSchema, TTableConfig>, 'search'> & {
+  search?: undefined;
+};
+
+type NonPaginatedConfigNoSearch<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+> = Omit<NonPaginatedConfig<TSchema, TTableConfig>, 'search'> & {
+  search?: undefined;
+};
+
+type FindFirstConfigNoSearch<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+> = Omit<
+  DBQueryConfig<'many', true, TSchema, TTableConfig>,
+  'limit' | 'paginate' | 'search'
+> & {
+  search?: undefined;
+};
 
 /**
  * Query builder for a specific table
@@ -72,22 +217,73 @@ export class RelationalQueryBuilder<
    *   limit: 10
    * });
    */
-  findMany<TConfig extends DBQueryConfig<'many', true, TSchema, TTableConfig>>(
-    config?: KnownKeysOnly<
+  findMany<TConfig extends SearchPaginatedConfig<TSchema, TTableConfig>>(
+    config: KnownKeysOnly<TConfig, SearchPaginatedConfig<TSchema, TTableConfig>>
+  ): GelRelationalQuery<
+    TSchema,
+    TTableConfig,
+    PaginatedResult<BuildQueryResult<TSchema, TTableConfig, TConfig>>
+  >;
+  findMany<TConfig extends SearchNonPaginatedConfig<TSchema, TTableConfig>>(
+    config: KnownKeysOnly<
       TConfig,
-      DBQueryConfig<'many', true, TSchema, TTableConfig>
-    > &
-      DBQueryConfig<'many', true, TSchema, TTableConfig>
+      SearchNonPaginatedConfig<TSchema, TTableConfig>
+    >
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
     BuildQueryResult<TSchema, TTableConfig, TConfig>[]
-  > {
-    return new GelRelationalQuery<
+  >;
+  findMany<
+    TIndexName extends PredicateIndexName<TTableConfig>,
+    TConfig extends PredicatePaginatedConfig<TSchema, TTableConfig, TIndexName>,
+  >(
+    config: PredicatePaginatedConfig<TSchema, TTableConfig, TIndexName> &
+      TConfig
+  ): GelRelationalQuery<
+    TSchema,
+    TTableConfig,
+    PaginatedResult<BuildQueryResult<TSchema, TTableConfig, TConfig>>
+  >;
+  findMany<
+    TIndexName extends PredicateIndexName<TTableConfig>,
+    TConfig extends PredicateNonPaginatedConfig<
       TSchema,
       TTableConfig,
-      BuildQueryResult<TSchema, TTableConfig, TConfig>[]
-    >(
+      TIndexName
+    >,
+  >(
+    config: PredicateNonPaginatedConfig<TSchema, TTableConfig, TIndexName> &
+      TConfig
+  ): GelRelationalQuery<
+    TSchema,
+    TTableConfig,
+    BuildQueryResult<TSchema, TTableConfig, TConfig>[]
+  >;
+  findMany<TConfig extends PaginatedConfigNoSearch<TSchema, TTableConfig>>(
+    config: KnownKeysOnly<
+      TConfig,
+      PaginatedConfigNoSearch<TSchema, TTableConfig>
+    > &
+      EnforcedConfig<TConfig, TTableConfig>
+  ): GelRelationalQuery<
+    TSchema,
+    TTableConfig,
+    PaginatedResult<BuildQueryResult<TSchema, TTableConfig, TConfig>>
+  >;
+  findMany<TConfig extends NonPaginatedConfigNoSearch<TSchema, TTableConfig>>(
+    config?: KnownKeysOnly<
+      TConfig,
+      NonPaginatedConfigNoSearch<TSchema, TTableConfig>
+    > &
+      EnforcedConfig<TConfig, TTableConfig>
+  ): GelRelationalQuery<
+    TSchema,
+    TTableConfig,
+    FindManyResult<TSchema, TTableConfig, TConfig>
+  >;
+  findMany(config?: any): GelRelationalQuery<TSchema, TTableConfig, any> {
+    return new GelRelationalQuery<TSchema, TTableConfig, any>(
       this.schema,
       this.tableConfig,
       this.edgeMetadata,
@@ -98,7 +294,6 @@ export class RelationalQueryBuilder<
       'many',
       this.allEdges, // M6.5 Phase 2: Pass all edges for nested loading
       this.rls,
-      undefined,
       this.relationLoading
     );
   }
@@ -117,27 +312,26 @@ export class RelationalQueryBuilder<
    *   with: { profile: true }
    * });
    */
-  findFirst<
-    TConfig extends Omit<
-      DBQueryConfig<'many', true, TSchema, TTableConfig>,
-      'limit'
-    >,
-  >(
-    config?: KnownKeysOnly<
-      TConfig,
-      Omit<DBQueryConfig<'many', true, TSchema, TTableConfig>, 'limit'>
-    > &
-      Omit<DBQueryConfig<'many', true, TSchema, TTableConfig>, 'limit'>
+  findFirst<TConfig extends SearchFindFirstConfig<TSchema, TTableConfig>>(
+    config: KnownKeysOnly<TConfig, SearchFindFirstConfig<TSchema, TTableConfig>>
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
     BuildQueryResult<TSchema, TTableConfig, TConfig> | undefined
-  > {
-    return new GelRelationalQuery<
-      TSchema,
-      TTableConfig,
-      BuildQueryResult<TSchema, TTableConfig, TConfig> | undefined
-    >(
+  >;
+  findFirst<TConfig extends FindFirstConfigNoSearch<TSchema, TTableConfig>>(
+    config?: KnownKeysOnly<
+      TConfig,
+      FindFirstConfigNoSearch<TSchema, TTableConfig>
+    > &
+      EnforcedConfig<TConfig, TTableConfig>
+  ): GelRelationalQuery<
+    TSchema,
+    TTableConfig,
+    BuildQueryResult<TSchema, TTableConfig, TConfig> | undefined
+  >;
+  findFirst(config?: any): GelRelationalQuery<TSchema, TTableConfig, any> {
+    return new GelRelationalQuery<TSchema, TTableConfig, any>(
       this.schema,
       this.tableConfig,
       this.edgeMetadata,
@@ -151,70 +345,6 @@ export class RelationalQueryBuilder<
       'first',
       this.allEdges, // M6.5 Phase 2: Pass all edges for nested loading
       this.rls,
-      undefined,
-      this.relationLoading
-    );
-  }
-
-  /**
-   * Paginate rows with cursor-based pagination (O(1) performance)
-   *
-   * @template TConfig - Query configuration type (columns, with, where, orderBy)
-   * @param queryConfig - Optional query configuration (no limit/offset - uses cursor instead)
-   * @param paginationOpts - Pagination options: { cursor: string | null, numItems: number }
-   * @returns Query promise that resolves to { page, continueCursor, isDone }
-   *
-   * @example
-   * const result = await ctx.db.query.users.paginate(
-   *   { where: { active: true } },
-   *   { cursor: null, numItems: 20 }
-   * );
-   * // result = { page: [...], continueCursor: "...", isDone: false }
-   */
-  paginate<
-    TConfig extends Omit<
-      DBQueryConfig<'many', true, TSchema, TTableConfig>,
-      'limit' | 'offset'
-    > = Omit<
-      DBQueryConfig<'many', true, TSchema, TTableConfig>,
-      'limit' | 'offset'
-    >,
-  >(
-    queryConfig?: TConfig &
-      Omit<
-        DBQueryConfig<'many', true, TSchema, TTableConfig>,
-        'limit' | 'offset'
-      >,
-    paginationOpts?: { cursor: string | null; numItems: number }
-  ): GelRelationalQuery<
-    TSchema,
-    TTableConfig,
-    {
-      page: BuildQueryResult<TSchema, TTableConfig, TConfig>[];
-      continueCursor: string | null;
-      isDone: boolean;
-    }
-  > {
-    return new GelRelationalQuery<
-      TSchema,
-      TTableConfig,
-      {
-        page: BuildQueryResult<TSchema, TTableConfig, TConfig>[];
-        continueCursor: string | null;
-        isDone: boolean;
-      }
-    >(
-      this.schema,
-      this.tableConfig,
-      this.edgeMetadata,
-      this.db,
-      queryConfig
-        ? (queryConfig as DBQueryConfig<'many', true, TSchema, TTableConfig>)
-        : ({} as DBQueryConfig<'many', true, TSchema, TTableConfig>),
-      'paginate',
-      this.allEdges, // M6.5 Phase 2: All edges for nested loading
-      this.rls,
-      paginationOpts, // M6.5 Phase 4: Pass pagination options
       this.relationLoading
     );
   }

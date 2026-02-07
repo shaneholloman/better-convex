@@ -1,7 +1,7 @@
 {
-  "name": "convex",
+  "name": "test-convex",
   "private": true,
   "scripts": {
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   }
 }

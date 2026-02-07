@@ -48,76 +48,69 @@ const ormUsersToGroups = convexTable(
   (t) => [index('by_user').on(t.userId)]
 );
 
-// M6.5 Phase 2: Relations for comments + posts (local to this test file)
-const relations = defineRelations(
-  {
-    users: users,
-    posts: posts,
-    comments: ormComments,
-    groups: ormGroups,
-    usersToGroups: ormUsersToGroups,
-    cities: cities,
-  },
-  (r) => ({
-    users: {
-      posts: r.many.posts({
-        from: r.users._id,
-        to: r.posts.authorId,
-      }),
-      groups: r.many.groups({
-        from: r.users._id.through(r.usersToGroups.userId),
-        to: r.groups._id.through(r.usersToGroups.groupId),
-        alias: 'users-groups',
-      }),
-    },
-    posts: {
-      author: r.one.users({
-        from: r.posts.authorId,
-        to: r.users._id,
-      }),
-      comments: r.many.comments({
-        from: r.posts._id,
-        to: r.comments.postId,
-      }),
-    },
-    comments: {
-      post: r.one.posts({
-        from: r.comments.postId,
-        to: r.posts._id,
-      }),
-      author: r.one.users({
-        from: r.comments.authorId,
-        to: r.users._id,
-      }),
-    },
-    groups: {},
-    usersToGroups: {
-      user: r.one.users({
-        from: r.usersToGroups.userId,
-        to: r.users._id,
-      }),
-      group: r.one.groups({
-        from: r.usersToGroups.groupId,
-        to: r.groups._id,
-      }),
-    },
-    cities: {},
-  })
-);
-
-// Local schema with comments table for testing relation loading
-const testSchemaWithComments = defineSchema({
+const testTables = {
   users: users,
   posts: posts,
   comments: ormComments,
   groups: ormGroups,
   usersToGroups: ormUsersToGroups,
   cities: cities,
+};
+
+// Local schema with comments table for testing relation loading
+const testSchemaWithComments = defineSchema(testTables, {
+  defaults: {
+    defaultLimit: 1000,
+  },
 });
 
-// Test schema (local defineRelations config)
-const testSchema = relations;
-const edges = extractRelationsConfig(relations);
+// M6.5 Phase 2: Relations for comments + posts (local to this test file)
+const testSchema = defineRelations(testTables, (r) => ({
+  users: {
+    posts: r.many.posts({
+      from: r.users._id,
+      to: r.posts.authorId,
+    }),
+    groups: r.many.groups({
+      from: r.users._id.through(r.usersToGroups.userId),
+      to: r.groups._id.through(r.usersToGroups.groupId),
+      alias: 'users-groups',
+    }),
+  },
+  posts: {
+    author: r.one.users({
+      from: r.posts.authorId,
+      to: r.users._id,
+    }),
+    comments: r.many.comments({
+      from: r.posts._id,
+      to: r.comments.postId,
+    }),
+  },
+  comments: {
+    post: r.one.posts({
+      from: r.comments.postId,
+      to: r.posts._id,
+    }),
+    author: r.one.users({
+      from: r.comments.authorId,
+      to: r.users._id,
+    }),
+  },
+  groups: {},
+  usersToGroups: {
+    user: r.one.users({
+      from: r.usersToGroups.userId,
+      to: r.users._id,
+    }),
+    group: r.one.groups({
+      from: r.usersToGroups.groupId,
+      to: r.groups._id,
+    }),
+  },
+  cities: {},
+}));
+const edges = extractRelationsConfig(testSchema);
 
 type TestCtx = MutationCtx & {
   storage: StorageActionWriter;
@@ -1107,23 +1100,21 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         authorId: id('noIndexUsers').notNull(),
       });
 
-      const noIndexRelations = defineRelations(
-        { noIndexUsers, noIndexPosts },
-        (r) => ({
-          noIndexUsers: {
-            posts: r.many.noIndexPosts({
-              from: r.noIndexUsers._id,
-              to: r.noIndexPosts.authorId,
-            }),
-          },
-          noIndexPosts: {},
-        })
-      );
-
-      const noIndexSchema = defineSchema({
-        noIndexUsers,
-        noIndexPosts,
+      const noIndexTables = { noIndexUsers, noIndexPosts };
+      const noIndexSchema = defineSchema(noIndexTables, {
+        defaults: {
+          defaultLimit: 1000,
+        },
       });
+      const noIndexRelations = defineRelations(noIndexTables, (r) => ({
+        noIndexUsers: {
+          posts: r.many.noIndexPosts({
+            from: r.noIndexUsers._id,
+            to: r.noIndexPosts.authorId,
+          }),
+        },
+        noIndexPosts: {},
+      }));
       const noIndexEdges = extractRelationsConfig(noIndexRelations);
 
       await expect(
@@ -1155,34 +1146,31 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         groupId: id('noIndexThroughGroups').notNull(),
       });
 
-      const noIndexRelations = defineRelations(
-        {
-          noIndexThroughUsers: noIndexUsers,
-          noIndexThroughGroups: noIndexGroups,
-          noIndexUsersToGroups: noIndexUsersToGroups,
-        },
-        (r) => ({
-          noIndexThroughUsers: {
-            groups: r.many.noIndexThroughGroups({
-              from: r.noIndexThroughUsers._id.through(
-                r.noIndexUsersToGroups.userId
-              ),
-              to: r.noIndexThroughGroups._id.through(
-                r.noIndexUsersToGroups.groupId
-              ),
-              alias: 'no-index-through',
-            }),
-          },
-          noIndexThroughGroups: {},
-          noIndexUsersToGroups: {},
-        })
-      );
-
-      const noIndexSchema = defineSchema({
+      const noIndexTables = {
         noIndexThroughUsers: noIndexUsers,
         noIndexThroughGroups: noIndexGroups,
         noIndexUsersToGroups: noIndexUsersToGroups,
+      };
+      const noIndexSchema = defineSchema(noIndexTables, {
+        defaults: {
+          defaultLimit: 1000,
+        },
       });
+      const noIndexRelations = defineRelations(noIndexTables, (r) => ({
+        noIndexThroughUsers: {
+          groups: r.many.noIndexThroughGroups({
+            from: r.noIndexThroughUsers._id.through(
+              r.noIndexUsersToGroups.userId
+            ),
+            to: r.noIndexThroughGroups._id.through(
+              r.noIndexUsersToGroups.groupId
+            ),
+            alias: 'no-index-through',
+          }),
+        },
+        noIndexThroughGroups: {},
+        noIndexUsersToGroups: {},
+      }));
       const noIndexEdges = extractRelationsConfig(noIndexRelations);
 
       await expect(
@@ -1202,7 +1190,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       ).rejects.toThrow(/requires index/i);
     });
 
-    test('should allow missing indexes when schema strict is false', async () => {
+    test('should require allowFullScan when relation index is missing', async () => {
       const noIndexUsers = convexTable('noIndexRelaxedUsers', {
         name: text().notNull(),
       });
@@ -1215,7 +1203,12 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         noIndexRelaxedPosts: noIndexPosts,
       };
 
-      const noIndexSchema = defineSchema(noIndexTables, { strict: false });
+      const noIndexSchema = defineSchema(noIndexTables, {
+        strict: false,
+        defaults: {
+          defaultLimit: 1000,
+        },
+      });
       const noIndexRelations = defineRelations(noIndexTables, (r) => ({
         noIndexRelaxedUsers: {
           posts: r.many.noIndexRelaxedPosts({
@@ -1235,6 +1228,23 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
           async (ctx) => {
             await ctx.db.insert('noIndexRelaxedUsers', { name: 'Alice' });
             await ctx.table.query.noIndexRelaxedUsers.findMany({
+              with: {
+                posts: true,
+              },
+            });
+          }
+        )
+      ).rejects.toThrow(/allowFullScan/i);
+
+      await expect(
+        withTableCtx(
+          noIndexSchema,
+          noIndexRelations,
+          noIndexEdges,
+          async (ctx) => {
+            await ctx.db.insert('noIndexRelaxedUsers', { name: 'Alice' });
+            await ctx.table.query.noIndexRelaxedUsers.findMany({
+              allowFullScan: true,
               with: {
                 posts: true,
               },

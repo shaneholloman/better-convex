@@ -1,3 +1,13 @@
+# Findings: ORM Performance Review (2026-02-05)
+
+## Key Findings
+- Relation loading in `packages/better-convex/src/orm/query.ts` uses `take(10_000)` and in-memory filtering for one()/many()/through relations, causing full scans and truncation risk.
+- Update/Delete builders use unbounded `query.collect()` with post-fetch filtering in `packages/better-convex/src/orm/update.ts` and `packages/better-convex/src/orm/delete.ts`.
+- FK cascade handling uses `collect()` in `packages/better-convex/src/orm/mutation-utils.ts` to load referencing rows, risking memory blowups on large fan-out.
+- ORM docs lack an operation-by-operation performance checklist mapping each API to scaling characteristics and safe usage.
+
+---
+
 # Findings: Schema Replacement & Test Restructure
 
 ## Requirements (Initial)

@@ -9,6 +9,7 @@ import {
   bigint,
   boolean,
   convexTable,
+  defineSchema,
   foreignKey,
   type InferInsertModel,
   type InferSelectModel,
@@ -74,6 +75,43 @@ import { type Equal, Expect, IsAny, IsNever, Not } from './utils';
       }
     >
   >;
+}
+
+// Test 6f: defineSchema defaults support mutation async execution options
+{
+  const users = convexTable('users', {
+    slug: text().notNull(),
+  });
+
+  defineSchema(
+    {
+      users,
+    },
+    {
+      defaults: {
+        mutationExecutionMode: 'async',
+        mutationAsyncDelayMs: 0,
+      },
+    }
+  );
+}
+
+{
+  const users = convexTable('users', {
+    slug: text().notNull(),
+  });
+
+  defineSchema(
+    {
+      users,
+    },
+    {
+      defaults: {
+        // @ts-expect-error - invalid mutation execution mode
+        mutationExecutionMode: 'eventual',
+      },
+    }
+  );
 }
 
 // Test 4: NotNull vs nullable field types

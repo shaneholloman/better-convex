@@ -27,6 +27,7 @@ import type { FilterExpression } from './filter-expression';
 import type {
   ConvexIndexBuilder,
   ConvexIndexBuilderOn,
+  ConvexIndexColumn,
   ConvexSearchIndexBuilder,
   ConvexSearchIndexBuilderOn,
   ConvexVectorIndexBuilder,
@@ -96,7 +97,11 @@ export interface TableConfig<TName extends string = string, TColumns = any> {
 
 type ColumnsWithTableName<TColumns, TName extends string> = {
   [K in keyof TColumns]: TColumns[K] extends ColumnBuilderBase
-    ? ColumnBuilderWithTableName<TColumns[K], TName>
+    ? ColumnBuilderWithTableName<TColumns[K], TName> & {
+        _: {
+          fieldName: K extends string ? K : never;
+        };
+      }
     : TColumns[K];
 };
 
@@ -111,6 +116,113 @@ export type ConvexTableExtraConfigValue =
 export type ConvexTableExtraConfig = Record<
   string,
   ConvexTableExtraConfigValue
+>;
+
+type UnionToIntersection<T> = (
+  T extends unknown
+    ? (arg: T) => void
+    : never
+) extends (arg: infer U) => void
+  ? U
+  : never;
+
+type SimplifyObject<T> = { [K in keyof T]: T[K] };
+
+type ExtraConfigValues<TExtraConfig> =
+  TExtraConfig extends readonly (infer TValue)[]
+    ? TValue
+    : TExtraConfig extends Record<string, infer TValue>
+      ? TValue
+      : never;
+
+type ColumnNameFromBuilder<TColumn extends ColumnBuilderBase> =
+  TColumn extends {
+    _: {
+      fieldName: infer TFieldName extends string;
+    };
+  }
+    ? TFieldName
+    : never;
+
+type IndexFieldTupleFromColumns<
+  TColumns extends readonly [ConvexIndexColumn, ...ConvexIndexColumn[]],
+> = [
+  ...{
+    [K in keyof TColumns]: TColumns[K] extends ConvexIndexColumn
+      ? ColumnNameFromBuilder<TColumns[K]>
+      : never;
+  },
+  '_creationTime',
+];
+
+type InferDbIndexRecordFromExtraValue<TValue> =
+  TValue extends ConvexIndexBuilder<
+    infer TName extends string,
+    infer TColumns extends readonly [ConvexIndexColumn, ...ConvexIndexColumn[]],
+    boolean
+  >
+    ? Record<TName, IndexFieldTupleFromColumns<TColumns>>
+    : {};
+
+type SearchFilterFieldsUnionFromColumns<
+  TColumns extends readonly ConvexIndexColumn[],
+> = TColumns[number] extends infer TColumn extends ConvexIndexColumn
+  ? ColumnNameFromBuilder<TColumn>
+  : never;
+
+type InferSearchIndexRecordFromExtraValue<TValue> =
+  TValue extends ConvexSearchIndexBuilder<
+    infer TName extends string,
+    infer TSearchField extends ConvexIndexColumn,
+    infer TFilterFields extends readonly ConvexIndexColumn[]
+  >
+    ? Record<
+        TName,
+        {
+          searchField: ColumnNameFromBuilder<TSearchField>;
+          filterFields: SearchFilterFieldsUnionFromColumns<TFilterFields>;
+        }
+      >
+    : {};
+
+type InferredDbIndexesFromExtraConfig<TExtraConfig> = UnionToIntersection<
+  InferDbIndexRecordFromExtraValue<
+    ExtraConfigValues<Exclude<TExtraConfig, undefined>>
+  >
+>;
+
+type InferredSearchIndexesFromExtraConfig<TExtraConfig> = UnionToIntersection<
+  InferSearchIndexRecordFromExtraValue<
+    ExtraConfigValues<Exclude<TExtraConfig, undefined>>
+  >
+>;
+
+type NormalizeDbIndexMap<TIndexMap> = {
+  [K in keyof TIndexMap as K extends string
+    ? K
+    : never]: TIndexMap[K] extends string[] ? TIndexMap[K] : never;
+};
+
+type NormalizeSearchIndexMap<TIndexMap> = {
+  [K in keyof TIndexMap as K extends string ? K : never]: TIndexMap[K] extends {
+    searchField: infer TSearchField extends string;
+    filterFields: infer TFilterFields extends string;
+  }
+    ? {
+        searchField: TSearchField;
+        filterFields: TFilterFields;
+      }
+    : never;
+};
+
+type InferDbIndexesFromExtraConfig<TExtraConfig> = SimplifyObject<
+  {
+    by_creation_time: ['_creationTime'];
+  } & NormalizeDbIndexMap<InferredDbIndexesFromExtraConfig<TExtraConfig>>
+>;
+
+type InferSearchIndexesFromExtraConfig<TExtraConfig> = SimplifyObject<
+  NormalizeSearchIndexMap<InferredSearchIndexesFromExtraConfig<TExtraConfig>>
 >;
 
 type ForeignKeyDefinition = {
@@ -687,6 +799,27 @@ class ConvexTableImpl<T extends TableConfig> {
   }
 
   /**
+   * Internal: expose search index metadata for runtime query execution
+   */
+  getSearchIndexes(): {
+    name: string;
+    searchField: string;
+    filterFields: string[];
+  }[] {
+    return this.searchIndexes.map(
+      (entry: {
+        indexDescriptor: string;
+        searchField: string;
+        filterFields: string[];
+      }) => ({
+        name: entry.indexDescriptor,
+        searchField: entry.searchField,
+        filterFields: entry.filterFields,
+      })
+    );
+  }
+
+  /**
    * Internal: attach an RLS policy to this table
    */
   addRlsPolicy(policy: RlsPolicy): void {
@@ -928,7 +1061,12 @@ export interface ConvexTable<
  * Mapped type makes columns accessible: table.columnName
  * Includes system fields (_id, _creationTime) available on all Convex documents
  */
-export type ConvexTableWithColumns<T extends TableConfig> = ConvexTable<T> & {
+export type ConvexTableWithColumns<
+  T extends TableConfig,
+  Indexes extends GenericTableIndexes = {},
+  SearchIndexes extends GenericTableSearchIndexes = {},
+  VectorIndexes extends GenericTableVectorIndexes = {},
+> = ConvexTable<T, Indexes, SearchIndexes, VectorIndexes> & {
   [Key in keyof T['columns']]: T['columns'][Key];
 } & SystemFields<T['name']>;
 
@@ -963,16 +1101,25 @@ export type ConvexTableWithColumns<T extends TableConfig> = ConvexTable<T> & {
  *   index('by_email').on(t.email),
  * ]);
  */
-type ConvexTableFnInternal = <TName extends string, TColumns>(
+type ConvexTableFnInternal = <
+  TName extends string,
+  TColumns,
+  TExtraConfig extends
+    | ConvexTableExtraConfigValue[]
+    | ConvexTableExtraConfig
+    | undefined = undefined,
+>(
   name: TName,
   columns: TColumns,
-  extraConfig?: (
-    self: ColumnsWithTableName<TColumns, TName>
-  ) => ConvexTableExtraConfigValue[] | ConvexTableExtraConfig
-) => ConvexTableWithColumns<{
-  name: TName;
-  columns: ColumnsWithTableName<TColumns, TName>;
-}>;
+  extraConfig?: (self: ColumnsWithTableName<TColumns, TName>) => TExtraConfig
+) => ConvexTableWithColumns<
+  {
+    name: TName;
+    columns: ColumnsWithTableName<TColumns, TName>;
+  },
+  InferDbIndexesFromExtraConfig<TExtraConfig>,
+  InferSearchIndexesFromExtraConfig<TExtraConfig>
+>;
 
 export interface ConvexTableFn extends ConvexTableFnInternal {
   withRLS: ConvexTableFnInternal;

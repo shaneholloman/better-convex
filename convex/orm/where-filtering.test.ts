@@ -301,6 +301,7 @@ describe('M4 Where Filtering - Logical Operators', () => {
     });
 
     const result = await db.query.users.findMany({
+      allowFullScan: true,
       where: {
         NOT: { status: 'deleted' },
       },
@@ -444,6 +445,7 @@ describe('M4 Where Filtering - Column Logical Operators', () => {
     });
 
     const result = await db.query.users.findMany({
+      allowFullScan: true,
       where: {
         age: { OR: [{ lt: 18 }, { gt: 65 }] },
       },
@@ -514,6 +516,7 @@ describe('M4 Where Filtering - Column Logical Operators', () => {
     });
 
     const result = await db.query.users.findMany({
+      allowFullScan: true,
       where: {
         deletedAt: { NOT: { isNull: true } },
       },
@@ -821,6 +824,7 @@ describe('M4 Where Filtering - Edge Cases', () => {
         deletedAt: { isNotNull: true },
         name: 'Alice',
       },
+      allowFullScan: true,
     });
 
     expect(result).toHaveLength(1);
@@ -843,6 +847,7 @@ describe('M4 Where Filtering - Edge Cases', () => {
         where: {
           RAW: () => ({}) as any,
         },
+        allowFullScan: true,
       })
     ).rejects.toThrow('RAW filters are not supported');
   });
@@ -873,6 +878,7 @@ describe('M4 Where Filtering - Type Safety', () => {
     // TODO(M4.5): Uncomment when column proxy typing implemented
     // // @ts-expect-error - 'invalidColumn' does not exist
     // await db.query.users.findMany({
+    //   allowFullScan: true,
     //   where: { invalidColumn: 'value' },
     // });
   });

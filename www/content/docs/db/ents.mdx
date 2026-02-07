@@ -536,7 +536,7 @@ Here are common issues and their solutions:
 
 | Issue | Solution |
 |-------|----------|
-| `ctx.db` still used | Only exception: `stream(ctx.db, schema)` for [streams](/docs/db/filters#streams) |
+| `ctx.db` still used | Use `ctx.db` for search indexes or raw Convex queries |
 | Index not found | Index names must match schema exactly |
 | Edge not working | Must be defined in schema first |
 | Duplicate index error | Edges auto-create indexes - don't add manually |
@@ -557,7 +557,7 @@ Here's when to use each:
 | No table name validation | Table names type-checked |
 
 <Callout icon={<InfoIcon />}>
-**Tip:** Use `ctx.table` by default. Only use `ctx.db` for `stream()` calls or when you need raw documents for performance reasons.
+**Tip:** Use `ctx.table` by default. Use `ctx.db` for search indexes or raw Convex queries.
 </Callout>
 
 ## Migrate from Convex

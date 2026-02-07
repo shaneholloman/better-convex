@@ -15,10 +15,11 @@ import type {
   LogicalExpression,
   UnaryExpression,
 } from './filter-expression';
-import { isFieldReference } from './filter-expression';
+import { fieldRef, isFieldReference } from './filter-expression';
 import { findIndexForColumns, getIndexes } from './index-utils';
 import type { TablesRelationalConfig } from './relations';
 import type { RlsContext } from './rls/types';
+import type { OrmRuntimeDefaults } from './symbols';
 import { Columns, OrmContext, TableName } from './symbols';
 import type { ConvexTable } from './table';
 
@@ -51,8 +52,279 @@ export type OrmContextValue = {
   foreignKeyGraph?: ForeignKeyGraph;
   scheduler?: Scheduler;
   scheduledDelete?: SchedulableFunctionReference;
+  scheduledMutationBatch?: SchedulableFunctionReference;
   rls?: RlsContext;
   strict?: boolean;
+  defaults?: OrmRuntimeDefaults;
+};
+
+export type MutationRunMode = 'sync' | 'async';
+
+const UNDEFINED_SENTINEL_KEY = '__betterConvexUndefined';
+
+type SerializedFieldReference = {
+  fieldName: string;
+};
+
+type SerializedBinaryExpression = {
+  type: 'binary';
+  operator: BinaryExpression['operator'];
+  field: SerializedFieldReference;
+  value: unknown;
+};
+
+type SerializedLogicalExpression = {
+  type: 'logical';
+  operator: LogicalExpression['operator'];
+  operands: SerializedFilterExpression[];
+};
+
+type SerializedUnaryExpression = {
+  type: 'unary';
+  operator: UnaryExpression['operator'];
+  operand: SerializedFilterExpression | SerializedFieldReference;
+};
+
+export type SerializedFilterExpression =
+  | SerializedBinaryExpression
+  | SerializedLogicalExpression
+  | SerializedUnaryExpression;
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+export const encodeUndefinedDeep = (value: unknown): unknown => {
+  if (value === undefined) {
+    return { [UNDEFINED_SENTINEL_KEY]: true };
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => encodeUndefinedDeep(item));
+  }
+  if (isPlainObject(value)) {
+    const result: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      result[key] = encodeUndefinedDeep(nested);
+    }
+    return result;
+  }
+  return value;
+};
+
+export const decodeUndefinedDeep = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map((item) => decodeUndefinedDeep(item));
+  }
+  if (isPlainObject(value)) {
+    if (
+      Object.keys(value).length === 1 &&
+      value[UNDEFINED_SENTINEL_KEY] === true
+    ) {
+      return;
+    }
+    const result: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      result[key] = decodeUndefinedDeep(nested);
+    }
+    return result;
+  }
+  return value;
+};
+
+const isSerializedFieldReference = (
+  value: unknown
+): value is SerializedFieldReference =>
+  isPlainObject(value) && typeof value.fieldName === 'string';
+
+const createBinaryExpression = (
+  operator: BinaryExpression['operator'],
+  fieldName: string,
+  value: unknown
+): BinaryExpression => {
+  const field = fieldRef(fieldName);
+  return {
+    type: 'binary',
+    operator,
+    operands: [field, value] as const,
+    accept<R>(visitor: ExpressionVisitor<R>): R {
+      return visitor.visitBinary(this as BinaryExpression);
+    },
+  } as BinaryExpression;
+};
+
+const createLogicalExpression = (
+  operator: LogicalExpression['operator'],
+  operands: FilterExpression<boolean>[]
+): LogicalExpression =>
+  ({
+    type: 'logical',
+    operator,
+    operands,
+    accept<R>(visitor: ExpressionVisitor<R>): R {
+      return visitor.visitLogical(this as LogicalExpression);
+    },
+  }) as unknown as LogicalExpression;
+
+const createUnaryExpression = (
+  operator: UnaryExpression['operator'],
+  operand: FilterExpression<boolean> | ReturnType<typeof fieldRef>
+): UnaryExpression =>
+  ({
+    type: 'unary',
+    operator,
+    operands: [operand] as const,
+    accept<R>(visitor: ExpressionVisitor<R>): R {
+      return visitor.visitUnary(this as UnaryExpression);
+    },
+  }) as UnaryExpression;
+
+export const serializeFilterExpression = (
+  expression: FilterExpression<boolean> | undefined
+): SerializedFilterExpression | undefined => {
+  if (!expression) {
+    return;
+  }
+  if (expression.type === 'binary') {
+    const binary = expression as BinaryExpression;
+    const [field, value] = binary.operands;
+    if (!isFieldReference(field)) {
+      throw new Error(
+        'Binary expression must have FieldReference as first operand'
+      );
+    }
+    return {
+      type: 'binary',
+      operator: binary.operator,
+      field: { fieldName: field.fieldName },
+      value: encodeUndefinedDeep(value),
+    };
+  }
+  if (expression.type === 'logical') {
+    const logical = expression as LogicalExpression;
+    return {
+      type: 'logical',
+      operator: logical.operator,
+      operands: logical.operands.map((operand) =>
+        serializeFilterExpression(operand)
+      ) as SerializedFilterExpression[],
+    };
+  }
+  const unary = expression as UnaryExpression;
+  const [operand] = unary.operands;
+  return {
+    type: 'unary',
+    operator: unary.operator,
+    operand: isFieldReference(operand)
+      ? { fieldName: operand.fieldName }
+      : (serializeFilterExpression(
+          operand as FilterExpression<boolean>
+        ) as SerializedFilterExpression),
+  };
+};
+
+export const deserializeFilterExpression = (
+  expression: SerializedFilterExpression | undefined
+): FilterExpression<boolean> | undefined => {
+  if (!expression) {
+    return;
+  }
+  if (expression.type === 'binary') {
+    const binary = expression as SerializedBinaryExpression;
+    return createBinaryExpression(
+      binary.operator,
+      binary.field.fieldName,
+      decodeUndefinedDeep(binary.value)
+    );
+  }
+  if (expression.type === 'logical') {
+    const logical = expression as SerializedLogicalExpression;
+    return createLogicalExpression(
+      logical.operator,
+      logical.operands
+        .map((operand) => deserializeFilterExpression(operand))
+        .filter((operand): operand is FilterExpression<boolean> => !!operand)
+    );
+  }
+  const unary = expression as SerializedUnaryExpression;
+  const operand = unary.operand;
+  if (isSerializedFieldReference(operand)) {
+    return createUnaryExpression(unary.operator, fieldRef(operand.fieldName));
+  }
+  const nested = deserializeFilterExpression(operand);
+  if (!nested) {
+    throw new Error('Serialized unary operand is missing.');
+  }
+  return createUnaryExpression(unary.operator, nested);
+};
+
+const DEFAULT_MUTATION_BATCH_SIZE = 100;
+const DEFAULT_MUTATION_MAX_ROWS = 1000;
+const DEFAULT_MUTATION_ASYNC_DELAY_MS = 0;
+
+export const getMutationCollectionLimits = (
+  context?: OrmContextValue
+): { batchSize: number; maxRows: number } => {
+  const batchSize =
+    context?.defaults?.mutationBatchSize ?? DEFAULT_MUTATION_BATCH_SIZE;
+  const maxRows =
+    context?.defaults?.mutationMaxRows ?? DEFAULT_MUTATION_MAX_ROWS;
+
+  if (!Number.isInteger(batchSize) || batchSize < 1) {
+    throw new Error('mutationBatchSize must be a positive integer.');
+  }
+  if (!Number.isInteger(maxRows) || maxRows < 1) {
+    throw new Error('mutationMaxRows must be a positive integer.');
+  }
+
+  return { batchSize, maxRows };
+};
+
+export const getMutationExecutionMode = (
+  context?: OrmContextValue,
+  override?: MutationRunMode
+): MutationRunMode =>
+  override ?? context?.defaults?.mutationExecutionMode ?? 'sync';
+
+export const getMutationAsyncDelayMs = (
+  context?: OrmContextValue,
+  override?: number
+): number =>
+  override ??
+  context?.defaults?.mutationAsyncDelayMs ??
+  DEFAULT_MUTATION_ASYNC_DELAY_MS;
+
+export const collectMutationRowsBounded = async (
+  buildQuery: () => any,
+  options: {
+    operation: 'update' | 'delete';
+    tableName: string;
+    batchSize: number;
+    maxRows: number;
+  }
+): Promise<Record<string, unknown>[]> => {
+  let cursor: string | null = null;
+  const rows: Record<string, unknown>[] = [];
+
+  while (true) {
+    const page: {
+      page: Record<string, unknown>[];
+      continueCursor: string | null;
+      isDone: boolean;
+    } = await buildQuery().paginate({
+      cursor,
+      numItems: options.batchSize,
+    });
+    rows.push(...(page.page as Record<string, unknown>[]));
+    if (rows.length > options.maxRows) {
+      throw new Error(
+        `${options.operation} matched more than ${options.maxRows} rows on "${options.tableName}". ` +
+          'Narrow the filter or increase defineSchema(..., { defaults: { mutationMaxRows } }).'
+      );
+    }
+    if (page.isDone) {
+      return rows;
+    }
+    cursor = page.continueCursor;
+  }
 };
 
 type ForeignKeyDefinition = {
@@ -411,7 +683,7 @@ function buildFilterPredicate(q: any, columns: string[], values: unknown[]) {
   return expr;
 }
 
-function ensureNullableColumns(
+export function ensureNullableColumns(
   table: ConvexTable<any>,
   columns: string[],
   context: string
@@ -435,7 +707,7 @@ function ensureNullableColumns(
   }
 }
 
-function ensureDefaultColumns(
+export function ensureDefaultColumns(
   table: ConvexTable<any>,
   columns: string[],
   context: string
@@ -462,7 +734,7 @@ function ensureDefaultColumns(
   return defaults;
 }
 
-function ensureNonNullValues(
+export function ensureNonNullValues(
   table: ConvexTable<any>,
   values: Record<string, unknown>,
   context: string
@@ -483,15 +755,27 @@ async function collectReferencingRows(
   db: GenericDatabaseWriter<any>,
   foreignKey: IncomingForeignKeyDefinition,
   targetValues: unknown[],
-  indexName: string
+  indexName: string,
+  options: {
+    operation: 'update' | 'delete';
+    batchSize: number;
+    maxRows: number;
+  }
 ): Promise<Record<string, unknown>[]> {
-  const rows = await db
-    .query(foreignKey.sourceTableName)
-    .withIndex(indexName, (q: any) =>
-      buildIndexPredicate(q, foreignKey.sourceColumns, targetValues)
-    )
-    .collect();
-  return rows as Record<string, unknown>[];
+  return collectMutationRowsBounded(
+    () =>
+      db
+        .query(foreignKey.sourceTableName)
+        .withIndex(indexName, (q: any) =>
+          buildIndexPredicate(q, foreignKey.sourceColumns, targetValues)
+        ),
+    {
+      operation: options.operation,
+      tableName: foreignKey.sourceTableName,
+      batchSize: options.batchSize,
+      maxRows: options.maxRows,
+    }
+  );
 }
 
 async function hasReferencingRow(
@@ -548,6 +832,14 @@ export async function applyIncomingForeignKeyActionsOnDelete(
     deleteMode: DeleteMode;
     cascadeMode: CascadeMode;
     visited: Set<string>;
+    batchSize: number;
+    maxRows: number;
+    allowFullScan?: boolean;
+    strict?: boolean;
+    executionMode?: MutationRunMode;
+    scheduler?: Scheduler;
+    scheduledMutationBatch?: SchedulableFunctionReference;
+    delayMs?: number;
   }
 ): Promise<void> {
   const tableName = getTableName(table);
@@ -566,6 +858,14 @@ export async function applyIncomingForeignKeyActionsOnDelete(
     const indexName = getIndexForForeignKey(foreignKey);
 
     if (action === 'restrict' || action === 'no action') {
+      if (!indexName && !options.allowFullScan) {
+        throw foreignKeyIndexError(foreignKey);
+      }
+      if (!indexName && options.strict) {
+        console.warn(
+          `Foreign key check running without index (allowFullScan: true) on '${foreignKey.sourceTableName}'.`
+        );
+      }
       if (await hasReferencingRow(db, foreignKey, targetValues, indexName)) {
         throw new Error(
           `Foreign key restrict violation on '${tableName}' from '${foreignKey.sourceTableName}'.`
@@ -575,18 +875,72 @@ export async function applyIncomingForeignKeyActionsOnDelete(
     }
 
     if (!indexName) {
+      if (!options.allowFullScan) {
+        throw foreignKeyIndexError(foreignKey);
+      }
+      if (options.strict) {
+        console.warn(
+          `Foreign key cascade check running without index (allowFullScan: true) on '${foreignKey.sourceTableName}'.`
+        );
+      }
       if (await hasReferencingRow(db, foreignKey, targetValues, null)) {
         throw foreignKeyIndexError(foreignKey);
       }
       continue;
     }
 
-    const referencingRows = await collectReferencingRows(
-      db,
-      foreignKey,
-      targetValues,
-      indexName
-    );
+    let referencingRows: Record<string, unknown>[];
+    if (options.executionMode === 'async') {
+      const page: {
+        page: Record<string, unknown>[];
+        continueCursor: string | null;
+        isDone: boolean;
+      } = await db
+        .query(foreignKey.sourceTableName)
+        .withIndex(indexName, (q: any) =>
+          buildIndexPredicate(q, foreignKey.sourceColumns, targetValues)
+        )
+        .paginate({ cursor: null, numItems: options.batchSize });
+      referencingRows = page.page as Record<string, unknown>[];
+      if (!page.isDone && page.continueCursor !== null) {
+        if (!options.scheduler || !options.scheduledMutationBatch) {
+          throw new Error(
+            'Async mutation execution requires createDatabase(..., { scheduler, scheduledMutationBatch }).'
+          );
+        }
+        await options.scheduler.runAfter(
+          options.delayMs ?? 0,
+          options.scheduledMutationBatch,
+          {
+            workType: 'cascade-delete',
+            mode: 'async',
+            operation: 'delete',
+            table: foreignKey.sourceTableName,
+            foreignIndexName: indexName,
+            foreignSourceColumns: foreignKey.sourceColumns,
+            targetValues: encodeUndefinedDeep(targetValues),
+            foreignAction: action,
+            deleteMode: options.deleteMode,
+            cascadeMode: options.cascadeMode,
+            cursor: page.continueCursor,
+            batchSize: options.batchSize,
+            delayMs: options.delayMs ?? 0,
+          }
+        );
+      }
+    } else {
+      referencingRows = await collectReferencingRows(
+        db,
+        foreignKey,
+        targetValues,
+        indexName,
+        {
+          operation: 'delete',
+          batchSize: options.batchSize,
+          maxRows: options.maxRows,
+        }
+      );
+    }
     if (referencingRows.length === 0) {
       continue;
     }
@@ -655,7 +1009,17 @@ export async function applyIncomingForeignKeyActionsOnUpdate(
   table: ConvexTable<any>,
   oldRow: Record<string, unknown>,
   newRow: Record<string, unknown>,
-  options: { graph: ForeignKeyGraph }
+  options: {
+    graph: ForeignKeyGraph;
+    batchSize: number;
+    maxRows: number;
+    allowFullScan?: boolean;
+    strict?: boolean;
+    executionMode?: MutationRunMode;
+    scheduler?: Scheduler;
+    scheduledMutationBatch?: SchedulableFunctionReference;
+    delayMs?: number;
+  }
 ): Promise<void> {
   const tableName = getTableName(table);
   const incoming = options.graph.incomingByTable.get(tableName) ?? [];
@@ -682,6 +1046,14 @@ export async function applyIncomingForeignKeyActionsOnUpdate(
     const indexName = getIndexForForeignKey(foreignKey);
 
     if (action === 'restrict' || action === 'no action') {
+      if (!indexName && !options.allowFullScan) {
+        throw foreignKeyIndexError(foreignKey);
+      }
+      if (!indexName && options.strict) {
+        console.warn(
+          `Foreign key check running without index (allowFullScan: true) on '${foreignKey.sourceTableName}'.`
+        );
+      }
       if (await hasReferencingRow(db, foreignKey, oldValues, indexName)) {
         throw new Error(
           `Foreign key restrict violation on '${tableName}' from '${foreignKey.sourceTableName}'.`
@@ -691,18 +1063,71 @@ export async function applyIncomingForeignKeyActionsOnUpdate(
     }
 
     if (!indexName) {
+      if (!options.allowFullScan) {
+        throw foreignKeyIndexError(foreignKey);
+      }
+      if (options.strict) {
+        console.warn(
+          `Foreign key cascade check running without index (allowFullScan: true) on '${foreignKey.sourceTableName}'.`
+        );
+      }
       if (await hasReferencingRow(db, foreignKey, oldValues, null)) {
         throw foreignKeyIndexError(foreignKey);
       }
       continue;
     }
 
-    const referencingRows = await collectReferencingRows(
-      db,
-      foreignKey,
-      oldValues,
-      indexName
-    );
+    let referencingRows: Record<string, unknown>[];
+    if (options.executionMode === 'async') {
+      const page: {
+        page: Record<string, unknown>[];
+        continueCursor: string | null;
+        isDone: boolean;
+      } = await db
+        .query(foreignKey.sourceTableName)
+        .withIndex(indexName, (q: any) =>
+          buildIndexPredicate(q, foreignKey.sourceColumns, oldValues)
+        )
+        .paginate({ cursor: null, numItems: options.batchSize });
+      referencingRows = page.page as Record<string, unknown>[];
+      if (!page.isDone && page.continueCursor !== null) {
+        if (!options.scheduler || !options.scheduledMutationBatch) {
+          throw new Error(
+            'Async mutation execution requires createDatabase(..., { scheduler, scheduledMutationBatch }).'
+          );
+        }
+        await options.scheduler.runAfter(
+          options.delayMs ?? 0,
+          options.scheduledMutationBatch,
+          {
+            workType: 'cascade-update',
+            mode: 'async',
+            operation: 'update',
+            table: foreignKey.sourceTableName,
+            foreignIndexName: indexName,
+            foreignSourceColumns: foreignKey.sourceColumns,
+            targetValues: encodeUndefinedDeep(oldValues),
+            newValues: encodeUndefinedDeep(newValues),
+            foreignAction: action,
+            cursor: page.continueCursor,
+            batchSize: options.batchSize,
+            delayMs: options.delayMs ?? 0,
+          }
+        );
+      }
+    } else {
+      referencingRows = await collectReferencingRows(
+        db,
+        foreignKey,
+        oldValues,
+        indexName,
+        {
+          operation: 'update',
+          batchSize: options.batchSize,
+          maxRows: options.maxRows,
+        }
+      );
+    }
     if (referencingRows.length === 0) {
       continue;
     }

@@ -7,7 +7,7 @@ links:
 
 import { InfoIcon } from "lucide-react"
 
-In this guide, we'll explore advanced querying in Convex. You'll learn to implement full-text search with relevance scoring, use streams for complex filtering with consistent pagination, and combine multiple queries with UNION and JOIN patterns.
+In this guide, we'll explore advanced querying in Convex. You'll learn to implement full-text search with relevance scoring, use predicate `where` for complex filtering (with explicit index ranges), and combine multiple queries with UNION and JOIN patterns.
 
 ## Overview
 
@@ -16,7 +16,7 @@ Convex provides powerful querying capabilities beyond basic filtering:
 | Feature | Description |
 |---------|-------------|
 | Full-text search | Search string fields with relevance scoring |
-| Streams | Complex filtering with consistent pagination |
+| Predicate filters | Complex filtering with explicit full‑scan opt‑in |
 | UNION patterns | Combine multiple queries into one paginated result |
 | JOIN patterns | Paginate through related documents |
 | DISTINCT | Get unique values efficiently |
@@ -24,7 +24,7 @@ Convex provides powerful querying capabilities beyond basic filtering:
 Let's explore each one.
 
 <Callout icon={<InfoIcon />}>
-**Warning:** Streams do NOT support `withSearchIndex()`. You cannot combine streams with full-text search - choose one approach based on your needs.
+**Note:** Better‑Convex ORM supports search via `findMany({ search: { index, query, filters? } })`. Predicate `where` still runs post‑fetch and cannot be combined with search mode.
 </Callout>
 
 ## Full-Text Search
@@ -66,7 +66,7 @@ const schema = defineEntSchema({
 
 Now let's implement a basic search query:
 
-```ts title="convex/functions/articles.ts" showLineNumbers {8-10,12-15}
+```ts title="convex/functions/articles.ts" showLineNumbers {7-11}
 import { z } from 'zod';
 import { zid } from 'convex-helpers/server/zod4';
 import { publicQuery } from '../lib/crpc';
@@ -82,10 +82,13 @@ export const search = publicQuery
     content: z.string(),
   })))
   .query(async ({ ctx, input }) => {
-    return await ctx
-      .table('articles')
-      .search('search_content', (q) => q.search('content', input.query))
-      .take(input.limit);
+    return await ctx.table.query.articles.findMany({
+      search: {
+        index: 'search_content',
+        query: input.query,
+      },
+      limit: input.limit,
+    });
   });
 ```
 
@@ -97,7 +100,7 @@ export const search = publicQuery
 
 Filter fields enable fast pre-filtering before text search. Only equality filters are supported:
 
-```ts title="convex/functions/articles.ts" showLineNumbers {8-13,15-21}
+```ts title="convex/functions/articles.ts" showLineNumbers {8-16}
 export const searchByCategory = publicQuery
   .input(z.object({
     query: z.string(),
@@ -111,16 +114,17 @@ export const searchByCategory = publicQuery
     category: z.string(),
   })))
   .query(async ({ ctx, input }) => {
-    return await ctx
-      .table('articles')
-      .search('search_content', (q) => {
-        let search = q.search('content', input.query).eq('category', input.category);
-        if (input.author) {
-          search = search.eq('author', input.author);
-        }
-        return search;
-      })
-      .take(20);
+    return await ctx.table.query.articles.findMany({
+      search: {
+        index: 'search_content',
+        query: input.query,
+        filters: {
+          category: input.category,
+          ...(input.author ? { author: input.author } : {}),
+        },
+      },
+      limit: 20,
+    });
   });
 ```
 
@@ -128,10 +132,9 @@ export const searchByCategory = publicQuery
 
 Use `.paginate()` with the [paginated builder](/docs/server/procedures#paginated-queries) for cursor-based pagination:
 
-```ts title="convex/functions/articles.ts" showLineNumbers {3,10-11,14-21}
+```ts title="convex/functions/articles.ts" showLineNumbers {3,9-17}
 const ArticleSchema = z.object({
   _id: zid('articles'),
-  _score: z.number().optional(),
   title: z.string(),
   content: z.string(),
   category: z.string(),
@@ -144,56 +147,26 @@ export const searchPaginated = publicQuery
   }))
   .paginated({ limit: 20, item: ArticleSchema })
   .query(async ({ ctx, input }) => {
-    return await ctx
-      .table('articles')
-      .search('search_content', (q) => {
-        let search = q.search('content', input.query);
-        if (input.category) {
-          search = search.eq('category', input.category);
-        }
-        return search;
-      })
-      .paginate({ cursor: input.cursor, numItems: input.limit });
+    return await ctx.table.query.articles.findMany({
+      search: {
+        index: 'search_content',
+        query: input.query,
+        filters: input.category ? { category: input.category } : undefined,
+      },
+      paginate: { cursor: input.cursor, numItems: input.limit },
+    });
   });
 ```
 
 <Callout icon={<InfoIcon />}>
-**Tip:** Search results include a `_score` field for relevance ranking. Results are automatically sorted by relevance.
+**Tip:** Search results are automatically sorted by relevance.
 </Callout>
 
-## Streams
+## Predicate `where` (Explicit Index Required)
 
-Streams from [convex-helpers](https://github.com/get-convex/convex-helpers) enable complex filtering with **consistent pagination**. Unlike the built-in `.filter()` which causes variable page sizes, streams guarantee the requested number of items per page.
+Use a predicate `where` for complex JS logic. You must provide an explicit index range with `index: { name, range? }`.
 
-### Installation
-
-First, install convex-helpers:
-
-```bash
-bun add convex-helpers
-```
-
-### Setup
-
-Import the stream utilities:
-
-```ts showLineNumbers {1-2}
-import { stream, mergedStream } from 'convex-helpers/server/stream';
-import schema from '../functions/schema';
-```
-
-<Callout icon={<InfoIcon />}>
-**Note:** Stream initialization requires `ctx.db` as the first parameter (exception to the [ctx.table rule](/docs/db/ents)). However, you SHOULD use `ctx.table()` inside stream callbacks for lookups.
-</Callout>
-
-### filterWith - Consistent Page Sizes
-
-Here's where streams shine. The built-in `.filter()` causes variable page sizes with pagination because it filters AFTER fetching. Use `filterWith` to filter BEFORE pagination for consistent pages:
-
-```ts title="convex/functions/characters.ts" showLineNumbers {1-2,11,14-15,18-22}
-import { stream } from 'convex-helpers/server/stream';
-import schema from './schema';
-
+```ts title="convex/functions/characters.ts" showLineNumbers {6-8,13-18,21-24}
 const CharacterSchema = z.object({
   _id: zid('characters'),
   name: z.string(),
@@ -208,172 +181,54 @@ export const searchCharacters = publicQuery
   }))
   .paginated({ limit: 20, item: CharacterSchema })
   .query(async ({ ctx, input }) => {
-    return await stream(ctx.db, schema)
-      .query('characters')
-      .withIndex('private', (q) => q.eq('private', false))
-      .filterWith(async (char) => {
-        // Full TypeScript power - any logic you need
+    return await ctx.table.query.characters.findMany({
+      where: (char) => {
         if (input.category && !char.categories?.includes(input.category)) {
           return false;
         }
         if (input.minScore && char.score < input.minScore) {
           return false;
         }
-
-        // Async lookups - use ctx.table() inside streams
-        const author = await ctx.table('user').get(char.userId);
-        return author !== null && !author.isBanned;
-      })
-      .paginate({ cursor: input.cursor, numItems: input.limit });
+        return true;
+      },
+      index: {
+        name: 'private',
+        range: (q) => q.eq('private', false),
+      },
+      paginate: { cursor: input.cursor, numItems: input.limit },
+    });
   });
 ```
 
 <Callout icon={<InfoIcon />}>
-**Tip:** `filterWith` supports any TypeScript logic including async lookups, array methods, and complex conditions that aren't possible with Convex's built-in filter expressions.
+**Tip:** Prefer index‑friendly object `where` for most queries. Use predicate `where` only when you need complex JS logic and can anchor it to an explicit index range.
 </Callout>
 
-### mergedStream - UNION Queries
-
-Combine multiple queries into a single paginated stream. This is useful when you need results from different index ranges:
-
-```ts title="convex/functions/messages.ts" showLineNumbers {1,11-13,15-17,19-23}
-import { stream, mergedStream } from 'convex-helpers/server/stream';
-
-const MessageSchema = z.object({
-  _id: zid('messages'),
-  text: z.string(),
-  from: zid('user'),
-  to: zid('user'),
-  _creationTime: z.number(),
-});
-
-export const conversation = publicQuery
-  .input(z.object({
-    u1: zid('user'),
-    u2: zid('user'),
-  }))
-  .paginated({ limit: 50, item: MessageSchema })
-  .query(async ({ ctx, input }) => {
-    // Stream of messages u1 → u2
-    const sentMessages = stream(ctx.db, schema)
-      .query('messages')
-      .withIndex('from_to', (q) => q.eq('from', input.u1).eq('to', input.u2));
-
-    // Stream of messages u2 → u1
-    const receivedMessages = stream(ctx.db, schema)
-      .query('messages')
-      .withIndex('from_to', (q) => q.eq('from', input.u2).eq('to', input.u1));
-
-    // Merge by creation time - both streams must be ordered by this field
-    const allMessages = mergedStream(
-      [sentMessages, receivedMessages],
-      ['_creationTime']
-    );
-
-    return await allMessages.paginate({ cursor: input.cursor, numItems: input.limit });
-  });
-```
-
-<Callout icon={<InfoIcon />}>
-**Note:** All streams being merged MUST be ordered by the same fields specified in the merge. The second parameter `['_creationTime']` tells the merger how to interleave results.
-</Callout>
-
-### flatMap - JOINs with Pagination
-
-Join tables and paginate through the combined results:
-
-```ts title="convex/functions/messages.ts" showLineNumbers {8-10,13-15,17-26}
-const MessageWithFriendSchema = z.object({
-  _id: zid('messages'),
-  text: z.string(),
-  from: zid('user'),
-  to: zid('user'),
-  fromBestFriend: z.boolean(),
-});
-
-export const messagesFromFriends = authQuery
-  .input(z.object({}))
-  .paginated({ limit: 20, item: MessageWithFriendSchema })
-  .query(async ({ ctx, input }) => {
-    // Start with friends list
-    const friends = stream(ctx.db, schema)
-      .query('friends')
-      .withIndex('userId', (q) => q.eq('userId', ctx.userId));
-
-    // For each friend, get their messages to the current user
-    const messages = friends.flatMap(
-      (friend) =>
-        stream(ctx.db, schema)
-          .query('messages')
-          .withIndex('from_to', (q) =>
-            q.eq('from', friend.friendId).eq('to', ctx.userId)
-          )
-          .map((message) => ({
-            ...message,
-            fromBestFriend: friend.isBest,
-          })),
-      ['from', 'to'] // Index fields of the inner stream
-    );
-
-    return await messages.paginate({ cursor: input.cursor, numItems: input.limit });
-  });
-```
-
-### distinct - Unique Values
-
-Get unique values efficiently without loading all documents:
-
-```ts title="convex/functions/messages.ts" showLineNumbers {8-10,13-19}
-const UserSchema = z.object({
-  _id: zid('user'),
-  name: z.string(),
-  email: z.string(),
-});
-
-export const messageRecipients = authQuery
-  .input(z.object({}))
-  .paginated({ limit: 20, item: UserSchema })
-  .query(async ({ ctx, input }) => {
-    // Get unique recipients from messages
-    const recipients = await stream(ctx.db, schema)
-      .query('messages')
-      .withIndex('from_to', (q) => q.eq('from', ctx.userId))
-      .distinct(['to']) // Only keep first message per recipient
-      .map(async (message) => {
-        const user = await ctx.table('user').get(message.to);
-        return user!;
-      })
-      .paginate({ cursor: input.cursor, numItems: input.limit });
-
-    return recipients;
-  });
-```
-
-## Search vs Streams
+## Search vs Predicate `where`
 
 Understanding when to use each approach is critical. Here's a comparison:
 
-| Feature | Search | Streams |
-|---------|--------|---------|
+| Feature | Search | Predicate `where` |
+|---------|--------|-------------------|
 | Text matching | Full-text search with relevance | No text search |
 | Complex filters | `filterFields` only (equality) | Full TypeScript |
 | Range queries | No | Yes |
-| Pagination | Standard | Consistent page sizes |
-| UNION/JOIN | No | Yes (`mergedStream`, `flatMap`) |
-| Performance | Optimized for text | Scans documents |
-| **Combined** | **Not supported** | N/A |
+| Pagination | Standard | Works with `paginate` |
+| UNION/JOIN | No | Manual merge in app code |
+| Performance | Optimized for text | Depends on chosen index + predicate selectivity |
+| **Combined** | **Supported with base-field object `where`** | Predicate / relation `where` still unsupported |
 
 ### Choosing the Right Approach
 
 1. **Need text search?** → Use search indexes
-2. **Need complex filters with pagination?** → Use streams
-3. **Need range queries (greater than, less than)?** → Use streams
-4. **Need UNION or JOIN operations?** → Use streams
-5. **Need both text search AND complex filters?** → See options below
+2. **Need complex filters with pagination?** → Use predicate `where` + explicit `index`
+3. **Need range queries (greater than, less than)?** → Use predicate `where` + explicit `index`
+4. **Need UNION or JOIN operations?** → Merge in application code
+5. **Need text search + relation/predicate filters?** → See options below
 
 ### Combining Search and Complex Filters
 
-Since streams don't support search, you have three options.
+Search mode supports `search.filters` plus base-table object `where`. For predicate `where` or relation-based `where`, use one of these patterns.
 
 **Option 1: Add more filterFields** (recommended)
 
@@ -388,7 +243,7 @@ Add equality filters to your search index:
 
 **Option 2: Separate query paths**
 
-Use search when text is provided, streams otherwise:
+Use search when text is provided, predicate filtering otherwise:
 
 ```ts showLineNumbers {7-8,10-19,21-30}
 export const searchOrFilter = publicQuery
@@ -399,30 +254,29 @@ export const searchOrFilter = publicQuery
   }))
   .paginated({ limit: 20, item: ArticleSchema })
   .query(async ({ ctx, input }) => {
+    const db = ctx.table;
     if (input.query) {
       // Text search path - limited filtering
-      return await ctx
-        .table('articles')
-        .search('search_content', (q) => {
-          let search = q.search('content', input.query!);
-          if (input.category) {
-            search = search.eq('category', input.category);
-          }
-          return search;
-        })
-        .paginate({ cursor: input.cursor, numItems: input.limit });
+      return await db.query.articles.findMany({
+        search: {
+          index: 'search_content',
+          query: input.query!,
+          filters: input.category ? { category: input.category } : undefined,
+        },
+        paginate: { cursor: input.cursor, numItems: input.limit },
+      });
     }
 
-    // Stream path - full filtering power
-    return await stream(ctx.db, schema)
-      .query('articles')
-      .withIndex('publishedAt')
-      .filterWith((article) => {
+    // Predicate where path - full filtering power with explicit index
+    return await db.query.articles.findMany({
+      where: (article) => {
         if (input.category && article.category !== input.category) return false;
         if (input.startDate && article.publishedAt < input.startDate) return false;
         return true;
-      })
-      .paginate({ cursor: input.cursor, numItems: input.limit });
+      },
+      index: { name: 'by_creation_time' },
+      paginate: { cursor: input.cursor, numItems: input.limit },
+    });
   });
 ```
 
@@ -431,9 +285,10 @@ export const searchOrFilter = publicQuery
 ```ts showLineNumbers {2-4,6-8}
 // Only viable for small result sets
 const searchResults = await ctx
-  .table('articles')
-  .search('search_content', (q) => q.search('content', query))
-  .take(100); // Hard limit
+  .table.query.articles.findMany({
+    search: { index: 'search_content', query },
+    limit: 100, // Hard limit
+  });
 
 const filtered = searchResults.filter((article) =>
   article.publishedAt >= startDate && article.publishedAt <= endDate
@@ -448,50 +303,42 @@ Understanding performance is critical for production apps.
 
 - Search indexes have overhead - don't over-index
 - Use `filterFields` to narrow results before text matching
-- Always limit results with `.take()` or `.paginate()`
+- Always limit results with `limit` or `paginate`
 
-### Stream Performance
+### Predicate `where` Performance
 
-Streams scan documents until the page is full. For expensive filters, limit scanning:
+Predicate `where` runs post‑fetch against an explicit index stream. Use `maximumRowsRead` to cap scan size:
 
-```ts showLineNumbers {4-7}
-const results = await stream(ctx.db, schema)
-  .query('posts')
-  .filterWith(async (post) => expensiveCheck(post))
-  .paginate({
-    cursor: input.cursor,
-    numItems: input.limit,
-    maximumRowsRead: 1000, // Fail if scanning too many documents
-  });
+```ts showLineNumbers {2-6}
+const results = await db.query.posts.findMany({
+  where: (post) => expensiveCheck(post),
+  index: { name: 'by_created_at' },
+  paginate: { cursor: input.cursor, numItems: input.limit, maximumRowsRead: 500 },
+});
 ```
 
 <Callout icon={<InfoIcon />}>
-**Warning:** Without `maximumRowsRead`, a filter that matches few documents could scan the entire table. Set a reasonable limit to fail fast instead of timing out.
+**Warning:** Predicate filters can scan a large portion of a table. Keep page sizes small and use indexes when possible.
 </Callout>
 
-### Stream Cursor Fragility
+### Cursor Stability
 
-Stream cursors only work with identical stream construction:
+Cursor pagination is only stable when you reuse the same `where` predicate and `orderBy`:
 
-```ts showLineNumbers {2-4,6-9}
-// These cursors are NOT compatible
-const stream1 = stream(ctx.db, schema)
-  .query('messages')
-  .withIndex('time');
-
-const stream2 = stream(ctx.db, schema)
-  .query('messages')
-  .withIndex('time')
-  .filterWith((m) => m.read); // Different structure!
+```ts showLineNumbers {1-6}
+const page1 = await db.query.messages.findMany({
+  where: (m) => m.read,
+  index: { name: 'by_creation_time' },
+  orderBy: { _creationTime: 'desc' },
+  paginate: { cursor: null, numItems: 20 },
+});
 ```
 
 ### Memory Efficiency
 
-Streams are lazy - documents are fetched on-demand:
-
-- Minimal memory overhead
-- Good for large datasets
-- Use `.collect()` sparingly (loads all matching documents)
+- Prefer `findMany({ paginate })` for user‑facing lists
+- Keep limits small for non‑paginated queries
+- Use selective index ranges for predicate `where` and cap reads with `maximumRowsRead`
 
 ## Best Practices
 
@@ -500,10 +347,10 @@ Here are key practices to follow when using filters and search.
 1. **Create appropriate indexes** - Each search field needs its own search index
 2. **Limit results** - Always use `.take()` or `.paginate()`
 3. **Use filterFields** - Pre-filter with equality before text search
-4. **Set maximumRowsRead** - Prevent runaway scans with streams
+4. **Bound predicate scans** - Use explicit `index` and cap reads with `maximumRowsRead`
 5. **Normalize search terms** - Consider lowercase for consistent matching
 6. **Handle empty queries** - Decide behavior when search query is empty
-7. **Use ctx.table() in callbacks** - Inside stream operations, use `ctx.table()` not `ctx.db`
+7. **Prefer cursor pagination** - Use `findMany({ paginate })` for large lists
 
 ## Next Steps
 

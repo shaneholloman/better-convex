@@ -61,8 +61,10 @@ const users = await db.query.users.findMany({
 
 ## Indexes And Ordering
 
-- `paginate()` relies on the first `orderBy` field for cursor ordering
+- `findMany({ paginate })` relies on the first `orderBy` field for cursor ordering
 - Sorting without an index falls back to `_creationTime` ordering
+- Post-fetch sorting (multi-field or non-indexable orderBy) sorts before `offset`/`limit`, so Better-Convex must read the full filtered candidate set first
+- For these post-fetch sort paths, size non-paginated queries intentionally (`limit`, schema `defaultLimit`, or `allowFullScan: true`)
 - Add `index('...').on(t.field)` on fields used for filter or sort
 
 ```ts
@@ -80,11 +82,23 @@ const posts = convexTable(
 
 - Unique, foreign keys, and `check()` constraints are enforced only through Better‑Convex ORM mutations
 - Foreign key actions require an index on the referencing columns
-- Relation loading requires indexes on relation fields (missing indexes throw unless `strict: false`)
-- Update/delete without `where()` throws unless `strict: false`
+- Relation loading requires indexes on relation fields (missing indexes throw unless `allowFullScan: true`)
+- Non-paginated `findMany()` must be explicitly sized (`limit`, `paginate`, schema `defaultLimit`, or `allowFullScan: true`)
+- `many()` relation loading must be explicitly sized per parent (`with.<relation>.limit`, schema `defaultLimit`, or `allowFullScan: true`)
+- Predicate `where` requires explicit `index: { name, range? }` and runs post‑fetch via stream filtering
+- Search mode (`findMany({ search })`) is relevance-ordered; `orderBy` is not supported
+- Search mode supports base-table object `where`, but not predicate `where` or relation-based `where`
+- Update/delete without `where()` throws unless `allowFullScan: true`
+- Update/delete matched rows are capped by `mutationMaxRows` (default `1000`) and collected in `mutationBatchSize` pages (default `100`)
+- For large update/delete workloads, use builder-level `paginate({ cursor, numItems })` to process one mutation page at a time
+- Paged update/delete currently does not support multi-probe filter plans (`inArray`, some `OR`, complement ranges)
 - Check constraints follow SQL-like NULL semantics: the check fails only when the expression is `false` (and passes on `unknown`)
 - Defaults are applied only by Better‑Convex ORM inserts/updates (`.default(...)`, `$defaultFn(...)`, `$onUpdateFn(...)`)
 - Direct `ctx.db` writes bypass all ORM enforcement
+
+**Default policy**
+- Query sizing has no implicit fallback (no hidden row default unless you set `defaults.defaultLimit`).
+- Mutation safety has built-in guardrail defaults (`mutationBatchSize=100`, `mutationMaxRows=1000`).
 
 <Callout icon={<AlertTriangle />}>
 **Uniqueness under concurrency**: runtime uniqueness checks are best‑effort within a mutation. Concurrent mutations can still race (including 1:1 relations).  
@@ -105,7 +119,7 @@ Recommended patterns:
 - Index every field you filter or order by frequently
 - Use search indexes for large text filtering
 - Use vector indexes only for embedding search
-- Prefer `paginate()` for infinite scroll and large datasets
+- Prefer `findMany({ paginate })` for infinite scroll and large datasets
 - Avoid deep offset pagination for large tables
 - Use `with` to avoid N+1 queries
 
@@ -114,9 +128,12 @@ Recommended patterns:
 | Issue | Cause | Fix |
 |---|---|---|
 | Slow ordering | Missing index | Add `index('...').on(t.field)` in schema |
-| `paginate()` order changes | No index on primary sort | Add index on first `orderBy` field |
+| `findMany({ paginate })` order changes | No index on primary sort | Add index on first `orderBy` field |
+| `findMany()` throws explicit sizing error | Non-paginated query has no `limit` and no schema `defaultLimit` | Add `limit`, use `paginate`, set `defaults.defaultLimit`, or opt in with `allowFullScan: true` |
 | `like` or `ilike` is slow | Post-fetch filtering | Use search indexes |
 | Relations not loading | Missing edges | Export `ormSchema` and `ormEdges` |
+| `update()`/`delete()` exceeds row cap | Matched rows > `mutationMaxRows` | Narrow filters, increase `defaults.mutationMaxRows`, or switch to paged mutation execution |
+| Paged update/delete throws multi-probe error | Filter compiles to multiple index probes | Rewrite filter to a single index range (or use non-paged mode with row cap) |
 | Missing defaults | Direct `ctx.db` bypasses ORM defaults | Use ORM inserts or set defaults in code |
 
 ## Schema Introspection

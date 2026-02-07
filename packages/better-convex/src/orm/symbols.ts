@@ -3,6 +3,19 @@
  * Following Drizzle's pattern for type-safe runtime introspection
  */
 
+export type OrmRuntimeDefaults = {
+  defaultLimit?: number;
+  mutationBatchSize?: number;
+  mutationMaxRows?: number;
+  mutationExecutionMode?: 'sync' | 'async';
+  mutationAsyncDelayMs?: number;
+};
+
+export type OrmRuntimeOptions = {
+  strict?: boolean;
+  defaults?: OrmRuntimeDefaults;
+};
+
 export const TableName = Symbol.for('better-convex:TableName');
 export const Columns = Symbol.for('better-convex:Columns');
 export const Brand = Symbol.for('better-convex:Brand');
