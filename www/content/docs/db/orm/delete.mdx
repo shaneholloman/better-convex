@@ -48,7 +48,10 @@ const ids = await db
 `delete()` collects matching rows in bounded pages before applying writes:
 
 - `mutationBatchSize`: defaults to `100`
+- `mutationLeafBatchSize`: defaults to `900` (async non-recursive FK fan-out)
 - `mutationMaxRows`: defaults to `1000`
+- `mutationMaxBytesPerBatch`: defaults to `2_097_152` (async measured-byte budget)
+- `mutationScheduleCallCap`: defaults to `100` (async schedule calls per mutation)
 
 If matched rows exceed `mutationMaxRows`, delete throws.
 
@@ -114,9 +117,19 @@ Important behavior:
 - `.paginate()` remains the caller-controlled execution path.
 - `batchSize` resolves as: per-call `batchSize` → `defaults.mutationBatchSize` → `100`.
 - `delayMs` resolves as: per-call `delayMs` → `defaults.mutationAsyncDelayMs` → `0`.
-- Cascade and other FK actions use the same async batching strategy (first page inline, continuation scheduled) when async mode is active.
+- FK/cascade async fan-out uses:
+  - `mutationBatchSize` for recursive delete cascade (`onDelete: 'cascade'`)
+  - `mutationLeafBatchSize` for non-recursive actions (`set null`, `set default`)
+- Async fan-out stops at `mutationMaxBytesPerBatch` and may throw after `mutationScheduleCallCap` schedule calls in one mutation invocation.
 
 Async execution requires wiring `scheduler` + `scheduledMutationBatch` when building `ctx.orm`.
+
+## Scheduled Delete Cancellation
+
+`.scheduled({ delayMs })` stores the current `deletionTime` and passes it to the scheduled worker.
+The worker only proceeds if the row still has the same `deletionTime`.
+
+To cancel a pending scheduled hard-delete, clear or change `deletionTime` before the worker runs.
 
 ## Drizzle Differences
 

@@ -1,4 +1,8 @@
-import type { GenericDatabaseWriter } from 'convex/server';
+import type {
+  GenericDatabaseWriter,
+  SchedulableFunctionReference,
+  Scheduler,
+} from 'convex/server';
 import type { GenericId } from 'convex/values';
 import { createDatabase } from './database';
 import type { EdgeMetadata } from './extractRelationsConfig';
@@ -11,11 +15,13 @@ export type ScheduledDeleteArgs = {
   table: string;
   id: GenericId<any>;
   cascadeMode?: CascadeMode;
+  deletionTime?: number;
 };
 
 export function scheduledDeleteFactory<TSchema extends TablesRelationalConfig>(
   schema: TSchema,
-  edgeMetadata: EdgeMetadata[]
+  edgeMetadata: EdgeMetadata[],
+  scheduledMutationBatch: SchedulableFunctionReference
 ) {
   const tableByName = new Map<string, ConvexTableWithColumns<any>>();
   for (const tableConfig of Object.values(schema)) {
@@ -28,18 +34,32 @@ export function scheduledDeleteFactory<TSchema extends TablesRelationalConfig>(
   }
 
   return async function scheduledDelete(
-    ctx: { db: GenericDatabaseWriter<any> },
+    ctx: { db: GenericDatabaseWriter<any>; scheduler: Scheduler },
     args: ScheduledDeleteArgs
   ) {
+    if (args.deletionTime !== undefined) {
+      const current = await ctx.db.get(args.id as any);
+      if (
+        !current ||
+        (current as { deletionTime?: unknown }).deletionTime !==
+          args.deletionTime
+      ) {
+        return;
+      }
+    }
+
     const table = tableByName.get(args.table);
     if (!table) {
       throw new Error(`scheduledDelete: unknown table '${args.table}'.`);
     }
-    const db = createDatabase(ctx.db, schema, edgeMetadata);
+    const db = createDatabase(ctx.db, schema, edgeMetadata, {
+      scheduler: ctx.scheduler,
+      scheduledMutationBatch,
+    });
     await db
       .delete(table)
       .cascade({ mode: args.cascadeMode ?? 'hard' })
       .where(eq(table._id, args.id as any))
-      .execute();
+      .execute({ mode: 'async' });
   };
 }

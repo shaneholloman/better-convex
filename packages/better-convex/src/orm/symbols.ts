@@ -6,7 +6,10 @@
 export type OrmRuntimeDefaults = {
   defaultLimit?: number;
   mutationBatchSize?: number;
+  mutationLeafBatchSize?: number;
   mutationMaxRows?: number;
+  mutationMaxBytesPerBatch?: number;
+  mutationScheduleCallCap?: number;
   mutationExecutionMode?: 'sync' | 'async';
   mutationAsyncDelayMs?: number;
 };

@@ -19,6 +19,7 @@ import {
   hardDeleteRow,
   type SerializedFilterExpression,
   softDeleteRow,
+  takeRowsWithinByteBudget,
 } from './mutation-utils';
 import type { TablesRelationalConfig } from './relations';
 import type { ConvexTableWithColumns } from './table';
@@ -51,6 +52,7 @@ export type ScheduledMutationBatchArgs = {
     | 'no action';
   cursor: string | null;
   batchSize: number;
+  maxBytesPerBatch?: number;
   delayMs: number;
 };
 
@@ -95,6 +97,14 @@ export function scheduledMutationBatchFactory<
         'scheduledMutationBatch: delayMs must be a non-negative number.'
       );
     }
+    if (
+      args.maxBytesPerBatch !== undefined &&
+      (!Number.isInteger(args.maxBytesPerBatch) || args.maxBytesPerBatch < 1)
+    ) {
+      throw new Error(
+        'scheduledMutationBatch: maxBytesPerBatch must be a positive integer.'
+      );
+    }
 
     const db = createDatabase(ctx.db, schema, edgeMetadata, {
       scheduler: ctx.scheduler,
@@ -103,7 +113,8 @@ export function scheduledMutationBatchFactory<
     const ormContext = getOrmContext(db as any);
     const foreignKeyGraph = ormContext?.foreignKeyGraph;
     const strict = ormContext?.strict ?? true;
-    const { maxRows } = getMutationCollectionLimits(ormContext);
+    const { leafBatchSize, maxRows, maxBytesPerBatch, scheduleCallCap } =
+      getMutationCollectionLimits(ormContext);
     const where = deserializeFilterExpression(args.where);
 
     if (workType === 'root-update') {
@@ -133,6 +144,7 @@ export function scheduledMutationBatchFactory<
           ...args,
           workType,
           cursor: page.continueCursor,
+          maxBytesPerBatch: args.maxBytesPerBatch ?? maxBytesPerBatch,
         });
       }
       return;
@@ -169,6 +181,7 @@ export function scheduledMutationBatchFactory<
           ...args,
           workType,
           cursor: page.continueCursor,
+          maxBytesPerBatch: args.maxBytesPerBatch ?? maxBytesPerBatch,
         });
       }
       return;
@@ -204,13 +217,26 @@ export function scheduledMutationBatchFactory<
           return builder;
         }
       );
+    const action = args.foreignAction ?? 'no action';
+    // Cascade workers patch/delete rows that are selected by the same indexed
+    // foreign key columns. Forwarding cursors can skip remaining rows after
+    // those mutations, so cascade continuation always re-queries from null.
+    const usesCursorContinuation = false;
     const paged = await queryWithIndex().paginate({
-      cursor: null,
+      cursor: usesCursorContinuation ? args.cursor : null,
       numItems: args.batchSize,
     });
-
-    const rows = paged.page as Record<string, unknown>[];
-    const action = args.foreignAction ?? 'no action';
+    const resolvedMaxBytesPerBatch = args.maxBytesPerBatch ?? maxBytesPerBatch;
+    const bounded = takeRowsWithinByteBudget(
+      paged.page as Record<string, unknown>[],
+      resolvedMaxBytesPerBatch
+    );
+    const rows = bounded.rows;
+    const hitByteLimit = bounded.hitLimit;
+    const scheduleState = {
+      remainingCalls: scheduleCallCap,
+      callCap: scheduleCallCap,
+    };
 
     if (workType === 'cascade-delete') {
       if (action === 'set null') {
@@ -251,12 +277,15 @@ export function scheduledMutationBatchFactory<
             cascadeMode: args.cascadeMode ?? 'hard',
             visited,
             batchSize: args.batchSize,
+            leafBatchSize,
             maxRows,
+            maxBytesPerBatch: resolvedMaxBytesPerBatch,
             allowFullScan: args.allowFullScan,
             strict,
             executionMode: 'async',
             scheduler: ctx.scheduler,
             scheduledMutationBatch,
+            scheduleState,
             delayMs: args.delayMs,
           });
           if ((args.cascadeMode ?? 'hard') === 'soft') {
@@ -313,12 +342,24 @@ export function scheduledMutationBatchFactory<
       }
     }
 
+    if (usesCursorContinuation) {
+      if (!paged.isDone && paged.continueCursor !== null) {
+        await ctx.scheduler.runAfter(args.delayMs, scheduledMutationBatch, {
+          ...args,
+          workType,
+          cursor: paged.continueCursor,
+        });
+      }
+      return;
+    }
+
     const hasRemaining = (await queryWithIndex().first()) !== null;
-    if (hasRemaining) {
+    if (hasRemaining || hitByteLimit) {
       await ctx.scheduler.runAfter(args.delayMs, scheduledMutationBatch, {
         ...args,
         workType,
         cursor: null,
+        maxBytesPerBatch: resolvedMaxBytesPerBatch,
       });
     }
   };

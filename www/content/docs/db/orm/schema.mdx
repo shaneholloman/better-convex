@@ -107,7 +107,10 @@ export default defineSchema({ users, posts }, {
   defaults: {
     defaultLimit: 100,             // non-paginated findMany() fallback
     mutationBatchSize: 100,        // update/delete batch size
+    mutationLeafBatchSize: 900,    // async non-recursive FK fan-out batch size
     mutationMaxRows: 1000,         // sync-mode hard cap
+    mutationMaxBytesPerBatch: 2_097_152, // async measured-byte budget
+    mutationScheduleCallCap: 100,  // async schedule calls allowed per mutation
     mutationExecutionMode: 'sync', // or 'async'
     mutationAsyncDelayMs: 0,       // scheduler delay between async batches
   },
@@ -116,7 +119,10 @@ export default defineSchema({ users, posts }, {
 
 - `defaults.defaultLimit`: used when `findMany()` is non-paginated and `limit` is omitted. No implicit built-in fallback is applied when this is unset.
 - `defaults.mutationBatchSize`: page size used to collect rows for `update()`/`delete()`. Built-in fallback: `100`.
+- `defaults.mutationLeafBatchSize`: async batch size for non-recursive FK fan-out actions (`set null`, `set default`, non-recursive update fan-out). Built-in fallback: `900`.
 - `defaults.mutationMaxRows`: sync-mode hard cap for matched rows in `update()`/`delete()`. Built-in fallback: `1000`.
+- `defaults.mutationMaxBytesPerBatch`: async measured-byte budget per continuation batch. Built-in fallback: `2_097_152` bytes.
+- `defaults.mutationScheduleCallCap`: async schedule calls allowed from one mutation invocation before throwing. Built-in fallback: `100`.
 - `defaults.mutationExecutionMode`: default execution mode for non-paginated `execute()` calls (`'sync'` or `'async'`). Built-in fallback: `'sync'`.
 - `defaults.mutationAsyncDelayMs`: default scheduler delay used by async mutation continuation. Built-in fallback: `0`.
 - Numeric defaults must be integers (`mutationAsyncDelayMs` allows `0`; others must be `>= 1`).

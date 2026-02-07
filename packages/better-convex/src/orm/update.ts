@@ -191,7 +191,13 @@ export class ConvexUpdateBuilder<
     if (isPaginated && config) {
       throw new Error('execute() config cannot be combined with paginate().');
     }
-    const { batchSize, maxRows } = getMutationCollectionLimits(ormContext);
+    const {
+      batchSize,
+      leafBatchSize,
+      maxRows,
+      maxBytesPerBatch,
+      scheduleCallCap,
+    } = getMutationCollectionLimits(ormContext);
     const resolvedMode = getMutationExecutionMode(
       ormContext,
       config?.mode ?? this.executionModeOverride
@@ -241,6 +247,7 @@ export class ConvexUpdateBuilder<
               update: encodeUndefinedDeep(this.setValues ?? {}),
               cursor: firstBatch.continueCursor,
               batchSize: asyncBatchSize,
+              maxBytesPerBatch,
               delayMs,
             }
           );
@@ -475,6 +482,10 @@ export class ConvexUpdateBuilder<
 
     const results: Record<string, unknown>[] = [];
     let numAffected = 0;
+    const scheduleState = {
+      remainingCalls: scheduleCallCap,
+      callCap: scheduleCallCap,
+    };
     const fkBatchSize = isPaginated ? pagination.numItems : batchSize;
 
     for (const { row, updatedRow, decision } of updates) {
@@ -494,12 +505,15 @@ export class ConvexUpdateBuilder<
         {
           graph: foreignKeyGraph,
           batchSize: fkBatchSize,
+          leafBatchSize,
           maxRows,
+          maxBytesPerBatch,
           allowFullScan,
           strict,
           executionMode: resolvedMode,
           scheduler: ormContext?.scheduler,
           scheduledMutationBatch: ormContext?.scheduledMutationBatch,
+          scheduleState,
           delayMs,
         }
       );

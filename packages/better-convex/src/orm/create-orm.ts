@@ -158,7 +158,11 @@ export function createOrm<TSchema extends TablesRelationalConfig>(
       }),
       scheduledDelete: mutationBuilder({
         args: v.any(),
-        handler: scheduledDeleteFactory(config.schema, edgeMetadata) as any,
+        handler: scheduledDeleteFactory(
+          config.schema,
+          edgeMetadata,
+          config.ormFunctions.scheduledMutationBatch
+        ) as any,
       }),
     }),
   };

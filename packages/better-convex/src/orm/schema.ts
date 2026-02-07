@@ -16,7 +16,10 @@ type BetterConvexSchemaOptions<StrictTableNameTypes extends boolean> =
 const DEFAULTS_NUMERIC_FIELDS = [
   'defaultLimit',
   'mutationBatchSize',
+  'mutationLeafBatchSize',
   'mutationMaxRows',
+  'mutationMaxBytesPerBatch',
+  'mutationScheduleCallCap',
 ] as const;
 
 const MUTATION_EXECUTION_MODES = ['sync', 'async'] as const;

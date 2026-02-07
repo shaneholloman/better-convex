@@ -441,7 +441,9 @@ await db
 - `update()` without `where()` throws unless you call `.allowFullScan()`.
 - Non‑`_id` filters require `.allowFullScan()` only when no index is available.
 - Matched rows are capped by `mutationMaxRows` (default `1000`), collected in `mutationBatchSize` pages (default `100`).
-- Override defaults via `defineSchema(..., { defaults: { mutationMaxRows, mutationBatchSize, mutationExecutionMode, mutationAsyncDelayMs } })`.
+- Async fan-out uses `mutationLeafBatchSize` (default `900`) for non-recursive FK actions.
+- Async fan-out enforces `mutationMaxBytesPerBatch` (default `2_097_152` measured bytes) and `mutationScheduleCallCap` (default `100`).
+- Override defaults via `defineSchema(..., { defaults: { mutationMaxRows, mutationBatchSize, mutationLeafBatchSize, mutationMaxBytesPerBatch, mutationScheduleCallCap, mutationExecutionMode, mutationAsyncDelayMs } })`.
 - For large workloads, use `.paginate({ cursor, numItems })` to execute one batch per mutation call.
 - Use `execute({ mode: 'async', batchSize?, delayMs? })` (or `.executeAsync(...)`) to run the first batch inline and schedule continuation.
 - Explicit async APIs cannot be combined with `.paginate()`.
@@ -468,7 +470,9 @@ await db.delete(users).where(eq(users._id, userId));
 - `delete()` without `where()` throws unless you call `.allowFullScan()`.
 - Non‑`_id` filters require `.allowFullScan()` only when no index is available.
 - Matched rows are capped by `mutationMaxRows` (default `1000`), collected in `mutationBatchSize` pages (default `100`).
-- Override defaults via `defineSchema(..., { defaults: { mutationMaxRows, mutationBatchSize, mutationExecutionMode, mutationAsyncDelayMs } })`.
+- Async fan-out uses `mutationLeafBatchSize` (default `900`) for non-recursive FK actions.
+- Async fan-out enforces `mutationMaxBytesPerBatch` (default `2_097_152` measured bytes) and `mutationScheduleCallCap` (default `100`).
+- Override defaults via `defineSchema(..., { defaults: { mutationMaxRows, mutationBatchSize, mutationLeafBatchSize, mutationMaxBytesPerBatch, mutationScheduleCallCap, mutationExecutionMode, mutationAsyncDelayMs } })`.
 - For large workloads, use `.paginate({ cursor, numItems })` to execute one batch per mutation call.
 - Use `execute({ mode: 'async', batchSize?, delayMs? })` (or `.executeAsync(...)`) to run the first batch inline and schedule continuation.
 - Explicit async APIs cannot be combined with `.paginate()` (and delete `.scheduled(...)`).
@@ -500,7 +504,8 @@ await db
 ```
 
 Scheduled deletes require passing `{ scheduler, scheduledDelete }` when building `ctx.orm`
-and exposing `scheduledDeleteFactory(schema, edges)` as an internal mutation.
+and exposing `scheduledDeleteFactory(schema, edges, scheduledMutationBatchRef)` as an internal mutation.
+The scheduled worker validates the original `deletionTime` token before hard-deleting, so clearing/changing `deletionTime` cancels a pending scheduled delete.
 
 Async mutation batches (`execute({ mode: 'async' })` / `.executeAsync()` for update/delete) require passing
 `{ scheduler, scheduledMutationBatch }` when building `ctx.orm` and exposing

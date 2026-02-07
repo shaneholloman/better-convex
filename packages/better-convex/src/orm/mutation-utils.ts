@@ -257,25 +257,107 @@ export const deserializeFilterExpression = (
 };
 
 const DEFAULT_MUTATION_BATCH_SIZE = 100;
+const DEFAULT_MUTATION_LEAF_BATCH_SIZE = 900;
 const DEFAULT_MUTATION_MAX_ROWS = 1000;
+const DEFAULT_MUTATION_MAX_BYTES_PER_BATCH = 2_097_152;
+const DEFAULT_MUTATION_SCHEDULE_CALL_CAP = 100;
 const DEFAULT_MUTATION_ASYNC_DELAY_MS = 0;
+const MEASURED_BYTE_SAFETY_MULTIPLIER = 2;
+
+export const estimateMeasuredMutationRowBytes = (
+  row: Record<string, unknown>
+): number =>
+  Buffer.byteLength(JSON.stringify(row), 'utf8') *
+  MEASURED_BYTE_SAFETY_MULTIPLIER;
+
+export const takeRowsWithinByteBudget = (
+  rows: Record<string, unknown>[],
+  maxBytesPerBatch: number
+): { rows: Record<string, unknown>[]; hitLimit: boolean } => {
+  if (!Number.isInteger(maxBytesPerBatch) || maxBytesPerBatch < 1) {
+    throw new Error('mutationMaxBytesPerBatch must be a positive integer.');
+  }
+  if (rows.length === 0) {
+    return { rows, hitLimit: false };
+  }
+
+  let bytes = 0;
+  const selected: Record<string, unknown>[] = [];
+  for (const row of rows) {
+    const rowBytes = estimateMeasuredMutationRowBytes(row);
+    if (selected.length > 0 && bytes + rowBytes > maxBytesPerBatch) {
+      return { rows: selected, hitLimit: true };
+    }
+    selected.push(row);
+    bytes += rowBytes;
+  }
+  return { rows: selected, hitLimit: false };
+};
 
 export const getMutationCollectionLimits = (
   context?: OrmContextValue
-): { batchSize: number; maxRows: number } => {
+): {
+  batchSize: number;
+  leafBatchSize: number;
+  maxRows: number;
+  maxBytesPerBatch: number;
+  scheduleCallCap: number;
+} => {
   const batchSize =
     context?.defaults?.mutationBatchSize ?? DEFAULT_MUTATION_BATCH_SIZE;
+  const leafBatchSize =
+    context?.defaults?.mutationLeafBatchSize ??
+    DEFAULT_MUTATION_LEAF_BATCH_SIZE;
   const maxRows =
     context?.defaults?.mutationMaxRows ?? DEFAULT_MUTATION_MAX_ROWS;
+  const maxBytesPerBatch =
+    context?.defaults?.mutationMaxBytesPerBatch ??
+    DEFAULT_MUTATION_MAX_BYTES_PER_BATCH;
+  const scheduleCallCap =
+    context?.defaults?.mutationScheduleCallCap ??
+    DEFAULT_MUTATION_SCHEDULE_CALL_CAP;
 
   if (!Number.isInteger(batchSize) || batchSize < 1) {
     throw new Error('mutationBatchSize must be a positive integer.');
   }
+  if (!Number.isInteger(leafBatchSize) || leafBatchSize < 1) {
+    throw new Error('mutationLeafBatchSize must be a positive integer.');
+  }
   if (!Number.isInteger(maxRows) || maxRows < 1) {
     throw new Error('mutationMaxRows must be a positive integer.');
   }
+  if (!Number.isInteger(maxBytesPerBatch) || maxBytesPerBatch < 1) {
+    throw new Error('mutationMaxBytesPerBatch must be a positive integer.');
+  }
+  if (!Number.isInteger(scheduleCallCap) || scheduleCallCap < 1) {
+    throw new Error('mutationScheduleCallCap must be a positive integer.');
+  }
 
-  return { batchSize, maxRows };
+  return {
+    batchSize,
+    leafBatchSize,
+    maxRows,
+    maxBytesPerBatch,
+    scheduleCallCap,
+  };
+};
+
+type MutationScheduleState = {
+  remainingCalls: number;
+  callCap: number;
+};
+
+const consumeScheduleCall = (state: MutationScheduleState | undefined) => {
+  if (!state) {
+    return;
+  }
+  if (state.remainingCalls < 1) {
+    throw new Error(
+      `Async cascade scheduling exceeded mutationScheduleCallCap (${state.callCap}). ` +
+        'Increase defineSchema(..., { defaults: { mutationScheduleCallCap } }) or reduce fan-out per mutation.'
+    );
+  }
+  state.remainingCalls -= 1;
 };
 
 export const getMutationExecutionMode = (
@@ -803,7 +885,7 @@ export async function softDeleteRow(
   db: GenericDatabaseWriter<any>,
   table: ConvexTable<any>,
   row: Record<string, unknown>
-) {
+): Promise<number> {
   const tableName = getTableName(table);
   const columns = getTableColumns(table);
   if (!('deletionTime' in columns)) {
@@ -813,6 +895,7 @@ export async function softDeleteRow(
   }
   const deletionTime = Date.now();
   await db.patch(tableName, row._id as any, { deletionTime });
+  return deletionTime;
 }
 
 export async function hardDeleteRow(
@@ -833,12 +916,15 @@ export async function applyIncomingForeignKeyActionsOnDelete(
     cascadeMode: CascadeMode;
     visited: Set<string>;
     batchSize: number;
+    leafBatchSize: number;
     maxRows: number;
+    maxBytesPerBatch: number;
     allowFullScan?: boolean;
     strict?: boolean;
     executionMode?: MutationRunMode;
     scheduler?: Scheduler;
     scheduledMutationBatch?: SchedulableFunctionReference;
+    scheduleState?: MutationScheduleState;
     delayMs?: number;
   }
 ): Promise<void> {
@@ -891,6 +977,8 @@ export async function applyIncomingForeignKeyActionsOnDelete(
 
     let referencingRows: Record<string, unknown>[];
     if (options.executionMode === 'async') {
+      const asyncBatchSize =
+        action === 'cascade' ? options.batchSize : options.leafBatchSize;
       const page: {
         page: Record<string, unknown>[];
         continueCursor: string | null;
@@ -900,14 +988,20 @@ export async function applyIncomingForeignKeyActionsOnDelete(
         .withIndex(indexName, (q: any) =>
           buildIndexPredicate(q, foreignKey.sourceColumns, targetValues)
         )
-        .paginate({ cursor: null, numItems: options.batchSize });
-      referencingRows = page.page as Record<string, unknown>[];
-      if (!page.isDone && page.continueCursor !== null) {
+        .paginate({ cursor: null, numItems: asyncBatchSize });
+      const bounded = takeRowsWithinByteBudget(
+        page.page as Record<string, unknown>[],
+        options.maxBytesPerBatch
+      );
+      referencingRows = bounded.rows;
+      const needsContinuation = bounded.hitLimit || !page.isDone;
+      if (needsContinuation) {
         if (!options.scheduler || !options.scheduledMutationBatch) {
           throw new Error(
             'Async mutation execution requires orm.db(ctx) configured with scheduling (ormFunctions.scheduledMutationBatch).'
           );
         }
+        consumeScheduleCall(options.scheduleState);
         await options.scheduler.runAfter(
           options.delayMs ?? 0,
           options.scheduledMutationBatch,
@@ -922,8 +1016,9 @@ export async function applyIncomingForeignKeyActionsOnDelete(
             foreignAction: action,
             deleteMode: options.deleteMode,
             cascadeMode: options.cascadeMode,
-            cursor: page.continueCursor,
-            batchSize: options.batchSize,
+            cursor: null,
+            batchSize: asyncBatchSize,
+            maxBytesPerBatch: options.maxBytesPerBatch,
             delayMs: options.delayMs ?? 0,
           }
         );
@@ -1012,12 +1107,15 @@ export async function applyIncomingForeignKeyActionsOnUpdate(
   options: {
     graph: ForeignKeyGraph;
     batchSize: number;
+    leafBatchSize: number;
     maxRows: number;
+    maxBytesPerBatch: number;
     allowFullScan?: boolean;
     strict?: boolean;
     executionMode?: MutationRunMode;
     scheduler?: Scheduler;
     scheduledMutationBatch?: SchedulableFunctionReference;
+    scheduleState?: MutationScheduleState;
     delayMs?: number;
   }
 ): Promise<void> {
@@ -1079,6 +1177,7 @@ export async function applyIncomingForeignKeyActionsOnUpdate(
 
     let referencingRows: Record<string, unknown>[];
     if (options.executionMode === 'async') {
+      const asyncBatchSize = options.leafBatchSize;
       const page: {
         page: Record<string, unknown>[];
         continueCursor: string | null;
@@ -1088,14 +1187,20 @@ export async function applyIncomingForeignKeyActionsOnUpdate(
         .withIndex(indexName, (q: any) =>
           buildIndexPredicate(q, foreignKey.sourceColumns, oldValues)
         )
-        .paginate({ cursor: null, numItems: options.batchSize });
-      referencingRows = page.page as Record<string, unknown>[];
-      if (!page.isDone && page.continueCursor !== null) {
+        .paginate({ cursor: null, numItems: asyncBatchSize });
+      const bounded = takeRowsWithinByteBudget(
+        page.page as Record<string, unknown>[],
+        options.maxBytesPerBatch
+      );
+      referencingRows = bounded.rows;
+      const needsContinuation = bounded.hitLimit || !page.isDone;
+      if (needsContinuation) {
         if (!options.scheduler || !options.scheduledMutationBatch) {
           throw new Error(
             'Async mutation execution requires orm.db(ctx) configured with scheduling (ormFunctions.scheduledMutationBatch).'
           );
         }
+        consumeScheduleCall(options.scheduleState);
         await options.scheduler.runAfter(
           options.delayMs ?? 0,
           options.scheduledMutationBatch,
@@ -1109,8 +1214,9 @@ export async function applyIncomingForeignKeyActionsOnUpdate(
             targetValues: encodeUndefinedDeep(oldValues),
             newValues: encodeUndefinedDeep(newValues),
             foreignAction: action,
-            cursor: page.continueCursor,
-            batchSize: options.batchSize,
+            cursor: null,
+            batchSize: asyncBatchSize,
+            maxBytesPerBatch: options.maxBytesPerBatch,
             delayMs: options.delayMs ?? 0,
           }
         );

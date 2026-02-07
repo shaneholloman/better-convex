@@ -206,7 +206,9 @@ There is no per‑field write rule hook; enforce invariants in mutations or `che
 ## Deletes & Cascades
 
 - Ents auto‑cascade deletes based on edge definitions.
+- Ents only batches high-volume hard deletes when you opt into `.deletion("scheduled")` on the table.
 - ORM requires explicit `foreignKey(...).onDelete('cascade')` and/or manual cleanup.
+- For large fan-out in ORM, use async execution (`execute({ mode: 'async' })` / `executeAsync()`).
 - Soft/scheduled deletes are mutation‑time helpers:
 
 ```ts
@@ -216,6 +218,8 @@ await ctx.orm
   .where(eq(users._id, userId))
   .scheduled({ delayMs: 60_000 });
 ```
+
+Scheduled hard deletes are cancellation-safe: if `deletionTime` is cleared or changed before the scheduled worker runs, the hard delete is skipped.
 
 ## Notes on Ents Gaps
 

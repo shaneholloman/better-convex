@@ -202,7 +202,13 @@ export class ConvexDeleteBuilder<
     if (isPaginated && config) {
       throw new Error('execute() config cannot be combined with paginate().');
     }
-    const { batchSize, maxRows } = getMutationCollectionLimits(ormContext);
+    const {
+      batchSize,
+      leafBatchSize,
+      maxRows,
+      maxBytesPerBatch,
+      scheduleCallCap,
+    } = getMutationCollectionLimits(ormContext);
     const resolvedMode = getMutationExecutionMode(
       ormContext,
       config?.mode ?? this.executionModeOverride
@@ -258,6 +264,7 @@ export class ConvexDeleteBuilder<
               cascadeMode: this.cascadeMode,
               cursor: firstBatch.continueCursor,
               batchSize: asyncBatchSize,
+              maxBytesPerBatch,
               delayMs,
             }
           );
@@ -461,6 +468,10 @@ export class ConvexDeleteBuilder<
         : 'hard');
 
     const visited = new Set<string>();
+    const scheduleState = {
+      remainingCalls: scheduleCallCap,
+      callCap: scheduleCallCap,
+    };
     const fkBatchSize = isPaginated ? pagination.numItems : batchSize;
 
     for (const row of rows) {
@@ -495,12 +506,15 @@ export class ConvexDeleteBuilder<
           cascadeMode,
           visited,
           batchSize: fkBatchSize,
+          leafBatchSize,
           maxRows,
+          maxBytesPerBatch,
           allowFullScan,
           strict,
           executionMode: resolvedMode,
           scheduler: ormContext?.scheduler,
           scheduledMutationBatch: ormContext?.scheduledMutationBatch,
+          scheduleState,
           delayMs,
         }
       );
@@ -516,7 +530,7 @@ export class ConvexDeleteBuilder<
       }
 
       if (this.deleteMode === 'scheduled') {
-        await softDeleteRow(
+        const deletionTime = await softDeleteRow(
           this.db,
           this.table,
           row as Record<string, unknown>
@@ -534,6 +548,7 @@ export class ConvexDeleteBuilder<
             table: tableName,
             id: (row as any)._id,
             cascadeMode: 'hard',
+            deletionTime,
           }
         );
         numAffected++;

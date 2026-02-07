@@ -56,7 +56,10 @@ const ids = await db
 `update()` collects matching rows in bounded pages before applying writes:
 
 - `mutationBatchSize`: defaults to `100`
+- `mutationLeafBatchSize`: defaults to `900` (async FK fan-out batch size)
 - `mutationMaxRows`: defaults to `1000`
+- `mutationMaxBytesPerBatch`: defaults to `2_097_152` (async measured-byte budget)
+- `mutationScheduleCallCap`: defaults to `100` (async schedule calls per mutation)
 
 If matched rows exceed `mutationMaxRows`, update throws.
 
@@ -126,6 +129,8 @@ Important behavior:
 - `.paginate()` remains the caller-controlled execution path.
 - `batchSize` resolves as: per-call `batchSize` → `defaults.mutationBatchSize` → `100`.
 - `delayMs` resolves as: per-call `delayMs` → `defaults.mutationAsyncDelayMs` → `0`.
+- Async FK update fan-out (`onUpdate: 'cascade'`, `set null`, `set default`) uses `mutationLeafBatchSize`.
+- Async fan-out stops at `mutationMaxBytesPerBatch` and may throw after `mutationScheduleCallCap` schedule calls in one mutation invocation.
 
 Async execution requires wiring `scheduler` + `scheduledMutationBatch` when building `ctx.orm`.
 
