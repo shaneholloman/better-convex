@@ -398,37 +398,23 @@ const db = orm.db(mockDb);
 // ============================================================================
 
 // Test 12: Where clause with nested relations
-// TODO(Phase 4): Enable once relation loading implemented
-// Relation loading with `with` option is not yet implemented
-// _loadRelations() currently returns rows unchanged
-// {
-//   const result = await db.query.users.findMany({
-//     where: { name: 'Alice' },
-//     with: {
-//       posts: {
-//         where: { published: true },
-//         columns: {
-//           title: true,
-//         },
-//       },
-//     },
-//   });
-//
-//   type Expected = Array<{
-//     _id: string;
-//     _creationTime: number;
-//     name: string;
-//     email: string;
-//     age: number | null;
-//     cityId: GenericId<'cities'>;
-//     homeCityId: GenericId<'cities'> | null;
-//     posts: Array<{
-//       title: string;
-//     }>;
-//   }>;
-//
-//   Expect<Equal<Expected, typeof result>>;
-// }
+{
+  const result = await db.query.users.findMany({
+    where: { name: 'Alice' },
+    with: {
+      posts: {
+        where: { published: true },
+        columns: {
+          title: true,
+        },
+      },
+    },
+  });
+
+  type Row = (typeof result)[number];
+  Expect<Equal<Row['name'], string>>;
+  Expect<Equal<Row['posts'][number]['title'], string | null>>;
+}
 
 // Test 12b: one() relation with where is nullable (even if optional false)
 {

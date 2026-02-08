@@ -1,4 +1,5 @@
 import {
+  Columns,
   check,
   convexTable,
   getTableColumns,
@@ -6,6 +7,7 @@ import {
   id,
   index,
   isNotNull,
+  TableName,
   text,
   uniqueIndex,
 } from 'better-convex/orm';
@@ -57,4 +59,21 @@ test('getTableConfig includes indexes/unique/fk/rls/checks', () => {
   expect(postsConfig.foreignKeys.length).toBe(1);
   expect(postsConfig.foreignKeys[0].foreignTableName).toBe('users');
   expect(postsConfig.foreignKeys[0].foreignColumns).toEqual(['_id']);
+});
+
+test('getTableColumns synthesizes system fields when table metadata is partial', () => {
+  const table = {
+    [TableName]: 'users',
+    [Columns]: {
+      name: text().notNull(),
+    },
+  } as any;
+
+  const columns = getTableColumns(table);
+  expect(columns).toHaveProperty('name');
+  expect(columns).toHaveProperty('_id');
+  expect(columns).toHaveProperty('_creationTime');
+
+  expect((columns._id as any).config.table).toBe(table);
+  expect((columns._creationTime as any).config.table).toBe(table);
 });

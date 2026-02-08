@@ -1,34 +1,16 @@
 /**
  * Type tests for relation loading with `with` option
  *
- * **STATUS: M6.5 Phase 4 Runtime Complete - Type Inference Issue**
- *
- * Runtime implementation is complete and working (26 tests passing):
- * - Basic one-to-many and many-to-one relations
- * - Nested relations (max depth 3)
- * - Relation filters (where, orderBy, limit)
- * - Cursor pagination
- *
- * **Known Issue: Type Widening in DatabaseWithQuery**
- * TypeScript widens `TSchema[K]` to union of all table types in mapped type,
- * causing query results to be typed as `(UserType | PostType)[] | UserType | PostType | null`
- * instead of the specific table's type. Runtime works correctly, types need fix.
- *
- * Attempted fixes that didn't work:
- * - Conditional type with extends check
- * - Helper type to distribute over union
- * - Preserving literal table name in defineRelations output
- *
- * These 7 type tests are disabled until type widening issue is resolved.
- *
- * Related:
- * - packages/better-convex/src/orm/query.ts:642-946 (_loadRelations implementation)
- * - packages/better-convex/src/orm/database.ts:24-29 (DatabaseWithQuery type)
- * - convex/orm/relation-loading.test.ts (runtime tests - all passing)
- * - convex/orm/pagination.test.ts (cursor pagination tests - all passing)
+ * Includes a local self-referential `node` relation schema for type-only
+ * assertions so runtime schema guardrails (inverse/cycle detection) remain
+ * unchanged.
  */
 
-import { createOrm, extractRelationsConfig } from 'better-convex/orm';
+import {
+  createOrm,
+  defineRelations,
+  extractRelationsConfig,
+} from 'better-convex/orm';
 import type { GenericDatabaseReader } from 'convex/server';
 import type { GenericId } from 'convex/values';
 import * as schema from './tables-rel';
@@ -195,8 +177,7 @@ const db = orm.db(mockDb);
     }>;
   }>;
 
-  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
-  // Expect<Equal<Expected, typeof result>>;
+  Expect<Equal<Expected, typeof result>>;
 }
 
 // Test 2: Nested relations
@@ -245,8 +226,7 @@ const db = orm.db(mockDb);
     }>;
   }>;
 
-  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
-  // Expect<Equal<Expected, typeof result>>;
+  Expect<Equal<Expected, typeof result>>;
 }
 
 // Test 3: Column selection with relations
@@ -273,8 +253,7 @@ const db = orm.db(mockDb);
     }>;
   }>;
 
-  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
-  // Expect<Equal<Expected, typeof result>>;
+  Expect<Equal<Expected, typeof result>>;
 }
 
 // Test 4: One relation (nullable)
@@ -312,13 +291,34 @@ const db = orm.db(mockDb);
     } | null;
   }>;
 
-  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
-  // Expect<Equal<Expected, typeof result>>;
+  Expect<Equal<Expected, typeof result>>;
 }
 
 // Test 5: Self-referential relations
 {
-  const result = await db.query.node.findMany({
+  const nodeRelations = defineRelations({ node: schema.node }, (r) => ({
+    node: {
+      parent: r.one.node({
+        from: r.node.parentId,
+        to: r.node._id,
+        alias: 'NodeParentTypeTest',
+      }),
+      left: r.one.node({
+        from: r.node.leftId,
+        to: r.node._id,
+        alias: 'NodeLeftTypeTest',
+      }),
+      right: r.one.node({
+        from: r.node.rightId,
+        to: r.node._id,
+        alias: 'NodeRightTypeTest',
+      }),
+    },
+  }));
+  const nodeOrm = createOrm({ schema: nodeRelations });
+  const nodeDb = nodeOrm.db(mockDb);
+
+  const result = await nodeDb.query.node.findMany({
     with: {
       parent: true,
       left: true,
@@ -342,8 +342,14 @@ const db = orm.db(mockDb);
     }
   >;
 
-  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
-  // Expect<Equal<Expected, typeof result>>;
+  type Row = (typeof result)[number];
+  Expect<Equal<Row['_id'], NodeId>>;
+  Expect<Equal<Row['parentId'], NodeId | null>>;
+  Expect<Equal<Row['leftId'], NodeId | null>>;
+  Expect<Equal<Row['rightId'], NodeId | null>>;
+  Expect<Equal<Row['parent'], NodeType | null>>;
+  Expect<Equal<Row['left'], NodeType | null>>;
+  Expect<Equal<Row['right'], NodeType | null>>;
 }
 
 // Test 6: Many-to-many through join table
@@ -373,8 +379,7 @@ const db = orm.db(mockDb);
     }>;
   }>;
 
-  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
-  // Expect<Equal<Expected, typeof result>>;
+  Expect<Equal<Expected, typeof result>>;
 }
 
 // Test 7: findFirst returns single item or null
@@ -414,23 +419,19 @@ const db = orm.db(mockDb);
       }
     | undefined;
 
-  // TODO(Type Fix): Re-enable once DatabaseWithQuery type widening issue resolved
-  // Expect<Equal<Expected, typeof result>>;
+  Expect<Equal<Expected, typeof result>>;
 }
 
 // ============================================================================
 // NEGATIVE TYPE TESTS - Invalid usage should error
 // ============================================================================
 
-// TODO(Phase 4): Re-enable once relation type validation implemented
-// Currently type system doesn't enforce relation name validity
-// TODO(Phase 4): Uncomment when relation validation implemented
-// // @ts-expect-error - Invalid relation name
-// db.query.users.findMany({
-//   with: {
-//     invalidRelation: true,
-//   },
-// });
+db.query.users.findMany({
+  with: {
+    // @ts-expect-error - Invalid relation name
+    invalidRelation: true,
+  },
+});
 
 db.query.users.findMany({
   columns: {
@@ -439,35 +440,19 @@ db.query.users.findMany({
   },
 });
 
-// TODO(Phase 4): Re-enable once nested relation validation implemented
-// TODO(Phase 4): Uncomment when nested relation validation implemented
-// // @ts-expect-error - Invalid nested relation
-// db.query.users.findMany({
-//   with: {
-//     posts: {
-//       with: {
-//         invalidNestedRelation: true,
-//       },
-//     },
-//   },
-// });
+db.query.users.findMany({
+  with: {
+    posts: {
+      with: {
+        // @ts-expect-error - Invalid nested relation
+        invalidNestedRelation: true,
+      },
+    },
+  },
+});
 
-// TODO(M5): Re-enable once findFirst API constraints implemented
-// These should error but currently the type system allows them
-// TODO(M5): Uncomment when findFirst constraints implemented
-// // @ts-expect-error - Cannot use where/orderBy/limit on findFirst
-// db.query.users.findFirst({
-//   where: { name: 'test' },
-// });
-
-// TODO(M5): Uncomment when findFirst constraints implemented
-// // @ts-expect-error - Cannot use where/orderBy/limit on findFirst
-// db.query.users.findFirst({
-//   orderBy: (users, { asc }) => asc(users.name),
-// });
-
-// TODO(M5): Uncomment when findFirst constraints implemented
-// // @ts-expect-error - Cannot use where/orderBy/limit on findFirst
-// db.query.users.findFirst({
-//   limit: 10,
-// });
+// findFirst intentionally supports where/orderBy (see test/types/select.ts).
+db.query.users.findFirst({
+  // @ts-expect-error - limit is not allowed on findFirst
+  limit: 10,
+});

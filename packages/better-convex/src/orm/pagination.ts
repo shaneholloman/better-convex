@@ -129,10 +129,27 @@ export async function* streamQuery<
   request: Omit<PageRequest<DataModel, T>, 'targetMaxRows' | 'absoluteMaxRows'>
 ): AsyncGenerator<[DocumentByName<DataModel, T>, IndexKey]> {
   const index = request.index ?? 'by_creation_time';
+  // Support explicit indexFields without requiring the full schema.
+  const schema =
+    request.schema ??
+    (request.index && request.indexFields
+      ? ({
+          tables: {
+            [request.table]: {
+              indexes: [
+                {
+                  indexDescriptor: String(request.index),
+                  fields: request.indexFields,
+                },
+              ],
+            },
+          },
+        } as SchemaDefinition<any, boolean>)
+      : undefined);
   const indexFields = getIndexFields(
     request.table,
-    request.index as any,
-    request.schema
+    index as any,
+    schema as any
   );
   const startIndexKey = request.startIndexKey ?? [];
   const endIndexKey = request.endIndexKey ?? [];
@@ -153,7 +170,7 @@ export async function* streamQuery<
   };
   const stream = streamIndexRange(
     ctx.db as any,
-    request.schema as any,
+    schema as any,
     request.table,
     index as any,
     bounds,

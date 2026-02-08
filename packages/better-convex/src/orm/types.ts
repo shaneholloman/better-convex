@@ -837,12 +837,12 @@ export type BuildQueryResult<
                 Exclude<TFullSelection['with'], undefined>,
                 TTableConfig['relations']
               >
+            : {}) &
+          (TFullSelection extends { vectorSearch: infer TVectorSearch }
+            ? [TVectorSearch] extends [undefined]
+              ? {}
+              : { _score?: number }
             : {})
-          & (TFullSelection extends { vectorSearch: infer TVectorSearch }
-              ? [TVectorSearch] extends [undefined]
-                ? {}
-                : { _score?: number }
-              : {})
       >
     : never;
 
