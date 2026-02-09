@@ -25,6 +25,7 @@ import type {
   ReturningSelection,
   UpdateSet,
 } from './types';
+import { isUnsetToken } from './unset-token';
 
 export type InsertOnConflictDoNothingConfig<_TTable extends ConvexTable<any>> =
   {
@@ -265,11 +266,38 @@ export class ConvexInsertBuilder<
     const ormContext = getOrmContext(this.db);
     const rls = ormContext?.rls;
 
+    // Normalize set(): ignore `undefined` (noop), translate unsetToken -> `undefined` (unset).
+    const normalizedSet: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(updateConfig.set as any)) {
+      if (value === undefined) {
+        continue;
+      }
+      if (isUnsetToken(value)) {
+        if (key === '_id' || key === '_creationTime') {
+          throw new Error(`Cannot unset system field '${key}'.`);
+        }
+        const config = (getTableColumns(this.table)[key] as any)?.config;
+        if (config?.notNull) {
+          throw new Error(
+            `Cannot unset NOT NULL column '${key}' on '${tableName}'. Use null (if nullable) or provide a value.`
+          );
+        }
+        normalizedSet[key] = undefined;
+        continue;
+      }
+      normalizedSet[key] = value;
+    }
+
+    // No-op: empty updates should not run $onUpdateFn hooks or trigger writes.
+    if (Object.keys(normalizedSet).length === 0) {
+      return { status: 'updated', row: null };
+    }
+
     const onUpdateSet: Record<string, unknown> = {};
     for (const [columnName, builder] of Object.entries(
       getTableColumns(this.table)
     )) {
-      if (columnName in (updateConfig.set as any)) {
+      if (columnName in normalizedSet) {
         continue;
       }
       const onUpdateFn = (builder as any).config?.onUpdateFn;
@@ -280,7 +308,7 @@ export class ConvexInsertBuilder<
 
     const effectiveSet = {
       ...onUpdateSet,
-      ...(updateConfig.set as any),
+      ...normalizedSet,
     };
 
     const updateDecision = evaluateUpdateDecision({

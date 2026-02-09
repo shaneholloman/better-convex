@@ -172,8 +172,8 @@ isNotNull(field)
 - `findUnique is not a function` → Use `findFirst` with `where`
 - `count/sum/avg/max/min is not on db.query.*` → Use `/docs/db/aggregates` (`@convex-dev/aggregate`)
 - `'include' does not exist` → Use `with` instead of `include`
-- `findMany() requires explicit sizing` → Add `limit`, use `paginate`, set schema `defaultLimit`, or opt in with `allowFullScan: true`
-- `allowFullScan required` → Predicate `where`, missing relation index, or unbounded update/delete requires `allowFullScan: true`
+- `findMany() requires explicit sizing` → Add `limit`, use `paginate`, set schema `defaultLimit`, or opt in with `allowFullScan`
+- `allowFullScan required` → Predicate `where`, missing relation index, or unbounded update/delete requires `allowFullScan`
 - `matched more than mutationMaxRows` → Narrow update/delete filter or raise `defaults.mutationMaxRows`
 - `update/delete pagination does not support multi-probe filters yet` → Rewrite to a single-range index filter, or run non-paginated mode with row cap
 

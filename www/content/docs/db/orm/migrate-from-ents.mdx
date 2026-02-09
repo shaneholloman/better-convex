@@ -97,7 +97,7 @@ If you need RLS, pass `rls: { ctx }` when building `table`.
 | Ents | ORM |
 |---|---|
 | `ctx.orm('users').get(id)` | `ctx.orm.query.users.findFirst({ where: { _id: id } })` |
-| `ctx.orm('users').getX(id)` | `const u = await ctx.orm.query.users.findFirst(...); if (!u) throw ...` |
+| `ctx.orm('users').getX(id)` | `ctx.orm.query.users.findFirstOrThrow({ where: { _id: id } })` |
 | `ctx.orm('users').get('email', v)` | `ctx.orm.query.users.findFirst({ where: { email: v } })` |
 | `ctx.orm('users').getMany(ids)` | `ctx.orm.query.users.findMany({ where: { _id: { in: ids } } })` |
 | `ctx.orm('users').order('desc').take(5)` | `ctx.orm.query.users.findMany({ orderBy: { _creationTime: 'desc' }, limit: 5 })` |

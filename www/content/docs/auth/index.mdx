@@ -29,7 +29,7 @@ Let's understand the key concepts.
 | Approach | Schema Location | Database Access |
 |----------|-----------------|-----------------|
 | Component (`@convex-dev/better-auth`) | Component schema | Via `ctx.runQuery`/`ctx.runMutation` |
-| **Local** (`better-convex/auth`) | Your app schema | Direct `ctx.db` access |
+| **Local** (`better-convex/auth`) | Your app schema | Better-Convex ORM (`ctx.orm`) |
 
 better-convex uses the **local approach**:
 - Auth tables live in your app schema
@@ -40,7 +40,7 @@ better-convex uses the **local approach**:
 
 | Adapter | Used In | Access |
 |---------|---------|--------|
-| `adapter` via `getAuth(ctx)` | Queries, mutations | Direct DB access |
+| `adapter` via `getAuth(ctx)` | Queries, mutations | ORM access (`ctx.orm`) |
 | `httpAdapter` via `createAuth(ctx)` | HTTP routes, actions | HTTP context |
 
 ```ts showLineNumbers {2,5}

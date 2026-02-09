@@ -112,12 +112,14 @@ export const cleanupStaleData = privateMutation
   .mutation(async ({ ctx }) => {
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
-    const staleSessions = await ctx
-      .table('session')
-      .filter((q) => q.lt(q.field('lastActiveAt'), thirtyDaysAgo));
+    // Index session.lastActiveAt.
+    const staleSessions = await ctx.orm.query.session.findMany({
+      where: { lastActiveAt: { lt: thirtyDaysAgo } },
+      limit: 1000,
+    });
 
-    for (const session of staleSessions) {
-      await ctx.table('session').getX(session._id).delete();
+    for (const sessionRow of staleSessions) {
+      await ctx.orm.delete(session).where(eq(session._id, sessionRow._id));
     }
 
     return { deletedCount: staleSessions.length };
@@ -170,7 +172,10 @@ export const processOrder = authMutation
   .input(z.object({ orderId: zid('orders') }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    await ctx.table('orders').getX(input.orderId).patch({ status: 'processing' });
+    await ctx.orm
+      .update(orders)
+      .set({ status: 'processing' })
+      .where(eq(orders._id, input.orderId));
 
     // Run after 5 seconds
     await ctx.scheduler.runAfter(5000, internal.orders.charge, {
@@ -190,7 +195,11 @@ export const createItem = authMutation
   .input(z.object({ name: z.string() }))
   .output(zid('items'))
   .mutation(async ({ ctx, input }) => {
-    const itemId = await ctx.table('items').insert({ name: input.name });
+    const [row] = await ctx.orm
+      .insert(items)
+      .values({ name: input.name })
+      .returning({ id: items._id });
+    const itemId = row.id;
 
     // Action runs immediately after mutation commits
     await ctx.scheduler.runAfter(0, internal.items.sendNotification, {
@@ -249,11 +258,15 @@ export const createSubscription = authMutation
     );
 
     // Store job ID for cancellation
-    return await ctx.table('subscriptions').insert({
-      userId: ctx.userId,
-      planId: input.planId,
-      expirationJobId,
-    });
+    const [row] = await ctx.orm
+      .insert(subscriptions)
+      .values({
+        userId: ctx.userId,
+        planId: input.planId,
+        expirationJobId,
+      })
+      .returning({ id: subscriptions._id });
+    return row.id;
   });
 ```
 
@@ -264,7 +277,9 @@ export const cancelSubscription = authMutation
   .input(z.object({ subscriptionId: zid('subscriptions') }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const subscription = await ctx.table('subscriptions').get(input.subscriptionId);
+    const subscription = await ctx.orm.query.subscriptions.findFirst({
+      where: { _id: input.subscriptionId },
+    });
 
     if (!subscription) {
       throw new CRPCError({ code: 'NOT_FOUND', message: 'Subscription not found' });
@@ -275,7 +290,9 @@ export const cancelSubscription = authMutation
       await ctx.scheduler.cancel(subscription.expirationJobId);
     }
 
-    await ctx.table('subscriptions').getX(subscription._id).delete();
+    await ctx.orm
+      .delete(subscriptions)
+      .where(eq(subscriptions._id, subscription._id));
 
     return null;
   });
@@ -299,7 +316,7 @@ export const getJobStatus = publicQuery
     }),
   }).nullable())
   .query(async ({ ctx, input }) => {
-    return await ctx.table.system('_scheduled_functions').get(input.jobId);
+    return await ctx.orm.system.get(input.jobId);
   });
 ```
 
@@ -314,9 +331,10 @@ export const listPendingJobs = publicQuery
     scheduledTime: z.number(),
   })))
   .query(async ({ ctx }) => {
-    const jobs = await ctx.table
-      .system('_scheduled_functions')
-      .filter((q) => q.eq(q.field('state.kind'), 'pending'));
+    const jobs = await ctx.orm.system
+      .query('_scheduled_functions')
+      .filter((q) => q.eq(q.field('state.kind'), 'pending'))
+      .collect();
 
     return jobs.map(({ _id, name, scheduledTime }) => ({
       _id,

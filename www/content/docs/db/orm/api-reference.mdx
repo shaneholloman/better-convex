@@ -336,8 +336,8 @@ await db.query.users.findMany({
 - Configure `defineSchema(..., { defaults: { defaultLimit } })`, or
 - Use `allowFullScan: true` to opt into unbounded collection.
 
-For `with` + `many()` relations, set relation `limit` or `defaults.defaultLimit`; otherwise use `allowFullScan: true`.
-Relation loading also enforces fan-out key caps: if unique relation lookup keys exceed `defaults.relationFanOutMaxKeys` (default `1000`), the query throws unless `allowFullScan: true`.
+For `with` + `many()` relations, set relation `limit` or `defaults.defaultLimit`; otherwise use `allowFullScan`.
+Relation loading also enforces fan-out key caps: if unique relation lookup keys exceed `defaults.relationFanOutMaxKeys` (default `1000`), the query throws unless `allowFullScan` is set.
 
 **Search mode constraints**
 - `orderBy` is not allowed (results stay in Convex relevance order)
@@ -393,6 +393,17 @@ await db.query.posts.findFirst({
 });
 ```
 
+### `findFirstOrThrow()`
+
+Like `findFirst()`, but throws if no row exists.
+
+```ts showLineNumbers
+await db.query.users.findFirstOrThrow({ where: { email: 'a@b.com' } });
+await db.query.posts.findFirstOrThrow({
+  search: { index: 'text_search', query: 'galaxy' },
+});
+```
+
 ### `findMany({ paginate })`
 
 ```ts showLineNumbers
@@ -410,7 +421,7 @@ const rows = await db.stream().query('users').take(1);
 ```
 
 `db.stream()` returns a stream reader bound to your schema. Use it for advanced stream operations.
-Most queries should use `findMany()` / `findFirst()`.
+Most queries should use `findMany()` / `findFirst()` (or `findFirstOrThrow()`).
 
 ## Query Filters (object `where`)
 
@@ -459,6 +470,10 @@ await db
   .set({ name: 'Ada Lovelace' })
   .where(eq(users._id, userId));
 ```
+
+**`set()` semantics**
+- `undefined` values passed to `.set(...)` are ignored (no-op).
+- To remove a top-level field, use `unsetToken`: `.set({ field: unsetToken })`.
 
 **Full-scan guardrail**
 - `update()` without `where()` throws unless you call `.allowFullScan()`.

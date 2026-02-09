@@ -199,13 +199,11 @@ export const list = publicQuery
   .query(async ({ ctx, input }) => {
     // cursor and limit are automatically added to input
     // output is auto-wrapped as { continueCursor, isDone, page }
-    return ctx.db
-      .query('session')
-      .withIndex('userId', (q) =>
-        input.userId ? q.eq('userId', input.userId) : q
-      )
-      .order('desc')
-      .paginate({ cursor: input.cursor, numItems: input.limit });
+    return ctx.orm.query.session.findMany({
+      where: input.userId ? { userId: input.userId } : undefined,
+      orderBy: { _creationTime: 'desc' },
+      paginate: { cursor: input.cursor, numItems: input.limit },
+    });
   });
 ```
 
@@ -219,7 +217,7 @@ The `.paginated({ limit, item })` method:
 | `limit` | `number` | Items to fetch (capped at server limit) |
 
 <Callout icon={<InfoIcon />}>
-**Important:** Always call `.paginated({ limit, item })` before `.query()`. The handler receives flat `input.cursor` and `input.limit` which you transform to Convex's `.paginate({ cursor, numItems })`.
+**Important:** Always call `.paginated({ limit, item })` before `.query()`. The handler receives flat `input.cursor` and `input.limit` which you pass through to ORM `paginate: { cursor, numItems }`.
 </Callout>
 
 ## Conditional Queries

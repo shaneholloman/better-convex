@@ -313,9 +313,7 @@ describe('server/builder', () => {
     } as any);
 
     const fn = (c as any).action
-      .use(
-        async ({ ctx, next }: any) => next({ ctx: { ...ctx, flag: true } })
-      )
+      .use(async ({ ctx, next }: any) => next({ ctx: { ...ctx, flag: true } }))
       .internal()
       .meta({ tag: 'a' } as any)
       .input(z.object({ x: z.number() }))

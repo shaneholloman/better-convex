@@ -70,7 +70,7 @@ If you're new to cRPC, start with [/docs/server/procedures](/docs/server/procedu
 </Compare>
 
 <Callout icon={<AlertTriangle />}>
-ORM `findMany()` must be explicitly sized: use `limit`, `paginate`, set a schema `defaultLimit`, or opt in with `allowFullScan: true`.
+ORM `findMany()` must be explicitly sized: use `limit`, `paginate`, set a schema `defaultLimit`, or opt in with `allowFullScan`.
 </Callout>
 
 ### Filtering (`filter(...)` → `where`)
@@ -623,18 +623,23 @@ Native Convex `insert` returns an ID. ORM inserts return `void` unless you use `
   </CompareItem>
   <CompareItem title="After (ORM)">
     ```ts showLineNumbers {2}
-    import { eq } from 'better-convex/orm';
+    import { eq, unsetToken } from 'better-convex/orm';
     ```
 
     ```ts showLineNumbers
-    // Patch-style update:
-    await ctx.orm.update(users).set({ name: input.name }).where(eq(users._id, input.userId));
+    const { userId, ...patch } = input;
+
+    // Patch-style update: `undefined` keys are ignored (no-op).
+    await ctx.orm.update(users).set(patch).where(eq(users._id, userId));
+
+    // Unset a field (native Convex: ctx.db.patch(..., { field: undefined })):
+    await ctx.orm.update(users).set({ nickname: unsetToken }).where(eq(users._id, userId));
 
     // Replace-style update: set all fields explicitly (including nulls).
     await ctx.orm
       .update(users)
       .set({ name: input.name, email: input.email, role: input.role })
-      .where(eq(users._id, input.userId));
+      .where(eq(users._id, userId));
     ```
   </CompareItem>
 </Compare>

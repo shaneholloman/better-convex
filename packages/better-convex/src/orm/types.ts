@@ -25,6 +25,7 @@ import type {
   TablesRelationalConfig,
 } from './relations';
 import type { ConvexTable } from './table';
+import type { UnsetToken } from './unset-token';
 
 export type {
   TableRelationalConfig,
@@ -1034,6 +1035,13 @@ export type MutationExecuteResult<
 export type InsertValue<TTable extends ConvexTable<any>> =
   InferInsertModel<TTable>;
 
-export type UpdateSet<TTable extends ConvexTable<any>> = Partial<
-  InferInsertModel<TTable>
->;
+type UpdateSetValue<TColumn extends ColumnBuilder<any, any, any>> =
+  | GetColumnData<TColumn, 'query'>
+  | (TColumn['_']['notNull'] extends true ? never : UnsetToken)
+  | undefined;
+
+export type UpdateSet<TTable extends ConvexTable<any>> = Simplify<{
+  [K in keyof TTable['_']['columns'] & string]?: UpdateSetValue<
+    TTable['_']['columns'][K]
+  >;
+}>;

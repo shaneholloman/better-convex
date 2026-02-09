@@ -12,6 +12,7 @@ import {
   integer,
   text,
   unique,
+  unsetToken,
 } from 'better-convex/orm';
 import { describe, expect, it } from 'vitest';
 import { withOrmCtx } from '../setup.testing';
@@ -184,6 +185,92 @@ describe('column hooks', () => {
 
       expect(hookUpdatedAtCalls).toBe(0);
       expect(updated.updatedAt).toBe('manual');
+    }));
+
+  it('treats empty set() as a no-op (does not run $onUpdateFn)', async () =>
+    withCtx(async ({ orm }) => {
+      hookUpdatedAtCalls = 0;
+
+      const [user] = await orm
+        .insert(hookUsers)
+        .values({ name: 'Ada' })
+        .returning();
+
+      const updated = await orm
+        .update(hookUsers)
+        .set({})
+        .where(eq(hookUsers._id, user._id))
+        .returning();
+
+      expect(updated).toHaveLength(0);
+      expect(hookUpdatedAtCalls).toBe(0);
+
+      const still = await orm.get(user._id as any);
+      expect((still as any)?.updatedAt).toBe('initial');
+    }));
+
+  it('ignores undefined values in set() and no-ops when empty', async () =>
+    withCtx(async ({ orm }) => {
+      hookUpdatedAtCalls = 0;
+
+      const [user] = await orm
+        .insert(hookUsers)
+        .values({ name: 'Ada' })
+        .returning();
+
+      const updated = await orm
+        .update(hookUsers)
+        .set({ name: undefined })
+        .where(eq(hookUsers._id, user._id))
+        .returning();
+
+      expect(updated).toHaveLength(0);
+      expect(hookUpdatedAtCalls).toBe(0);
+
+      const still = await orm.get(user._id as any);
+      expect((still as any)?.name).toBe('Ada');
+      expect((still as any)?.updatedAt).toBe('initial');
+    }));
+
+  it('supports unsetToken to remove a field', async () =>
+    withCtx(async ({ orm }) => {
+      hookUpdatedAtCalls = 0;
+
+      const [user] = await orm
+        .insert(hookUsers)
+        .values({ name: 'Ada' })
+        .returning();
+
+      const [updated] = await orm
+        .update(hookUsers)
+        .set({ nickname: unsetToken })
+        .where(eq(hookUsers._id, user._id))
+        .returning();
+
+      expect(hookUpdatedAtCalls).toBe(1);
+      expect(updated.updatedAt).toBe('updated_1');
+      expect(updated.touchedAt).toBe('touched');
+      expect('nickname' in (updated as any)).toBe(false);
+
+      const still = await orm.get(user._id as any);
+      expect('nickname' in (still as any)).toBe(false);
+    }));
+
+  it('throws when unsetToken is used on a NOT NULL column', async () =>
+    withCtx(async ({ orm }) => {
+      const [user] = await orm
+        .insert(hookUsers)
+        .values({ name: 'Ada' })
+        .returning();
+
+      expect(() =>
+        orm
+          .update(hookUsers)
+          // Bypass type safety to assert the runtime guard.
+          .set({ touchedAt: unsetToken } as any)
+          .where(eq(hookUsers._id, user._id))
+          .returning()
+      ).toThrow(/not null|not nullable/i);
     }));
 });
 

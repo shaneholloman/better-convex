@@ -151,40 +151,22 @@ const authMiddleware = c.middleware(async ({ ctx, next }) => {
 
 Throw `NOT_FOUND` when a resource doesn't exist:
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts title="convex/functions/posts.ts" showLineNumbers {5-9}
-    export const getById = authQuery
-      .input(z.object({ id: zid('posts') }))
-      .query(async ({ ctx, input }) => {
-        const post = await ctx.db.get(input.id);
-        if (!post) {
-          throw new CRPCError({
-            code: 'NOT_FOUND',
-            message: 'Post not found',
-          });
-        }
-        return post;
+```ts title="convex/functions/posts.ts" showLineNumbers {5-15}
+export const getById = authQuery
+  .input(z.object({ id: zid('posts') }))
+  .query(async ({ ctx, input }) => {
+    const post = await ctx.orm.query.posts.findFirst({
+      where: { _id: input.id },
+    });
+    if (!post) {
+      throw new CRPCError({
+        code: 'NOT_FOUND',
+        message: 'Post not found',
       });
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts title="convex/functions/posts.ts" showLineNumbers {5-9}
-    export const getById = authQuery
-      .input(z.object({ id: zid('posts') }))
-      .query(async ({ ctx, input }) => {
-        const post = await ctx.table('posts').get(input.id);
-        if (!post) {
-          throw new CRPCError({
-            code: 'NOT_FOUND',
-            message: 'Post not found',
-          });
-        }
-        return post;
-      });
-    ```
-  </Tab>
-</Tabs>
+    }
+    return post;
+  });
+```
 
 ### Rate Limiting
 

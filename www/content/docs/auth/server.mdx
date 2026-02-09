@@ -74,18 +74,17 @@ export const authClient = createClient<DataModel, typeof schema>({
   triggers: {
     user: {
       beforeCreate: async (_ctx, data) => {
-        // Ensure every user has a username
-        const username =
-          data.username?.trim() ||
-          data.email?.split('@')[0] ||
-          `user-${Date.now()}`;
+      // Ensure every user has a username
+      const username =
+        data.username?.trim() ||
+        data.email?.split('@')[0] ||
+        `user-${Date.now()}`;
 
-        return { ...data, username };
-      },
-      // ctx.db version - for ctx.table, see Triggers documentation
+      return { ...data, username };
+    },
       onCreate: async (ctx, user) => {
         // Create related records after signup
-        await ctx.db.insert('profiles', {
+        await ctx.orm.insert(profiles).values({
           userId: user._id,
           bio: '',
         });
@@ -193,153 +192,85 @@ Your database needs tables for users, sessions, accounts, and more. You have two
   <Tab value="Manual">
     If you prefer full control, define the auth tables directly in your schema:
 
-    <Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-      <Tab value="ctx.db">
-        ```ts title="convex/schema.ts" showLineNumbers {6-20,22-33,35-47,49-55,57-61}
-        import { defineSchema, defineTable } from 'convex/server';
-        import { v } from 'convex/values';
+    ```ts title="convex/functions/schema.ts" showLineNumbers {1-2,4-72}
+    import { boolean, convexTable, defineSchema, id, index, integer, text } from 'better-convex/orm';
 
-        export default defineSchema({
-          user: defineTable({
-            name: v.string(),
-            email: v.string(),
-            emailVerified: v.boolean(),
-            image: v.optional(v.string()),
-            createdAt: v.number(),
-            updatedAt: v.number(),
-            // Admin plugin
-            role: v.optional(v.string()),
-            banned: v.optional(v.boolean()),
-            banReason: v.optional(v.string()),
-            banExpires: v.optional(v.number()),
-          })
-            .index('email', ['email']),
+    export const user = convexTable(
+      'user',
+      {
+        name: text().notNull(),
+        email: text().notNull(),
+        emailVerified: boolean().notNull(),
+        image: text(),
+        createdAt: integer().notNull(),
+        updatedAt: integer().notNull(),
 
-          session: defineTable({
-            token: v.string(),
-            expiresAt: v.number(),
-            createdAt: v.number(),
-            updatedAt: v.number(),
-            ipAddress: v.optional(v.string()),
-            userAgent: v.optional(v.string()),
-            userId: v.string(),
-            // Admin plugin
-            impersonatedBy: v.optional(v.string()),
-          })
-            .index('token', ['token'])
-            .index('userId', ['userId']),
+        // Admin plugin
+        role: text(),
+        banned: boolean(),
+        banReason: text(),
+        banExpires: integer(),
+      },
+      (t) => [index('email').on(t.email)]
+    );
 
-          account: defineTable({
-            accountId: v.string(),
-            providerId: v.string(),
-            userId: v.string(),
-            accessToken: v.optional(v.string()),
-            refreshToken: v.optional(v.string()),
-            idToken: v.optional(v.string()),
-            accessTokenExpiresAt: v.optional(v.number()),
-            refreshTokenExpiresAt: v.optional(v.number()),
-            scope: v.optional(v.string()),
-            password: v.optional(v.string()),
-            createdAt: v.number(),
-            updatedAt: v.number(),
-          })
-            .index('accountId', ['accountId'])
-            .index('userId', ['userId']),
+    export const session = convexTable(
+      'session',
+      {
+        token: text().notNull(),
+        expiresAt: integer().notNull(),
+        createdAt: integer().notNull(),
+        updatedAt: integer().notNull(),
+        ipAddress: text(),
+        userAgent: text(),
+        userId: id('user').notNull(),
 
-          verification: defineTable({
-            identifier: v.string(),
-            value: v.string(),
-            expiresAt: v.number(),
-            createdAt: v.optional(v.number()),
-            updatedAt: v.optional(v.number()),
-          })
-            .index('identifier', ['identifier']),
+        // Admin plugin
+        impersonatedBy: text(),
+      },
+      (t) => [index('token').on(t.token), index('userId').on(t.userId)]
+    );
 
-          jwks: defineTable({
-            publicKey: v.string(),
-            privateKey: v.string(),
-            createdAt: v.number(),
-          }),
+    export const account = convexTable(
+      'account',
+      {
+        accountId: text().notNull(),
+        providerId: text().notNull(),
+        userId: id('user').notNull(),
+        accessToken: text(),
+        refreshToken: text(),
+        idToken: text(),
+        accessTokenExpiresAt: integer(),
+        refreshTokenExpiresAt: integer(),
+        scope: text(),
+        password: text(),
+        createdAt: integer().notNull(),
+        updatedAt: integer().notNull(),
+      },
+      (t) => [index('accountId').on(t.accountId), index('userId').on(t.userId)]
+    );
 
-          // Your other tables
-        });
-        ```
-      </Tab>
-      <Tab value="ctx.table">
-        ```ts title="convex/schema.ts" showLineNumbers {5-18,20-28,30-42,44-50,52-56}
-        import { v } from 'convex/values';
-        import { defineEnt, defineEntSchema, getEntDefinitions } from 'convex-ents';
+    export const verification = convexTable(
+      'verification',
+      {
+        identifier: text().notNull(),
+        value: text().notNull(),
+        expiresAt: integer().notNull(),
+        createdAt: integer(),
+        updatedAt: integer(),
+      },
+      (t) => [index('identifier').on(t.identifier)]
+    );
 
-        const schema = defineEntSchema({
-          user: defineEnt({
-            name: v.string(),
-            email: v.string(),
-            emailVerified: v.boolean(),
-            image: v.optional(v.string()),
-            createdAt: v.number(),
-            updatedAt: v.number(),
-            // Admin plugin
-            role: v.optional(v.string()),
-            banned: v.optional(v.boolean()),
-            banReason: v.optional(v.string()),
-            banExpires: v.optional(v.number()),
-          })
-            .index('email', ['email'])
-            .edges('sessions', { to: 'session', ref: 'userId' })
-            .edges('accounts', { to: 'account', ref: 'userId' }),
+    export const jwks = convexTable('jwks', {
+      publicKey: text().notNull(),
+      privateKey: text().notNull(),
+      createdAt: integer().notNull(),
+    });
 
-          session: defineEnt({
-            token: v.string(),
-            expiresAt: v.number(),
-            createdAt: v.number(),
-            updatedAt: v.number(),
-            ipAddress: v.optional(v.string()),
-            userAgent: v.optional(v.string()),
-            // Admin plugin
-            impersonatedBy: v.optional(v.string()),
-          })
-            .index('token', ['token'])
-            .edge('user', { to: 'user', field: 'userId' }),
-
-          account: defineEnt({
-            accountId: v.string(),
-            providerId: v.string(),
-            accessToken: v.optional(v.string()),
-            refreshToken: v.optional(v.string()),
-            idToken: v.optional(v.string()),
-            accessTokenExpiresAt: v.optional(v.number()),
-            refreshTokenExpiresAt: v.optional(v.number()),
-            scope: v.optional(v.string()),
-            password: v.optional(v.string()),
-            createdAt: v.number(),
-            updatedAt: v.number(),
-          })
-            .index('accountId', ['accountId'])
-            .edge('user', { to: 'user', field: 'userId' }),
-
-          verification: defineEnt({
-            identifier: v.string(),
-            value: v.string(),
-            expiresAt: v.number(),
-            createdAt: v.optional(v.number()),
-            updatedAt: v.optional(v.number()),
-          })
-            .index('identifier', ['identifier']),
-
-          jwks: defineEnt({
-            publicKey: v.string(),
-            privateKey: v.string(),
-            createdAt: v.number(),
-          }),
-
-          // Your other tables
-        });
-
-        export default schema;
-        export const entDefinitions = getEntDefinitions(schema);
-        ```
-      </Tab>
-    </Tabs>
+    export const tables = { user, session, account, verification, jwks };
+    export default defineSchema(tables, { strict: false });
+    ```
   </Tab>
 </Tabs>
 
@@ -540,66 +471,44 @@ Want to run custom logic when users are created or deleted? The `internalMutatio
 | Custom trigger systems | Projects using convex-helpers triggers |
 | Middleware | Add logging, validation, or other cross-cutting concerns |
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts title="convex/lib/triggers.ts" showLineNumbers {6-17,19-22}
-    import { Triggers } from 'convex-helpers/server/triggers';
-    import { DataModel } from '../functions/_generated/dataModel';
+```ts title="convex/lib/triggers.ts" showLineNumbers {1-2,6-25}
+import { eq } from 'better-convex/orm';
+import { Triggers } from 'convex-helpers/server/triggers';
+import { DataModel } from '../functions/_generated/dataModel';
+import { stats } from '../functions/schema';
+import { withOrm } from './orm';
 
-    const triggers = new Triggers<DataModel>();
+const triggers = new Triggers<DataModel>();
 
-    // Maintain user count aggregate
-    triggers.register('user', {
-      async afterCreate(ctx, user) {
-        const stats = await ctx.db.query('stats').first();
-        if (stats) {
-          await ctx.db.patch(stats._id, { totalUsers: stats.totalUsers + 1 });
-        }
-      },
-      async afterDelete(ctx, user) {
-        const stats = await ctx.db.query('stats').first();
-        if (stats) {
-          await ctx.db.patch(stats._id, { totalUsers: stats.totalUsers - 1 });
-        }
-      },
+// Maintain user count aggregate
+triggers.register('user', {
+  async afterCreate(ctx, _user) {
+    const row = await ctx.orm.query.stats.findFirst({
+      orderBy: { _creationTime: 'desc' },
     });
-
-    export const internalMutationWithTriggers = customMutation(
-      internalMutation,
-      customCtx(async (ctx) => ({ db: triggers.wrapDB(ctx).db }))
-    );
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts title="convex/lib/triggers.ts" showLineNumbers {6-17,19-22}
-    import { Triggers } from 'convex-helpers/server/triggers';
-    import { DataModel } from '../functions/_generated/dataModel';
-
-    const triggers = new Triggers<DataModel>();
-
-    // Maintain user count aggregate
-    triggers.register('user', {
-      async afterCreate(ctx, user) {
-        const stats = await ctx.table('stats').first();
-        if (stats) {
-          await stats.patch({ totalUsers: stats.totalUsers + 1 });
-        }
-      },
-      async afterDelete(ctx, user) {
-        const stats = await ctx.table('stats').first();
-        if (stats) {
-          await stats.patch({ totalUsers: stats.totalUsers - 1 });
-        }
-      },
+    if (!row) return;
+    await ctx.orm
+      .update(stats)
+      .set({ totalUsers: row.totalUsers + 1 })
+      .where(eq(stats._id, row._id));
+  },
+  async afterDelete(ctx, _user) {
+    const row = await ctx.orm.query.stats.findFirst({
+      orderBy: { _creationTime: 'desc' },
     });
+    if (!row) return;
+    await ctx.orm
+      .update(stats)
+      .set({ totalUsers: row.totalUsers - 1 })
+      .where(eq(stats._id, row._id));
+  },
+});
 
-    export const internalMutationWithTriggers = customMutation(
-      internalMutation,
-      customCtx(async (ctx) => ({ db: triggers.wrapDB(ctx).db }))
-    );
-    ```
-  </Tab>
-</Tabs>
+export const internalMutationWithTriggers = customMutation(
+  internalMutation,
+  customCtx(async (ctx) => withOrm(triggers.wrapDB(ctx)))
+);
+```
 
 ```ts title="convex/functions/auth.ts" showLineNumbers {1,4,8}
 import { internalMutationWithTriggers } from './lib/triggers';
@@ -784,36 +693,18 @@ if (identity) {
 
 If you just need the user ID:
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts showLineNumbers {1,3,5-7,10}
-    import { getAuthUserId } from 'better-convex/auth';
+```ts showLineNumbers {1,3,5-7,10}
+import { getAuthUserId } from 'better-convex/auth';
 
-    const userId = await getAuthUserId(ctx);
+const userId = await getAuthUserId(ctx);
 
-    if (!userId) {
-      throw new CRPCError({ code: 'UNAUTHORIZED' });
-    }
+if (!userId) {
+  throw new CRPCError({ code: 'UNAUTHORIZED' });
+}
 
-    // userId is Id<'user'>
-    const user = await ctx.db.get(userId);
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts showLineNumbers {1,3,5-7,10}
-    import { getAuthUserId } from 'better-convex/auth';
-
-    const userId = await getAuthUserId(ctx);
-
-    if (!userId) {
-      throw new CRPCError({ code: 'UNAUTHORIZED' });
-    }
-
-    // userId is Id<'user'>
-    const user = await ctx.table('user').get(userId);
-    ```
-  </Tab>
-</Tabs>
+// userId is Id<'user'>
+const user = await ctx.orm.query.user.findFirst({ where: { _id: userId } });
+```
 
 ### getSession
 

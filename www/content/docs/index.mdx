@@ -30,7 +30,7 @@ Instead of assembling these yourself with custom glue code, you get:
 | Layer | Feature | Description |
 |-------|---------|-------------|
 | **Server** | cRPC | tRPC-style procedure builder with `.input()`, `.use()`, middleware |
-| **Database** | Ents | Relationships, fluent queries, `ctx.table()` |
+| **Database** | ORM | Drizzle-style queries, relations, runtime constraints, `ctx.orm` |
 | **Database** | Triggers | Automatic side effects on data changes |
 | **Database** | Aggregates | O(log n) counts, sums, leaderboards |
 | **Client** | React | TanStack Query integration with real-time sync |
@@ -45,7 +45,7 @@ Instead of assembling these yourself with custom glue code, you get:
 export const list = authQuery
   .input(z.object({ limit: z.number().optional() }))
   .query(async ({ ctx, input }) => {
-    return ctx.table('posts').take(input.limit ?? 10);
+    return ctx.orm.query.posts.findMany({ limit: input.limit ?? 10 });
   });
 
 // Client: Use it with TanStack Query
@@ -88,7 +88,7 @@ If you're an AI agent integrating better-convex, **ask the user to select their 
 |---------|---------|---------|
 | **Approach** | Top-down (copy from Templates), Bottom-up (follow docs step-by-step) | Top-down |
 | **React Framework** | Next.js App Router, Vite, Remix, Other | Next.js |
-| **Database API** | `ctx.table` (Ents), `ctx.db` (vanilla) | ctx.table |
+| **Database** | Better-Convex ORM (`ctx.orm`) | ORM |
 
 ### Optional Features
 
@@ -104,9 +104,7 @@ If you're an AI agent integrating better-convex, **ask the user to select their 
 
 **Top-down approach:**
 1. Copy relevant sections from [Templates](/docs/templates) based on choices
-2. For `ctx.table`: use the "ctx.table" tab in code examples
-3. For `ctx.db`: use the "ctx.db" tab in code examples
-4. Skip sections for features not selected
+2. Skip sections for features not selected
 
 **Bottom-up approach:**
 1. Follow [Quickstart](/docs/quickstart) for initial setup
@@ -117,8 +115,7 @@ If you're an AI agent integrating better-convex, **ask the user to select their 
 
 | Stack | Key Docs |
 |-------|----------|
-| Next.js + Better Auth + Ents | [Templates](/docs/templates), [Next.js Setup](/docs/nextjs/setup), [Auth Server](/docs/auth/server) |
-| Next.js + Better Auth + ctx.db | [Templates](/docs/templates) (ctx.db tabs), [Next.js Setup](/docs/nextjs/setup) |
+| Next.js + Better Auth | [Templates](/docs/templates), [Next.js Setup](/docs/nextjs/setup), [Auth Server](/docs/auth/server) |
 | Vite + No Auth | [React Setup](/docs/react/setup), [Server Setup](/docs/server/setup) |
 | Any + Custom Auth | [Server Setup](/docs/server/setup), [Middlewares](/docs/server/middlewares) |
 
@@ -142,7 +139,7 @@ Complete reference for all documentation pages.
 |------|-------------|
 | [Server Setup](/docs/server/setup) | Initialize cRPC builder with `initCRPC`. Configure `dataModel`, `context`, `meta`. |
 | [Procedures](/docs/server/procedures) | Define queries, mutations, actions with `.input()`, `.output()`, `.query()/.mutation()/.action()`. Paginated queries with `.paginated()`. |
-| [Context](/docs/server/context) | Extend context with `ctx.db`, `ctx.table`, `ctx.auth`. Add custom properties via `.context()`. |
+| [Context](/docs/server/context) | Extend context with `ctx.orm`, `ctx.auth`. Add custom properties via `.context()`. |
 | [Middlewares](/docs/server/middlewares) | Create reusable middleware with `.use()`. Auth guards, logging, rate limiting. Chain with `.pipe()`. |
 | [Metadata](/docs/server/metadata) | Add procedure metadata with `.meta()`. Used by CLI for auth-aware query handling. |
 | [Error Handling](/docs/server/error-handling) | Throw `CRPCError` with codes like `UNAUTHORIZED`, `NOT_FOUND`, `BAD_REQUEST`. |
@@ -153,7 +150,7 @@ Complete reference for all documentation pages.
 
 | Page | When to Use |
 |------|-------------|
-| [Ents](/docs/db/ents) | Use `ctx.table()` instead of `ctx.db`. Relationships, fluent queries, `.edge()`, `.edges()`. |
+| [ORM](/docs/db/orm) | Drizzle-style schema, queries, mutations, RLS, runtime constraints via `ctx.orm`. |
 | [Triggers](/docs/db/triggers) | Automatic side effects on insert/update/delete. Use `convex-helpers/server/triggers`. |
 | [Aggregates](/docs/db/aggregates) | O(log n) counts and sums with `@convex-dev/aggregate`. Leaderboards, running totals. |
 
@@ -205,7 +202,7 @@ Complete reference for all documentation pages.
 3. [Middlewares](/docs/server/middlewares) → protect procedures
 
 **Add database features:**
-1. [Ents](/docs/db/ents) → relationships with `ctx.table()`
+1. [ORM](/docs/db/orm) → schema + queries via `ctx.orm`
 2. [Triggers](/docs/db/triggers) → automatic side effects
 3. [Aggregates](/docs/db/aggregates) → counts and sums
 

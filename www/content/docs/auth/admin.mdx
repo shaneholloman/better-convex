@@ -103,54 +103,25 @@ export const authClient = createAuthClient({
 
 Add admin fields to your user table:
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {7-11,14}
-    import { defineSchema, defineTable } from 'convex/server';
-    import { v } from 'convex/values';
+```ts title="convex/functions/schema.ts" showLineNumbers {1-2,4-18}
+import { boolean, convexTable, defineSchema, integer, text } from 'better-convex/orm';
 
-    export default defineSchema({
-      // ... other tables
+export const user = convexTable('user', {
+  // ... existing fields
+  role: text(), // 'admin' | 'user'
+  banned: boolean(),
+  banReason: text(),
+  banExpires: integer(),
+});
 
-      user: defineTable({
-        // ... existing fields
-        role: v.optional(v.string()), // 'admin' | 'user'
-        banned: v.optional(v.boolean()),
-        banReason: v.optional(v.string()),
-        banExpires: v.optional(v.number()),
-      }),
+export const session = convexTable('session', {
+  // ... existing fields
+  impersonatedBy: text(), // Admin user ID
+});
 
-      session: defineTable({
-        // ... existing fields
-        impersonatedBy: v.optional(v.string()), // Admin user ID
-      }),
-    });
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {6-11,14}
-    import { v } from 'convex/values';
-    import { defineEnt, defineEntSchema } from 'convex-ents';
-
-    const schema = defineEntSchema({
-      // ... other tables
-
-      user: defineEnt({
-        // ... existing fields
-        role: v.optional(v.union(v.null(), v.string())), // 'admin' | 'user'
-        banned: v.optional(v.union(v.null(), v.boolean())),
-        banReason: v.optional(v.union(v.null(), v.string())),
-        banExpires: v.optional(v.union(v.null(), v.number())),
-      }),
-
-      session: defineEnt({
-        // ... existing fields
-        impersonatedBy: v.optional(v.union(v.null(), v.string())), // Admin user ID
-      }),
-    });
-    ```
-  </Tab>
-</Tabs>
+export const tables = { user, session };
+export default defineSchema(tables, { strict: false });
+```
 
 ## 4. Access Control
 
@@ -253,7 +224,7 @@ adminClient({ ac, roles: { admin, user } })
 ## Admin Functions
 
 <Callout icon={<InfoIcon />}>
-Function examples use `ctx.table` (Convex Ents). For `ctx.db`, replace edge traversal with manual joins. See [Ents](/docs/db/ents) for migration patterns.
+Function examples use Better-Convex ORM (`ctx.orm`).
 </Callout>
 
 ### Check Admin Status
@@ -271,7 +242,12 @@ export const checkUserAdminStatus = authQuery
     role: z.string().nullish(),
   }))
   .query(async ({ ctx, input }) => {
-    const user = await ctx.table('user').getX(input.userId);
+    const user = await ctx.orm.query.user.findFirst({
+      where: { _id: input.userId },
+    });
+    if (!user) {
+      throw new CRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+    }
     return {
       role: user.role,
     };
@@ -296,7 +272,12 @@ export const updateUserRole = authMutation
       });
     }
 
-    const targetUser = await ctx.table('user').getX(input.userId);
+    const targetUser = await ctx.orm.query.user.findFirst({
+      where: { _id: input.userId },
+    });
+    if (!targetUser) {
+      throw new CRPCError({ code: 'NOT_FOUND', message: 'User not found' });
+    }
 
     if (targetUser.role === 'admin' && ctx.user.role !== 'admin') {
       throw new CRPCError({
@@ -305,7 +286,10 @@ export const updateUserRole = authMutation
       });
     }
 
-    await targetUser.patch({ role: input.role.toLowerCase() });
+    await ctx.orm
+      .update(user)
+      .set({ role: input.role.toLowerCase() })
+      .where(eq(user._id, targetUser._id));
     return true;
   });
 ```
@@ -324,11 +308,16 @@ export const grantAdminByEmail = authMutation
     userId: zid('user').optional(),
   }))
   .mutation(async ({ ctx, input }) => {
-    const user = await ctx.table('user').get('email', input.email);
-    if (!user) return { success: false };
+    const existingUser = await ctx.orm.query.user.findFirst({
+      where: { email: input.email },
+    });
+    if (!existingUser) return { success: false };
 
-    await user.patch({ role: input.role.toLowerCase() });
-    return { success: true, userId: user._id };
+    await ctx.orm
+      .update(user)
+      .set({ role: input.role.toLowerCase() })
+      .where(eq(user._id, existingUser._id));
+    return { success: true, userId: existingUser._id };
   });
 ```
 
@@ -355,18 +344,19 @@ export const getAllUsers = authQuery
   .paginated({ limit: 20, item: UserListItemSchema.nullable() })
   .query(async ({ ctx, input }) => {
     const paginationOpts = { cursor: input.cursor, numItems: input.limit };
-    const result = await ctx.table('user').paginate(paginationOpts);
+    const result = await ctx.orm.query.user.findMany({
+      paginate: paginationOpts,
+      orderBy: { _creationTime: 'desc' },
+    });
 
-    const enrichedPage = await Promise.all(
-      result.page.map(async (user) => ({
-        ...user.doc(),
-        banExpiresAt: user?.banExpires,
-        banReason: user?.banReason,
-        email: user?.email || '',
-        isBanned: user?.banned,
-        role: user?.role || 'user',
-      }))
-    );
+    const enrichedPage = result.page.map((user) => ({
+      ...user,
+      banExpiresAt: user.banExpires,
+      banReason: user.banReason,
+      email: user.email ?? '',
+      isBanned: user.banned,
+      role: user.role ?? 'user',
+    }));
 
     return { ...result, page: enrichedPage };
   });
@@ -392,7 +382,10 @@ export const getDashboardStats = authQuery
     })),
   }))
   .query(async ({ ctx }) => {
-    const recentUsers = await ctx.table('user').order('desc').take(5);
+    const recentUsers = await ctx.orm.query.user.findMany({
+      orderBy: { _creationTime: 'desc' },
+      limit: 5,
+    });
 
     // Use aggregate for O(log n) user count
     const totalUsers = await aggregateUsers.count(ctx, {
@@ -402,10 +395,11 @@ export const getDashboardStats = authQuery
 
     // Calculate 7-day growth
     const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const usersLast7Days = await ctx
-      .table('user')
-      .filter((q) => q.gte(q.field('_creationTime'), sevenDaysAgo))
-      .take(1000);
+    // Requires index('createdAt').on(t.createdAt) on `user`
+    const usersLast7Days = await ctx.orm.query.user.findMany({
+      where: { createdAt: { gte: sevenDaysAgo } },
+      limit: 1000,
+    });
 
     // ... growth calculation logic
 

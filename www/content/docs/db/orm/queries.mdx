@@ -30,7 +30,7 @@ export const getAllUsers = publicQuery.query(async ({ ctx }) => {
 ```
 
 <Callout icon={<InfoIcon />}>
-**Note**: Non-paginated `findMany()` requires explicit sizing: provide `limit`, use `paginate`, set `allowFullScan: true`, or configure `defineSchema(..., { defaults: { defaultLimit } })`.
+**Note**: Non-paginated `findMany()` requires explicit sizing: provide `limit`, use `paginate`, set `allowFullScan`, or configure `defineSchema(..., { defaults: { defaultLimit } })`.
 </Callout>
 
 ### findFirst
@@ -49,6 +49,14 @@ export const getFirstUser = publicQuery
       where: { _id: input.userId },
     });
   });
+```
+
+If you expect a row to exist, use `findFirstOrThrow()`:
+
+```ts showLineNumbers
+const user = await ctx.orm.query.users.findFirstOrThrow({
+  where: { _id: input.userId },
+});
 ```
 
 ## Filtering With `where`
@@ -111,7 +119,7 @@ Better-Convex supports familiar string matching operators. Most run post-fetch, 
 
 For large datasets, prefer indexed filters first. `startsWith` and `like('prefix%')` use index ranges when the field is indexed. `between` and `notBetween` are also index-compiled when the field is indexed.
 
-Compound indexes follow Convex prefix rules. For an index on `[type, numLikes]`, `where: { numLikes: 10 }` is treated as non-indexable and requires `allowFullScan: true` unless you also constrain the leading field (`type`). Reversed `AND` equality order is normalized to index field order before query execution.
+Compound indexes follow Convex prefix rules. For an index on `[type, numLikes]`, `where: { numLikes: 10 }` is treated as non-indexable and requires `allowFullScan` unless you also constrain the leading field (`type`). Reversed `AND` equality order is normalized to index field order before query execution.
 
 <Callout icon={<InfoIcon />}>
 **Tip**: Always constrain leading index fields first. For compound indexes, you must include earlier fields before later ones can be index-compiled.
@@ -142,7 +150,7 @@ See [/docs/db/aggregates](/docs/db/aggregates).
 
 ### Full-Scan Operators and Workarounds
 
-These operators are non-index-compiled and require `allowFullScan: true` unless paired with another indexable pre-filter. Here are scalable workarounds for each:
+These operators are non-index-compiled and require `allowFullScan` unless paired with another indexable pre-filter. Here are scalable workarounds for each:
 
 | Operator | Scalable workaround |
 |---|---|
@@ -340,7 +348,7 @@ const users = await db.query.users.findMany({
 Relation filters for `many()` are applied post-fetch. Nested `with:` has a depth limit to prevent infinite recursion. The `limit` and `offset` in `with:` apply per parent relation, not globally.
 
 <Callout icon={<InfoIcon />}>
-**Note**: For `many()` relations, provide `with.<relation>.limit` or set `defineSchema(..., { defaults: { defaultLimit } })`. Otherwise, use `allowFullScan: true` on the parent query.
+**Note**: For `many()` relations, provide `with.<relation>.limit` or set `defineSchema(..., { defaults: { defaultLimit } })`. Otherwise, use `allowFullScan` on the parent query.
 </Callout>
 
 ## Column Selection

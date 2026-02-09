@@ -58,32 +58,22 @@ export const registerTriggers = () => {
 Here's where triggers shine. Wrap mutations to apply triggers automatically:
 
 ```ts title="convex/lib/crpc.ts" showLineNumbers {1,3,8-14,16-22}
+import { withOrm } from './orm';
 import { registerTriggers } from './triggers';
 
 const triggers = registerTriggers();
 
 const c = initCRPC
   .dataModel<DataModel>()
+  .context({
+    query: (ctx) => withOrm(ctx),
+    mutation: (ctx) => withOrm(triggers.wrapDB(ctx)),
+  })
   .create({
     query,
     internalQuery,
-    // Wrap mutations with triggers
-    mutation: (handler: any) =>
-      mutation({
-        ...handler,
-        handler: async (ctx: any, args: any) => {
-          const wrappedCtx = triggers.wrapDB(ctx);
-          return handler.handler(wrappedCtx, args);
-        },
-      }),
-    internalMutation: (handler: any) =>
-      internalMutation({
-        ...handler,
-        handler: async (ctx: any, args: any) => {
-          const wrappedCtx = triggers.wrapDB(ctx);
-          return handler.handler(wrappedCtx, args);
-        },
-      }),
+    mutation,
+    internalMutation,
     action,
     internalAction,
   });
@@ -144,7 +134,7 @@ Log all changes with user context:
 triggers.register('teams', async (ctx, change) => {
   const user = await getAuthUserId(ctx);
 
-  await ctx.db.insert('auditLog', {
+  await ctx.orm.insert(auditLog).values({
     table: 'teams',
     operation: change.operation,
     documentId: change.id,
@@ -176,6 +166,9 @@ triggers.register('messages', async (ctx, change) => {
 Track user activity when posts are created or updated:
 
 ```ts title="convex/lib/triggers.ts" showLineNumbers {2-6,12-13,15-21}
+import { eq } from 'better-convex/orm';
+import { userActivity } from '../functions/schema';
+
 triggers.register('post', async (ctx, change) => {
   if (
     change.operation === 'insert' ||
@@ -185,23 +178,23 @@ triggers.register('post', async (ctx, change) => {
     const post = change.newDoc!;
     if (!post.authorId) return;
 
-    // Upsert activity record
-    const table = entsTableFactory(ctx, entDefinitions);
-    const existing = await table('userActivity').get(
-      'userId_postId',
-      post.authorId,
-      post._id
-    );
+    const existing = await ctx.orm.query.userActivity.findFirst({
+      where: { userId: post.authorId, postId: post._id },
+    });
 
     if (existing) {
-      await existing.patch({ lastActivityAt: post.updatedAt });
-    } else {
-      await table('userActivity').insert({
-        postId: post._id,
-        lastActivityAt: post.updatedAt,
-        userId: post.authorId,
-      });
+      await ctx.orm
+        .update(userActivity)
+        .set({ lastActivityAt: post.updatedAt })
+        .where(eq(userActivity._id, existing._id));
+      return;
     }
+
+    await ctx.orm.insert(userActivity).values({
+      postId: post._id,
+      lastActivityAt: post.updatedAt,
+      userId: post.authorId,
+    });
   }
 });
 ```
@@ -211,19 +204,26 @@ triggers.register('post', async (ctx, change) => {
 Clear references when related documents are deleted:
 
 ```ts title="convex/lib/triggers.ts" showLineNumbers {2-4,8-11}
+import { eq } from 'better-convex/orm';
+import { user } from '../functions/schema';
+
 // Clear reference when related document is deleted
 triggers.register('organization', async (ctx, change) => {
   if (change.operation === 'delete') {
     const organizationId = change.id;
-    const table = entsTableFactory(ctx, entDefinitions);
 
     // Clear activeOrganizationId from user records
-    const usersWithThisOrg = await table('user', 'activeOrganizationId', (q) =>
-      q.eq('activeOrganizationId', organizationId)
-    );
+    // Index user.activeOrganizationId.
+    const usersWithThisOrg = await ctx.orm.query.user.findMany({
+      where: { activeOrganizationId: organizationId },
+      limit: 1000,
+    });
 
-    for (const user of usersWithThisOrg) {
-      await user.patch({ activeOrganizationId: undefined });
+    for (const userRow of usersWithThisOrg) {
+      await ctx.orm
+        .update(user)
+        .set({ activeOrganizationId: null })
+        .where(eq(user._id, userRow._id));
     }
   }
 });
@@ -234,6 +234,9 @@ triggers.register('organization', async (ctx, change) => {
 Keep denormalized data in sync with source of truth:
 
 ```ts title="convex/lib/triggers.ts" showLineNumbers {3-8,15-17,20-26}
+import { eq } from 'better-convex/orm';
+import { post, postTag, tag } from '../functions/schema';
+
 // Keep tags array in sync with postTags junction table
 triggers.register('postTag', async (ctx, change) => {
   if (
@@ -244,7 +247,7 @@ triggers.register('postTag', async (ctx, change) => {
     const postId =
       change.operation === 'delete'
         ? change.oldDoc!.postId
-        : change.newDoc.postId;
+        : change.newDoc!.postId;
 
     // Skip if nothing relevant changed
     if (change.operation === 'update') {
@@ -253,21 +256,23 @@ triggers.register('postTag', async (ctx, change) => {
       }
     }
 
-    const table = entsTableFactory(ctx, entDefinitions);
-
     // Recalculate tags from all postTags
-    const postTags = await table('postTag', 'postId', (q) =>
-      q.eq('postId', postId)
-    );
+    // Index postTag.postId.
+    const postTags = await ctx.orm.query.postTag.findMany({
+      where: { postId },
+      limit: 1000,
+    });
 
     const tagIds = postTags.map((pt) => pt.tagId);
-    const tags = await Promise.all(tagIds.map((id) => table('tag').get(id)));
+    const tags = await Promise.all(
+      tagIds.map((id) => ctx.orm.query.tag.findFirst({ where: { _id: id } }))
+    );
     const tagNames = tags
       .filter((t) => t !== null)
-      .map((t) => t.name.toLowerCase())
+      .map((t) => t!.name.toLowerCase())
       .sort();
 
-    await table('post').getX(postId).patch({ tagNames });
+    await ctx.orm.update(post).set({ tagNames }).where(eq(post._id, postId));
   }
 });
 ```
@@ -431,37 +436,23 @@ import { mutation } from './_generated/server';
 
 Always check if an update is needed before patching:
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts showLineNumbers {4-6}
-    triggers.register('session', async (ctx, change) => {
-      if (change.newDoc) {
-        const isExpired = change.newDoc.expiresAt < Date.now();
+```ts showLineNumbers {1-2,8-11}
+import { eq } from 'better-convex/orm';
+import { session } from '../functions/schema';
 
-        // Only patch if different - prevents infinite loop
-        if (change.newDoc.isExpired !== isExpired) {
-          await ctx.db.patch(change.id, { isExpired });
-        }
-      }
-    });
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts showLineNumbers {4-7}
-    triggers.register('session', async (ctx, change) => {
-      if (change.newDoc) {
-        const isExpired = change.newDoc.expiresAt < Date.now();
+triggers.register('session', async (ctx, change) => {
+  if (!change.newDoc) return;
+  const isExpired = change.newDoc.expiresAt < Date.now();
 
-        // Only patch if different - prevents infinite loop
-        if (change.newDoc.isExpired !== isExpired) {
-          const table = entsTableFactory(ctx, entDefinitions);
-          await table('session').getX(change.id).patch({ isExpired });
-        }
-      }
-    });
-    ```
-  </Tab>
-</Tabs>
+  // Only update if different - prevents infinite loop
+  if (change.newDoc.isExpired !== isExpired) {
+    await ctx.orm
+      .update(session)
+      .set({ isExpired })
+      .where(eq(session._id, change.id));
+  }
+});
+```
 
 ### Error Handling Warning
 
@@ -469,52 +460,35 @@ Always check if an update is needed before patching:
 **Important:** Caught errors don't roll back the mutation. Let trigger errors bubble up.
 </Callout>
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts showLineNumbers {2-7,10-12}
-    // ❌ BAD: Mutation succeeds even if trigger fails
-    export const updateSession = authMutation
-      .input(z.object({ id: zid('session'), token: z.string() }))
-      .mutation(async ({ ctx, input }) => {
-        try {
-          await ctx.db.patch(input.id, { token: input.token }); // Succeeds
-        } catch (e) {
-          console.error('failed'); // Trigger error caught
-        }
-        // Session is still updated!
-      });
+```ts showLineNumbers {1-2,4-11,14-18}
+import { eq } from 'better-convex/orm';
+import { session } from '../functions/schema';
 
-    // ✅ GOOD: Let trigger errors bubble up
-    export const updateSession = authMutation
-      .input(z.object({ id: zid('session'), token: z.string() }))
-      .mutation(async ({ ctx, input }) => {
-        await ctx.db.patch(input.id, { token: input.token }); // Trigger errors will fail mutation
-      });
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts showLineNumbers {2-7,10-12}
-    // ❌ BAD: Mutation succeeds even if trigger fails
-    export const updateSession = authMutation
-      .input(z.object({ id: zid('session'), token: z.string() }))
-      .mutation(async ({ ctx, input }) => {
-        try {
-          await ctx.table('session').getX(input.id).patch({ token: input.token }); // Succeeds
-        } catch (e) {
-          console.error('failed'); // Trigger error caught
-        }
-        // Session is still updated!
-      });
+// ❌ BAD: Mutation succeeds even if trigger fails
+export const updateSession = authMutation
+  .input(z.object({ id: zid('session'), token: z.string() }))
+  .mutation(async ({ ctx, input }) => {
+    try {
+      await ctx.orm
+        .update(session)
+        .set({ token: input.token })
+        .where(eq(session._id, input.id)); // Succeeds
+    } catch (e) {
+      console.error('failed'); // Trigger error caught
+    }
+    // Session is still updated!
+  });
 
-    // ✅ GOOD: Let trigger errors bubble up
-    export const updateSession = authMutation
-      .input(z.object({ id: zid('session'), token: z.string() }))
-      .mutation(async ({ ctx, input }) => {
-        await ctx.table('session').getX(input.id).patch({ token: input.token }); // Trigger errors will fail mutation
-      });
-    ```
-  </Tab>
-</Tabs>
+// ✅ GOOD: Let trigger errors bubble up
+export const updateSession = authMutation
+  .input(z.object({ id: zid('session'), token: z.string() }))
+  .mutation(async ({ ctx, input }) => {
+    await ctx.orm
+      .update(session)
+      .set({ token: input.token })
+      .where(eq(session._id, input.id)); // Trigger errors will fail mutation
+  });
+```
 
 ### Atomic Execution
 
@@ -524,42 +498,27 @@ Triggers run within the same transaction as the mutation. Queries running in par
 
 Consider explicit wrapper functions over implicit triggers to avoid "spooky action at a distance":
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts showLineNumbers {1-5,7-11}
-    // ✅ Explicit and discoverable
-    async function createUser(ctx: MutationCtx, data: UserData) {
-      const userId = await ctx.db.insert('user', data);
-      await ctx.db.insert('profile', { userId });
-      return userId;
-    }
+```ts showLineNumbers {1,4-14,17-21}
+import { profile, user } from '../functions/schema';
 
-    // ❌ Hidden side effects - harder to trace
-    triggers.register('user', async (ctx, change) => {
-      if (change.operation === 'insert') {
-        await ctx.db.insert('profile', { userId: change.id });
-      }
-    });
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts showLineNumbers {1-5,7-11}
-    // ✅ Explicit and discoverable
-    async function createUser(ctx: MutationCtx, data: UserData) {
-      const user = await ctx.table('user').insert(data).get();
-      await ctx.table('profile').insert({ userId: user._id });
-      return user._id;
-    }
+// ✅ Explicit and discoverable
+async function createUser(ctx: MutationCtx, data: UserData) {
+  const [row] = await ctx.orm
+    .insert(user)
+    .values(data)
+    .returning({ id: user._id });
 
-    // ❌ Hidden side effects - harder to trace
-    triggers.register('user', async (ctx, change) => {
-      if (change.operation === 'insert') {
-        await ctx.table('profile').insert({ userId: change.id });
-      }
-    });
-    ```
-  </Tab>
-</Tabs>
+  await ctx.orm.insert(profile).values({ userId: row.id });
+  return row.id;
+}
+
+// ❌ Hidden side effects - harder to trace
+triggers.register('user', async (ctx, change) => {
+  if (change.operation === 'insert') {
+    await ctx.orm.insert(profile).values({ userId: change.id });
+  }
+});
+```
 
 ## Next Steps
 

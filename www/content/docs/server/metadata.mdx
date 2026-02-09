@@ -73,14 +73,18 @@ Use `.meta()` to set metadata on procedures:
 export const adminOnly = authQuery
   .meta({ role: 'admin' })
   .query(async ({ ctx }) => {
-    return ctx.db.query('user').collect();
+    return ctx.orm.query.user.findMany({ limit: 100 });
   });
 
 export const createSession = authMutation
   .meta({ rateLimit: 'session/create' })
   .input(z.object({ token: z.string() }))
   .mutation(async ({ ctx, input }) => {
-    return ctx.db.insert('session', { token: input.token, userId: ctx.userId });
+    const [row] = await ctx.orm
+      .insert(session)
+      .values({ token: input.token, userId: ctx.userId })
+      .returning({ id: session._id });
+    return row.id;
   });
 ```
 
@@ -213,7 +217,7 @@ export const adminQuery = authQuery
 // Usage
 export const list = adminQuery
   .query(async ({ ctx }) => {
-    return ctx.db.query('user').collect();
+    return ctx.orm.query.user.findMany({ limit: 100 });
   });
 ```
 

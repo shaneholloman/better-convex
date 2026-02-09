@@ -228,6 +228,32 @@ describe('M3 Query Builder', () => {
     });
   });
 
+  describe('findFirstOrThrow()', () => {
+    it('should return first result', async ({ ctx }) => {
+      await ctx.db.insert('users', {
+        name: 'Alice',
+        email: 'alice@example.com',
+      });
+      await ctx.db.insert('users', {
+        name: 'Bob',
+        email: 'bob@example.com',
+      });
+
+      const db = ctx.orm;
+      const result = await db.query.users.findFirstOrThrow();
+
+      expect(result).toBeDefined();
+      expect(result.name).toBe('Alice');
+    });
+
+    it('should throw for empty results', async ({ ctx }) => {
+      const db = ctx.orm;
+      await expect(db.query.users.findFirstOrThrow()).rejects.toThrow(
+        /could not find users/i
+      );
+    });
+  });
+
   describe('Column Selection', () => {
     it('should select specific columns', async ({ ctx }) => {
       await ctx.db.insert('users', {

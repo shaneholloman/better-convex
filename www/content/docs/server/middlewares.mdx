@@ -41,30 +41,16 @@ export const authQuery = c.query.use(async ({ ctx, next }) => {
 
 Now when you use `authQuery`, you're guaranteed to have `ctx.user` and `ctx.userId`:
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts title="convex/functions/posts.ts" showLineNumbers {3-5}
-    export const myPosts = authQuery
-      .query(async ({ ctx }) => {
-        // ctx.user and ctx.userId are guaranteed to exist
-        return ctx.db.query('posts')
-          .withIndex('by_author', q => q.eq('authorId', ctx.userId))
-          .collect();
-      });
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts title="convex/functions/posts.ts" showLineNumbers {3-5}
-    export const myPosts = authQuery
-      .query(async ({ ctx }) => {
-        // ctx.user and ctx.userId are guaranteed to exist
-        return ctx.table('posts', 'by_author', q =>
-          q.eq('authorId', ctx.userId)
-        );
-      });
-    ```
-  </Tab>
-</Tabs>
+```ts title="convex/functions/posts.ts" showLineNumbers {3-5}
+export const myPosts = authQuery
+  .query(async ({ ctx }) => {
+    // ctx.user and ctx.userId are guaranteed to exist
+    return ctx.orm.query.posts.findMany({
+      where: { authorId: ctx.userId },
+      limit: 50,
+    });
+  });
+```
 
 ## Middleware Signature
 
@@ -123,7 +109,9 @@ Middleware placed **after** `.input()` receives typed input. Use it to fetch rel
 export const queryWithProject = publicQuery
   .input(z.object({ projectId: zid('projects'), name: z.string() }))
   .use(async ({ ctx, input, next }) => {
-    const project = await ctx.db.get(input.projectId);
+    const project = await ctx.orm.query.projects.findFirst({
+      where: { _id: input.projectId },
+    });
     // Add to context, enrich input, or override fields
     return next({ ctx: { ...ctx, project }, input: { ...input, name: input.name.trim() } });
   })
@@ -210,18 +198,18 @@ export const authMutation = c.mutation
   .use(roleMiddleware);
 ```
 
-For middleware that needs `ctx.db` write methods, apply it directly to the mutation chain:
+For middleware that needs ORM write methods, apply it directly to the mutation chain:
 
 ```ts showLineNumbers {2,7-9}
 // ❌ Shared middleware loses mutation-specific methods
-const dbMiddleware = c.middleware(async ({ ctx, next }) => {
-  await ctx.db.insert('logs', { ... }); // Error: insert doesn't exist
+const writeMiddleware = c.middleware(async ({ ctx, next }) => {
+  await ctx.orm.insert(logs).values({ ... }); // Error: insert doesn't exist
   return next({ ctx });
 });
 
 // ✅ Apply directly to mutation chain
 export const authMutation = c.mutation.use(async ({ ctx, next }) => {
-  await ctx.db.insert('logs', { ... }); // Works!
+  await ctx.orm.insert(logs).values({ ... }); // Works!
   return next({ ctx });
 });
 ```
@@ -290,7 +278,9 @@ export const authQuery = c.query.use(async ({ ctx, next }) => {
     throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
   }
 
-  const user = await ctx.db.get(session.userId);
+  const user = await ctx.orm.query.user.findFirst({
+    where: { _id: session.userId },
+  });
   if (!user) {
     throw new CRPCError({ code: 'UNAUTHORIZED', message: 'User not found' });
   }
@@ -316,7 +306,9 @@ export const optionalAuthQuery = c.query.use(async ({ ctx, next }) => {
     return next({ ctx: { ...ctx, user: null, userId: null } });
   }
 
-  const user = await ctx.db.get(session.userId);
+  const user = await ctx.orm.query.user.findFirst({
+    where: { _id: session.userId },
+  });
   if (!user) {
     return next({ ctx: { ...ctx, user: null, userId: null } });
   }

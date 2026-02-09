@@ -110,7 +110,7 @@ export class GelRelationalQuery<
       TSchema,
       TTableConfig
     >,
-    private mode: 'many' | 'first',
+    private mode: 'many' | 'first' | 'firstOrThrow',
     private _allEdges?: EdgeMetadata[], // M6.5 Phase 2: All edges for nested loading
     private rls?: RlsContext,
     private relationLoading?: { concurrency?: number },
@@ -118,6 +118,18 @@ export class GelRelationalQuery<
   ) {
     super();
     this.allowFullScan = (config as any).allowFullScan === true;
+  }
+
+  private _returnSelectedRows(selectedRows: any[]): TResult {
+    if (this.mode === 'many') {
+      return selectedRows as TResult;
+    }
+
+    const first = selectedRows[0];
+    if (this.mode === 'firstOrThrow' && first === undefined) {
+      throw new Error(`Could not find ${this.tableConfig.name}.`);
+    }
+    return first as TResult;
   }
 
   private _applyRlsSelectFilter(
@@ -1464,12 +1476,7 @@ export class GelRelationalQuery<
       rows = this._applyRlsSelectFilter(rows, this.tableConfig);
 
       const selectedRows = await this._finalizeRows(rows);
-
-      if (this.mode === 'first') {
-        return selectedRows[0] as TResult;
-      }
-
-      return selectedRows as TResult;
+      return this._returnSelectedRows(selectedRows);
     }
 
     if (searchConfig) {
@@ -1586,12 +1593,7 @@ export class GelRelationalQuery<
       }
 
       const selectedRows = await this._finalizeRows(rows);
-
-      if (this.mode === 'first') {
-        return selectedRows[0] as TResult;
-      }
-
-      return selectedRows as TResult;
+      return this._returnSelectedRows(selectedRows);
     }
 
     // M5: Index-aware ordering strategy
@@ -1861,12 +1863,7 @@ export class GelRelationalQuery<
         (this.config as any).columns,
         this._getColumns(this.tableConfig)
       );
-
-      if (this.mode === 'first') {
-        return selectedRows[0] as TResult;
-      }
-
-      return selectedRows as TResult;
+      return this._returnSelectedRows(selectedRows);
     }
 
     if (
@@ -1977,12 +1974,7 @@ export class GelRelationalQuery<
         (this.config as any).columns,
         this._getColumns(this.tableConfig)
       );
-
-      if (this.mode === 'first') {
-        return selectedRows[0] as TResult;
-      }
-
-      return selectedRows as TResult;
+      return this._returnSelectedRows(selectedRows);
     }
 
     // M6.5 Phase 4: Handle cursor pagination separately
@@ -2207,12 +2199,7 @@ export class GelRelationalQuery<
       this._getColumns(this.tableConfig)
     );
 
-    // Return based on mode
-    if (this.mode === 'first') {
-      return selectedRows[0] as TResult;
-    }
-
-    return selectedRows as TResult;
+    return this._returnSelectedRows(selectedRows);
   }
 
   /**

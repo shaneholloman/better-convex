@@ -147,7 +147,8 @@ Key behaviors to keep in mind:
 A few SQL-only features from Drizzle are not applicable in Convex:
 
 - `limit`, `orderBy`, `UPDATE ... FROM`, and `WITH` clauses are not supported
-- Values of `undefined` are not supported by Convex documents; omit keys instead
+- `undefined` values passed to `.set(...)` are ignored (treated as "not provided"). If everything is `undefined`, the update is a no-op.
+- to explicitly remove a field, use `unsetToken`: `.set({ nickname: unsetToken })` (shallow: unsets the top-level field only)
 
 <Callout icon={<InfoIcon />}>
 **Note:** Unique constraints, foreign keys, and RLS policies are enforced at runtime for ORM mutations. Direct `ctx.db.patch(...)` bypasses these checks.

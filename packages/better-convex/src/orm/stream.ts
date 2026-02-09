@@ -443,9 +443,23 @@ export abstract class QueryStream<T extends GenericStreamItem>
     }
     return docs[0] ?? null;
   }
+  async uniqueOrThrow() {
+    const doc = await this.unique();
+    if (doc === null) {
+      throw new Error('Query returned no results');
+    }
+    return doc;
+  }
   async first() {
     const docs = await this.take(1);
     return docs[0] ?? null;
+  }
+  async firstOrThrow() {
+    const doc = await this.first();
+    if (doc === null) {
+      throw new Error('Query returned no results');
+    }
+    return doc;
   }
   [Symbol.asyncIterator]() {
     const iterator = this.iterWithKeys()[Symbol.asyncIterator]();

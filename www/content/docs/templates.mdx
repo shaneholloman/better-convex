@@ -19,7 +19,7 @@ In this guide, you'll find production-ready templates for every layer of a Bette
 | **Better Auth** | Auth setup, triggers, HTTP routes |
 | **React Client** | Providers, QueryClient, cRPC context |
 | **Next.js RSC** | Server utilities, prefetching, hydration |
-| **Database Utilities** | Ents, triggers, rate limiting |
+| **Database Utilities** | ORM, triggers, rate limiting |
 | **Dev Scripts** | Reset, init, package.json scripts |
 
 Pick only the features you need. Let's start with the project structure.
@@ -32,7 +32,7 @@ Monolithic structure with two apps in one repo (simpler HMR than monorepo):
 ├── src/              # Next.js app (React client)
 ├── convex/           # Convex app (backend)
 │   ├── functions/    # Queries, mutations, actions
-│   ├── lib/          # Backend utilities (crpc, ents, triggers)
+│   ├── lib/          # Backend utilities (crpc, orm, triggers)
 │   ├── routers/      # HTTP route handlers (health, todos, etc.)
 │   └── shared/       # Types shared with client (@convex/*)
 ```
@@ -135,817 +135,462 @@ Required files for any better-convex project.
 
 Database schema definition. This example shows Better Auth tables with the admin plugin.
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {5-19,21-32}
-    import { defineSchema, defineTable } from 'convex/server';
-    import { v } from 'convex/values';
+```ts title="convex/functions/schema.ts" showLineNumbers {1-2,4-96}
+import {
+  boolean,
+  convexTable,
+  defineRelations,
+  defineSchema,
+  id,
+  index,
+  integer,
+  text,
+} from 'better-convex/orm';
 
-    export default defineSchema({
-      user: defineTable({
-        name: v.string(),
-        email: v.string(),
-        emailVerified: v.boolean(),
-        image: v.optional(v.string()),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-        // Admin plugin
-        role: v.optional(v.string()),
-        banned: v.optional(v.boolean()),
-        banReason: v.optional(v.string()),
-        banExpires: v.optional(v.number()),
-      })
-        .index('email', ['email']),
+export const user = convexTable(
+  'user',
+  {
+    name: text().notNull(),
+    email: text().notNull(),
+    emailVerified: boolean().notNull(),
+    image: text(),
+    createdAt: integer().notNull(),
+    updatedAt: integer().notNull(),
 
-      session: defineTable({
-        token: v.string(),
-        expiresAt: v.number(),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-        ipAddress: v.optional(v.string()),
-        userAgent: v.optional(v.string()),
-        userId: v.string(),
-        // Admin plugin
-        impersonatedBy: v.optional(v.string()),
-      })
-        .index('token', ['token'])
-        .index('userId', ['userId']),
+    // Admin plugin
+    role: text(),
+    banned: boolean(),
+    banReason: text(),
+    banExpires: integer(),
+  },
+  (t) => [index('email').on(t.email)]
+);
 
-      account: defineTable({
-        accountId: v.string(),
-        providerId: v.string(),
-        userId: v.string(),
-        accessToken: v.optional(v.string()),
-        refreshToken: v.optional(v.string()),
-        idToken: v.optional(v.string()),
-        accessTokenExpiresAt: v.optional(v.number()),
-        refreshTokenExpiresAt: v.optional(v.number()),
-        scope: v.optional(v.string()),
-        password: v.optional(v.string()),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-      })
-        .index('accountId', ['accountId'])
-        .index('userId', ['userId']),
+export const session = convexTable(
+  'session',
+  {
+    token: text().notNull(),
+    expiresAt: integer().notNull(),
+    createdAt: integer().notNull(),
+    updatedAt: integer().notNull(),
+    ipAddress: text(),
+    userAgent: text(),
+    userId: id('user').notNull(),
 
-      verification: defineTable({
-        identifier: v.string(),
-        value: v.string(),
-        expiresAt: v.number(),
-        createdAt: v.optional(v.number()),
-        updatedAt: v.optional(v.number()),
-      })
-        .index('identifier', ['identifier']),
+    // Admin plugin
+    impersonatedBy: text(),
+  },
+  (t) => [index('token').on(t.token), index('userId').on(t.userId)]
+);
 
-      jwks: defineTable({
-        publicKey: v.string(),
-        privateKey: v.string(),
-        createdAt: v.number(),
-      }),
+export const account = convexTable(
+  'account',
+  {
+    accountId: text().notNull(),
+    providerId: text().notNull(),
+    userId: id('user').notNull(),
+    accessToken: text(),
+    refreshToken: text(),
+    idToken: text(),
+    accessTokenExpiresAt: integer(),
+    refreshTokenExpiresAt: integer(),
+    scope: text(),
+    password: text(),
+    createdAt: integer().notNull(),
+    updatedAt: integer().notNull(),
+  },
+  (t) => [index('accountId').on(t.accountId), index('userId').on(t.userId)]
+);
 
-      // Your other tables
-    });
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {5-21,23-34}
-    import { v } from 'convex/values';
-    import { defineEnt, defineEntSchema, getEntDefinitions } from 'convex-ents';
+export const verification = convexTable(
+  'verification',
+  {
+    identifier: text().notNull(),
+    value: text().notNull(),
+    expiresAt: integer().notNull(),
+    createdAt: integer(),
+    updatedAt: integer(),
+  },
+  (t) => [index('identifier').on(t.identifier)]
+);
 
-    const schema = defineEntSchema({
-      user: defineEnt({
-        name: v.string(),
-        email: v.string(),
-        emailVerified: v.boolean(),
-        image: v.optional(v.string()),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-        // Admin plugin
-        role: v.optional(v.string()),
-        banned: v.optional(v.boolean()),
-        banReason: v.optional(v.string()),
-        banExpires: v.optional(v.number()),
-      })
-        .index('email', ['email'])
-        .edges('sessions', { to: 'session', ref: 'userId' })
-        .edges('accounts', { to: 'account', ref: 'userId' }),
+export const jwks = convexTable('jwks', {
+  publicKey: text().notNull(),
+  privateKey: text().notNull(),
+  createdAt: integer().notNull(),
+});
 
-      session: defineEnt({
-        token: v.string(),
-        expiresAt: v.number(),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-        ipAddress: v.optional(v.string()),
-        userAgent: v.optional(v.string()),
-        // Admin plugin
-        impersonatedBy: v.optional(v.string()),
-      })
-        .index('token', ['token'])
-        .edge('user', { to: 'user', field: 'userId' }),
+// Example: optional profile table for post-signup setup
+export const profiles = convexTable(
+  'profiles',
+  {
+    userId: id('user').notNull(),
+    bio: text().notNull(),
+  },
+  (t) => [index('userId').on(t.userId)]
+);
 
-      account: defineEnt({
-        accountId: v.string(),
-        providerId: v.string(),
-        accessToken: v.optional(v.string()),
-        refreshToken: v.optional(v.string()),
-        idToken: v.optional(v.string()),
-        accessTokenExpiresAt: v.optional(v.number()),
-        refreshTokenExpiresAt: v.optional(v.number()),
-        scope: v.optional(v.string()),
-        password: v.optional(v.string()),
-        createdAt: v.number(),
-        updatedAt: v.number(),
-      })
-        .index('accountId', ['accountId'])
-        .edge('user', { to: 'user', field: 'userId' }),
+export const tables = { user, session, account, verification, jwks, profiles };
 
-      verification: defineEnt({
-        identifier: v.string(),
-        value: v.string(),
-        expiresAt: v.number(),
-        createdAt: v.optional(v.number()),
-        updatedAt: v.optional(v.number()),
-      })
-        .index('identifier', ['identifier']),
+const schema = defineSchema(tables, { strict: false });
+export const relations = defineRelations(tables);
+export default schema;
+```
 
-      jwks: defineEnt({
-        publicKey: v.string(),
-        privateKey: v.string(),
-        createdAt: v.number(),
-      }),
+### orm.ts
 
-      // Your other tables
-    });
+Attach Better-Convex ORM to your context as `ctx.orm` (once).
 
-    export default schema;
-    export const entDefinitions = getEntDefinitions(schema);
-    ```
-  </Tab>
-</Tabs>
+```ts title="convex/lib/orm.ts" showLineNumbers {1-3,5-10}
+import { createOrm } from 'better-convex/orm';
+import type { MutationCtx, QueryCtx } from '../functions/_generated/server';
+import { relations } from '../functions/schema';
+
+export const orm = createOrm({ schema: relations });
+
+export const withOrm = <Ctx extends QueryCtx | MutationCtx>(ctx: Ctx) => ({
+  ...ctx,
+  orm: orm.db(ctx),
+});
+```
 
 ### crpc.ts
 
 The cRPC builder with auth middleware and procedure variants.
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts title="convex/lib/crpc.ts" showLineNumbers
-    import { getHeaders, getSession } from 'better-convex/auth';
-    import { CRPCError, initCRPC } from 'better-convex/server';
-    import type { Auth } from 'convex/server';
-    import {
-      customCtx,
-      customMutation,
-    } from 'convex-helpers/server/customFunctions';
-    import { api } from '../_generated/api';
-    import type { DataModel, Doc, Id } from '../_generated/dataModel';
-    import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
-    import {
-      action,
-      httpAction,
-      internalAction,
-      internalMutation,
-      internalQuery,
-      mutation,
-      query,
-    } from '../_generated/server';
-    import { getAuth } from './auth';
-    import { registerTriggers } from './triggers';
-    import { rateLimitGuard } from './rate-limiter';
+```ts title="convex/lib/crpc.ts" showLineNumbers
+import { getHeaders, getSession } from 'better-convex/auth';
+import { CRPCError, initCRPC } from 'better-convex/server';
+import type { Auth } from 'convex/server';
+import {
+  customCtx,
+  customMutation,
+} from 'convex-helpers/server/customFunctions';
 
-    // =============================================================================
-    // Types
-    // =============================================================================
+import { api } from '../functions/_generated/api';
+import type { DataModel, Id } from '../functions/_generated/dataModel';
+import type { ActionCtx, MutationCtx, QueryCtx } from '../functions/_generated/server';
+import {
+  action,
+  httpAction,
+  internalAction,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from '../functions/_generated/server';
 
-    export type GenericCtx = QueryCtx | MutationCtx | ActionCtx;
+import { getAuth } from './auth';
+import { withOrm } from './orm';
+import { rateLimitGuard } from './rate-limiter';
+import { registerTriggers } from './triggers';
 
-    type SessionUser = {
-      id: Id<'user'>;
-      plan?: 'premium' | null;
-      isAdmin?: boolean;
-      // Add your user fields here
-    };
+// =============================================================================
+// Types
+// =============================================================================
 
-    /** Context with optional auth - user/userId may be null */
-    export type MaybeAuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
-      Ctx & {
-        auth: Auth &
-          Partial<ReturnType<typeof getAuth> & { headers: Headers }>;
-        user: SessionUser | null;
-        userId: Id<'user'> | null;
-      };
+export type GenericCtx = QueryCtx | MutationCtx | ActionCtx;
 
-    /** Context with required auth - user/userId guaranteed */
-    export type AuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
-      Ctx & {
-        auth: Auth & ReturnType<typeof getAuth> & { headers: Headers };
-        user: SessionUser;
-        userId: Id<'user'>;
-      };
+type SessionUser = {
+  id: Id<'user'>;
+  plan?: 'premium' | null;
+  isAdmin?: boolean;
+  // Add your user fields here
+};
 
-    /** Context type for authenticated actions */
-    export type AuthActionCtx = ActionCtx & {
-      user: SessionUser;
-      userId: Id<'user'>;
-    };
+/** Context with optional auth - user/userId may be null */
+export type MaybeAuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> = Ctx & {
+  auth: Auth & Partial<ReturnType<typeof getAuth> & { headers: Headers }>;
+  user: SessionUser | null;
+  userId: Id<'user'> | null;
+};
 
-    // =============================================================================
-    // Setup
-    // =============================================================================
+/** Context with required auth - user/userId guaranteed */
+export type AuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> = Ctx & {
+  auth: Auth & ReturnType<typeof getAuth> & { headers: Headers };
+  user: SessionUser;
+  userId: Id<'user'>;
+};
 
-    const triggers = registerTriggers();
+/** Context type for authenticated actions */
+export type AuthActionCtx = ActionCtx & {
+  user: SessionUser;
+  userId: Id<'user'>;
+};
 
-    type Meta = {
-      auth?: 'optional' | 'required';
-      role?: 'admin';
-      rateLimit?: string;
-      dev?: boolean;
-    };
+// =============================================================================
+// Setup
+// =============================================================================
 
-    const c = initCRPC
-      .dataModel<DataModel>()
-      .meta<Meta>()
-      .create({
-        query,
-        internalQuery,
-        // biome-ignore lint/suspicious/noExplicitAny: convex internals
-        mutation: (handler: any) =>
-          mutation({
-            ...handler,
-            handler: async (ctx: MutationCtx, args: unknown) => {
-              const wrappedCtx = triggers.wrapDB(ctx);
-              return handler.handler(wrappedCtx, args);
-            },
-          }),
-        // biome-ignore lint/suspicious/noExplicitAny: convex internals
-        internalMutation: (handler: any) =>
-          internalMutation({
-            ...handler,
-            handler: async (ctx: MutationCtx, args: unknown) => {
-              const wrappedCtx = triggers.wrapDB(ctx);
-              return handler.handler(wrappedCtx, args);
-            },
-          }),
-        action,
-        internalAction,
-        httpAction,
-      });
+const triggers = registerTriggers();
 
-    // =============================================================================
-    // Middleware
-    // =============================================================================
+type Meta = {
+  auth?: 'optional' | 'required';
+  role?: 'admin';
+  rateLimit?: string;
+  dev?: boolean;
+};
 
-    /** Dev mode middleware - throws in production if meta.dev: true */
-    const devMiddleware = c.middleware<object>(({ meta, next, ctx }) => {
-      if (meta.dev && process.env.DEPLOY_ENV === 'production') {
-        throw new CRPCError({
-          code: 'FORBIDDEN',
-          message: 'This function is only available in development',
-        });
-      }
-      return next({ ctx });
+const c = initCRPC
+  .dataModel<DataModel>()
+  .context({
+    query: (ctx) => withOrm(ctx),
+    mutation: (ctx) => withOrm(triggers.wrapDB(ctx)),
+  })
+  .meta<Meta>()
+  .create({
+    query,
+    internalQuery,
+    mutation,
+    internalMutation,
+    action,
+    internalAction,
+    httpAction,
+  });
+
+// =============================================================================
+// Middleware
+// =============================================================================
+
+/** Dev mode middleware - throws in production if meta.dev: true */
+const devMiddleware = c.middleware<object>(({ meta, next, ctx }) => {
+  if (meta.dev && process.env.DEPLOY_ENV === 'production') {
+    throw new CRPCError({
+      code: 'FORBIDDEN',
+      message: 'This function is only available in development',
+    });
+  }
+  return next({ ctx });
+});
+
+/** Rate limit middleware - applies rate limiting based on meta.rateLimit and user tier */
+const rateLimitMiddleware = c.middleware<
+  MutationCtx & { user?: Pick<SessionUser, 'id' | 'plan'> | null }
+>(async ({ ctx, meta, next }) => {
+  await rateLimitGuard({
+    ...ctx,
+    rateLimitKey: meta.rateLimit ?? 'default',
+    user: ctx.user ?? null,
+  });
+  return next({ ctx });
+});
+
+/** Role middleware - checks admin role from meta after auth middleware */
+const roleMiddleware = c.middleware<object>(({ ctx, meta, next }) => {
+  const user = (ctx as { user?: { isAdmin?: boolean } }).user;
+  if (meta.role === 'admin' && !user?.isAdmin) {
+    throw new CRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+  }
+  return next({ ctx });
+});
+
+// =============================================================================
+// Query Procedures
+// =============================================================================
+
+/** Public query - no auth required, supports dev: true in meta */
+export const publicQuery = c.query.use(devMiddleware);
+
+/** Private query - only callable from other Convex functions */
+export const privateQuery = c.query.internal();
+
+/** Optional auth query - ctx.user may be null, supports dev: true in meta */
+export const optionalAuthQuery = c.query
+  .meta({ auth: 'optional' })
+  .use(devMiddleware)
+  .use(async ({ ctx, next }) => {
+    const session = await getSession(ctx);
+    if (!session) {
+      return next({ ctx: { ...ctx, user: null, userId: null } });
+    }
+
+    const user = await ctx.orm.query.user.findFirst({
+      where: { _id: session.userId },
     });
 
-    /** Rate limit middleware - applies rate limiting based on meta.rateLimit and user tier */
-    const rateLimitMiddleware = c.middleware<
-      MutationCtx & { user?: Pick<SessionUser, 'id' | 'plan'> | null }
-    >(async ({ ctx, meta, next }) => {
-      await rateLimitGuard({
+    if (!user) {
+      return next({ ctx: { ...ctx, user: null, userId: null } });
+    }
+
+    return next({
+      ctx: {
         ...ctx,
-        rateLimitKey: meta.rateLimit ?? 'default',
-        user: ctx.user ?? null,
-      });
-      return next({ ctx });
+        auth: {
+          ...ctx.auth,
+          ...getAuth(ctx),
+          headers: await getHeaders(ctx, session),
+        },
+        user: { id: user._id, session, ...user },
+        userId: user._id,
+      },
+    });
+  });
+
+/** Auth query - ctx.user required, supports role: 'admin' and dev: true in meta */
+export const authQuery = c.query
+  .meta({ auth: 'required' })
+  .use(devMiddleware)
+  .use(async ({ ctx, next }) => {
+    const session = await getSession(ctx);
+    if (!session) {
+      throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+    }
+
+    const user = await ctx.orm.query.user.findFirst({
+      where: { _id: session.userId },
     });
 
-    /** Role middleware - checks admin role from meta after auth middleware */
-    const roleMiddleware = c.middleware<object>(({ ctx, meta, next }) => {
-      const user = (ctx as { user?: { isAdmin?: boolean } }).user;
-      if (meta.role === 'admin' && !user?.isAdmin) {
-        throw new CRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-      return next({ ctx });
-    });
+    if (!user) {
+      throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+    }
 
-    // =============================================================================
-    // Query Procedures
-    // =============================================================================
-
-    /** Public query - no auth required, supports dev: true in meta */
-    export const publicQuery = c.query.use(devMiddleware);
-
-    /** Private query - only callable from other Convex functions */
-    export const privateQuery = c.query.internal();
-
-    /** Optional auth query - ctx.user may be null, supports dev: true in meta */
-    export const optionalAuthQuery = c.query
-      .meta({ auth: 'optional' })
-      .use(devMiddleware)
-      .use(async ({ ctx, next }) => {
-        const session = await getSession(ctx);
-        if (!session) {
-          return next({ ctx: { ...ctx, user: null, userId: null } });
-        }
-
-        const user = (await ctx.db.get(session.userId))!;
-
-        return next({
-          ctx: {
-            ...ctx,
-            auth: {
-              ...ctx.auth,
-              ...getAuth(ctx),
-              headers: await getHeaders(ctx, session),
-            },
-            user: { id: user._id, session, ...user },
-            userId: user._id,
-          },
-        });
-      });
-
-    /** Auth query - ctx.user required, supports role: 'admin' and dev: true in meta */
-    export const authQuery = c.query
-      .meta({ auth: 'required' })
-      .use(devMiddleware)
-      .use(async ({ ctx, next }) => {
-        const session = await getSession(ctx);
-        if (!session) {
-          throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
-        }
-
-        const user = (await ctx.db.get(session.userId))!;
-
-        return next({
-          ctx: {
-            ...ctx,
-            auth: {
-              ...ctx.auth,
-              ...getAuth(ctx),
-              headers: await getHeaders(ctx, session),
-            },
-            user: { id: user._id, session, ...user },
-            userId: user._id,
-          },
-        });
-      })
-      .use(roleMiddleware);
-
-    // =============================================================================
-    // Mutation Procedures
-    // =============================================================================
-
-    /** Public mutation - no auth required, rate limited, supports dev: true in meta */
-    export const publicMutation = c.mutation
-      .use(devMiddleware)
-      .use(rateLimitMiddleware);
-
-    /** Private mutation - only callable from other Convex functions */
-    export const privateMutation = c.mutation.internal();
-
-    /** Optional auth mutation - ctx.user may be null, rate limited, supports dev: true */
-    export const optionalAuthMutation = c.mutation
-      .meta({ auth: 'optional' })
-      .use(devMiddleware)
-      .use(async ({ ctx, next }) => {
-        const session = await getSession(ctx);
-        if (!session) {
-          return next({ ctx: { ...ctx, user: null, userId: null } });
-        }
-
-        const user = (await ctx.db.get(session.userId))!;
-
-        return next({
-          ctx: {
-            ...ctx,
-            auth: {
-              ...ctx.auth,
-              ...getAuth(ctx),
-              headers: await getHeaders(ctx, session),
-            },
-            user: { id: user._id, session, ...user },
-            userId: user._id,
-          },
-        });
-      })
-      .use(rateLimitMiddleware);
-
-    /** Auth mutation - ctx.user required, rate limited, supports role: 'admin' and dev: true */
-    export const authMutation = c.mutation
-      .meta({ auth: 'required' })
-      .use(devMiddleware)
-      .use(async ({ ctx, next }) => {
-        const session = await getSession(ctx);
-        if (!session) {
-          throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
-        }
-
-        const user = (await ctx.db.get(session.userId))!;
-
-        return next({
-          ctx: {
-            ...ctx,
-            auth: {
-              ...ctx.auth,
-              ...getAuth(ctx),
-              headers: await getHeaders(ctx, session),
-            },
-            user: { id: user._id, session, ...user },
-            userId: user._id,
-          },
-        });
-      })
-      .use(roleMiddleware)
-      .use(rateLimitMiddleware);
-
-    // =============================================================================
-    // Action Procedures
-    // =============================================================================
-
-    /** Public action - no auth required, supports dev: true in meta */
-    export const publicAction = c.action.use(devMiddleware);
-
-    /** Private action - only callable from other Convex functions */
-    export const privateAction = c.action.internal();
-
-    /** Auth action - ctx.user required, supports dev: true in meta */
-    export const authAction = c.action
-      .meta({ auth: 'required' })
-      .use(devMiddleware)
-      .use(async ({ ctx, next }) => {
-        // Actions don't have db access - use runQuery
-        const rawUser = await ctx.runQuery(api.user.getSessionUser, {});
-        if (!rawUser) {
-          throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
-        }
-        return next({ ctx: { ...ctx, user: rawUser as SessionUser, userId: rawUser.id } });
-      });
-
-    // =============================================================================
-    // HTTP Action Procedures
-    // =============================================================================
-
-    /** Public HTTP route - no auth required */
-    export const publicRoute = c.httpAction;
-
-    /** Auth HTTP route - verifies JWT via ctx.auth.getUserIdentity() */
-    export const authRoute = c.httpAction.use(async ({ ctx, next }) => {
-      const identity = await ctx.auth.getUserIdentity();
-      if (!identity) {
-        throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
-      }
-      return next({
-        ctx: { ...ctx, userId: identity.subject as Id<'user'> },
-      });
-    });
-
-    /** HTTP router factory - create nested HTTP routers like tRPC */
-    export const router = c.router;
-
-    // =============================================================================
-    // Exports for Better Auth
-    // =============================================================================
-
-    /** Trigger-wrapped internalMutation for better-auth hooks */
-    export const internalMutationWithTriggers = customMutation(
-      internalMutation,
-      customCtx(async (ctx) => ({
-        db: triggers.wrapDB(ctx).db,
-      }))
-    );
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts title="convex/lib/crpc.ts" showLineNumbers
-    import { getHeaders, getSession } from 'better-convex/auth';
-    import { CRPCError, initCRPC } from 'better-convex/server';
-    import type { Auth } from 'convex/server';
-    import {
-      customCtx,
-      customMutation,
-    } from 'convex-helpers/server/customFunctions';
-    import { api } from '../_generated/api';
-    import type { DataModel, Doc, Id } from '../_generated/dataModel';
-    import type { ActionCtx, MutationCtx, QueryCtx } from '../_generated/server';
-    import {
-      action,
-      httpAction,
-      internalAction,
-      internalMutation,
-      internalQuery,
-      mutation,
-      query,
-    } from '../_generated/server';
-    import { getAuth } from './auth';
-    import { type CtxWithTable, getCtxWithTable } from './ents';
-    import { rateLimitGuard } from './rate-limiter';
-    import { registerTriggers } from './triggers';
-
-    // =============================================================================
-    // Types
-    // =============================================================================
-
-    export type GenericCtx = QueryCtx | MutationCtx | ActionCtx;
-
-    type SessionUser = {
-      id: Id<'user'>;
-      plan?: 'premium' | null;
-      isAdmin?: boolean;
-      // Add your user fields here
-    };
-
-    /** Context with optional auth - user/userId may be null */
-    export type MaybeAuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
-      CtxWithTable<Ctx> & {
-        auth: Auth &
-          Partial<ReturnType<typeof getAuth> & { headers: Headers }>;
-        user: SessionUser | null;
-        userId: Id<'user'> | null;
-      };
-
-    /** Context with required auth - user/userId guaranteed */
-    export type AuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
-      CtxWithTable<Ctx> & {
-        auth: Auth & ReturnType<typeof getAuth> & { headers: Headers };
-        user: SessionUser;
-        userId: Id<'user'>;
-      };
-
-    /** Context type for authenticated actions */
-    export type AuthActionCtx = ActionCtx & {
-      user: SessionUser;
-      userId: Id<'user'>;
-    };
-
-    // =============================================================================
-    // Setup
-    // =============================================================================
-
-    const triggers = registerTriggers();
-
-    type Meta = {
-      auth?: 'optional' | 'required';
-      role?: 'admin';
-      rateLimit?: string;
-      dev?: boolean;
-    };
-
-    const c = initCRPC
-      .dataModel<DataModel>()
-      .context({
-        query: (ctx) => getCtxWithTable(ctx),
-        mutation: (ctx) => getCtxWithTable(ctx),
-      })
-      .meta<Meta>()
-      .create({
-        query,
-        internalQuery,
-        // biome-ignore lint/suspicious/noExplicitAny: convex internals
-        mutation: (handler: any) =>
-          mutation({
-            ...handler,
-            handler: async (ctx: MutationCtx, args: unknown) => {
-              const wrappedCtx = triggers.wrapDB(ctx);
-              return handler.handler(wrappedCtx, args);
-            },
-          }),
-        // biome-ignore lint/suspicious/noExplicitAny: convex internals
-        internalMutation: (handler: any) =>
-          internalMutation({
-            ...handler,
-            handler: async (ctx: MutationCtx, args: unknown) => {
-              const wrappedCtx = triggers.wrapDB(ctx);
-              return handler.handler(wrappedCtx, args);
-            },
-          }),
-        action,
-        internalAction,
-        httpAction,
-      });
-
-    // =============================================================================
-    // Middleware
-    // =============================================================================
-
-    /** Dev mode middleware - throws in production if meta.dev: true */
-    const devMiddleware = c.middleware<object>(({ meta, next, ctx }) => {
-      if (meta.dev && process.env.DEPLOY_ENV === 'production') {
-        throw new CRPCError({
-          code: 'FORBIDDEN',
-          message: 'This function is only available in development',
-        });
-      }
-      return next({ ctx });
-    });
-
-    /** Rate limit middleware - applies rate limiting based on meta.rateLimit and user tier */
-    const rateLimitMiddleware = c.middleware<
-      MutationCtx & { user?: Pick<SessionUser, 'id' | 'plan'> | null }
-    >(async ({ ctx, meta, next }) => {
-      await rateLimitGuard({
+    return next({
+      ctx: {
         ...ctx,
-        rateLimitKey: meta.rateLimit ?? 'default',
-        user: ctx.user ?? null,
-      });
-      return next({ ctx });
+        auth: {
+          ...ctx.auth,
+          ...getAuth(ctx),
+          headers: await getHeaders(ctx, session),
+        },
+        user: { id: user._id, session, ...user },
+        userId: user._id,
+      },
+    });
+  })
+  .use(roleMiddleware);
+
+// =============================================================================
+// Mutation Procedures
+// =============================================================================
+
+/** Public mutation - no auth required, rate limited, supports dev: true in meta */
+export const publicMutation = c.mutation.use(devMiddleware).use(rateLimitMiddleware);
+
+/** Private mutation - only callable from other Convex functions */
+export const privateMutation = c.mutation.internal();
+
+/** Optional auth mutation - ctx.user may be null, rate limited, supports dev: true */
+export const optionalAuthMutation = c.mutation
+  .meta({ auth: 'optional' })
+  .use(devMiddleware)
+  .use(async ({ ctx, next }) => {
+    const session = await getSession(ctx);
+    if (!session) {
+      return next({ ctx: { ...ctx, user: null, userId: null } });
+    }
+
+    const user = await ctx.orm.query.user.findFirst({
+      where: { _id: session.userId },
     });
 
-    /** Role middleware - checks admin role from meta after auth middleware */
-    const roleMiddleware = c.middleware<object>(({ ctx, meta, next }) => {
-      const user = (ctx as { user?: { isAdmin?: boolean } }).user;
-      if (meta.role === 'admin' && !user?.isAdmin) {
-        throw new CRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
-      }
-      return next({ ctx });
+    if (!user) {
+      return next({ ctx: { ...ctx, user: null, userId: null } });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        auth: {
+          ...ctx.auth,
+          ...getAuth(ctx),
+          headers: await getHeaders(ctx, session),
+        },
+        user: { id: user._id, session, ...user },
+        userId: user._id,
+      },
+    });
+  })
+  .use(rateLimitMiddleware);
+
+/** Auth mutation - ctx.user required, rate limited, supports role: 'admin' and dev: true */
+export const authMutation = c.mutation
+  .meta({ auth: 'required' })
+  .use(devMiddleware)
+  .use(async ({ ctx, next }) => {
+    const session = await getSession(ctx);
+    if (!session) {
+      throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+    }
+
+    const user = await ctx.orm.query.user.findFirst({
+      where: { _id: session.userId },
     });
 
-    // =============================================================================
-    // Query Procedures
-    // =============================================================================
+    if (!user) {
+      throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+    }
 
-    /** Public query - no auth required, supports dev: true in meta */
-    export const publicQuery = c.query.use(devMiddleware);
-
-    /** Private query - only callable from other Convex functions */
-    export const privateQuery = c.query.internal();
-
-    /** Optional auth query - ctx.user may be null, supports dev: true in meta */
-    export const optionalAuthQuery = c.query
-      .meta({ auth: 'optional' })
-      .use(devMiddleware)
-      .use(async ({ ctx, next }) => {
-        const session = await getSession(ctx);
-        if (!session) {
-          return next({ ctx: { ...ctx, user: null, userId: null } });
-        }
-
-        const user = await ctx.table('user').getX(session.userId);
-
-        return next({
-          ctx: {
-            ...ctx,
-            auth: {
-              ...ctx.auth,
-              ...getAuth(ctx),
-              headers: await getHeaders(ctx, session),
-            },
-            user: { id: user._id, session, ...user.doc() },
-            userId: user._id,
-          },
-        });
-      });
-
-    /** Auth query - ctx.user required, supports role: 'admin' and dev: true in meta */
-    export const authQuery = c.query
-      .meta({ auth: 'required' })
-      .use(devMiddleware)
-      .use(async ({ ctx, next }) => {
-        const session = await getSession(ctx);
-        if (!session) {
-          throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
-        }
-
-        const user = await ctx.table('user').getX(session.userId);
-
-        return next({
-          ctx: {
-            ...ctx,
-            auth: {
-              ...ctx.auth,
-              ...getAuth(ctx),
-              headers: await getHeaders(ctx, session),
-            },
-            user: { id: user._id, session, ...user.doc() },
-            userId: user._id,
-          },
-        });
-      })
-      .use(roleMiddleware);
-
-    // =============================================================================
-    // Mutation Procedures
-    // =============================================================================
-
-    /** Public mutation - no auth required, rate limited, supports dev: true in meta */
-    export const publicMutation = c.mutation
-      .use(devMiddleware)
-      .use(rateLimitMiddleware);
-
-    /** Private mutation - only callable from other Convex functions */
-    export const privateMutation = c.mutation.internal();
-
-    /** Optional auth mutation - ctx.user may be null, rate limited, supports dev: true */
-    export const optionalAuthMutation = c.mutation
-      .meta({ auth: 'optional' })
-      .use(devMiddleware)
-      .use(async ({ ctx, next }) => {
-        const session = await getSession(ctx);
-        if (!session) {
-          return next({ ctx: { ...ctx, user: null, userId: null } });
-        }
-
-        const user = await ctx.table('user').getX(session.userId);
-
-        return next({
-          ctx: {
-            ...ctx,
-            auth: {
-              ...ctx.auth,
-              ...getAuth(ctx),
-              headers: await getHeaders(ctx, session),
-            },
-            user: { id: user._id, session, ...user.doc() },
-            userId: user._id,
-          },
-        });
-      })
-      .use(rateLimitMiddleware);
-
-    /** Auth mutation - ctx.user required, rate limited, supports role: 'admin' and dev: true */
-    export const authMutation = c.mutation
-      .meta({ auth: 'required' })
-      .use(devMiddleware)
-      .use(async ({ ctx, next }) => {
-        const session = await getSession(ctx);
-        if (!session) {
-          throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
-        }
-
-        const user = await ctx.table('user').getX(session.userId);
-
-        return next({
-          ctx: {
-            ...ctx,
-            auth: {
-              ...ctx.auth,
-              ...getAuth(ctx),
-              headers: await getHeaders(ctx, session),
-            },
-            user: { id: user._id, session, ...user.doc() },
-            userId: user._id,
-          },
-        });
-      })
-      .use(roleMiddleware)
-      .use(rateLimitMiddleware);
-
-    // =============================================================================
-    // Action Procedures
-    // =============================================================================
-
-    /** Public action - no auth required, supports dev: true in meta */
-    export const publicAction = c.action.use(devMiddleware);
-
-    /** Private action - only callable from other Convex functions */
-    export const privateAction = c.action.internal();
-
-    /** Auth action - ctx.user required, supports dev: true in meta */
-    export const authAction = c.action
-      .meta({ auth: 'required' })
-      .use(devMiddleware)
-      .use(async ({ ctx, next }) => {
-        // Actions don't have db access - use runQuery
-        const rawUser = await ctx.runQuery(api.user.getSessionUser, {});
-        if (!rawUser) {
-          throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
-        }
-        return next({ ctx: { ...ctx, user: rawUser as SessionUser, userId: rawUser.id } });
-      });
-
-    // =============================================================================
-    // HTTP Action Procedures
-    // =============================================================================
-
-    /** Public HTTP route - no auth required */
-    export const publicRoute = c.httpAction;
-
-    /** Auth HTTP route - verifies JWT via ctx.auth.getUserIdentity() */
-    export const authRoute = c.httpAction.use(async ({ ctx, next }) => {
-      const identity = await ctx.auth.getUserIdentity();
-      if (!identity) {
-        throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
-      }
-      return next({
-        ctx: { ...ctx, userId: identity.subject as Id<'user'> },
-      });
+    return next({
+      ctx: {
+        ...ctx,
+        auth: {
+          ...ctx.auth,
+          ...getAuth(ctx),
+          headers: await getHeaders(ctx, session),
+        },
+        user: { id: user._id, session, ...user },
+        userId: user._id,
+      },
     });
+  })
+  .use(roleMiddleware)
+  .use(rateLimitMiddleware);
 
-    /** HTTP router factory - create nested HTTP routers like tRPC */
-    export const router = c.router;
+// =============================================================================
+// Action Procedures
+// =============================================================================
 
-    // =============================================================================
-    // Exports for Better Auth
-    // =============================================================================
+/** Public action - no auth required, supports dev: true in meta */
+export const publicAction = c.action.use(devMiddleware);
 
-    /** Trigger-wrapped internalMutation for better-auth hooks */
-    export const internalMutationWithTriggers = customMutation(
-      internalMutation,
-      customCtx(async (ctx) => ({
-        db: triggers.wrapDB(ctx).db,
-      }))
-    );
-    ```
-  </Tab>
-</Tabs>
+/** Private action - only callable from other Convex functions */
+export const privateAction = c.action.internal();
+
+/** Auth action - ctx.user required, supports dev: true in meta */
+export const authAction = c.action
+  .meta({ auth: 'required' })
+  .use(devMiddleware)
+  .use(async ({ ctx, next }) => {
+    // Actions don't have db access - use runQuery
+    const rawUser = await ctx.runQuery(api.user.getSessionUser, {});
+    if (!rawUser) {
+      throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+    }
+    return next({ ctx: { ...ctx, user: rawUser as SessionUser, userId: rawUser.id } });
+  });
+
+// =============================================================================
+// HTTP Action Procedures
+// =============================================================================
+
+/** Public HTTP route - no auth required */
+export const publicRoute = c.httpAction;
+
+/** Auth HTTP route - verifies JWT via ctx.auth.getUserIdentity() */
+export const authRoute = c.httpAction.use(async ({ ctx, next }) => {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
+  }
+  return next({
+    ctx: { ...ctx, userId: identity.subject as Id<'user'> },
+  });
+});
+
+/** HTTP router factory - create nested HTTP routers like tRPC */
+export const router = c.router;
+
+// =============================================================================
+// Exports for Better Auth
+// =============================================================================
+
+/** Trigger-wrapped internalMutation for better-auth hooks */
+export const internalMutationWithTriggers = customMutation(
+  internalMutation,
+  customCtx(async (ctx) => withOrm(triggers.wrapDB(ctx)))
+);
+```
+
 
 ### types.ts
 
@@ -994,218 +639,110 @@ Optional - only needed if using Better Auth for authentication.
 
 Better Auth client setup with Convex adapter.
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts title="convex/functions/auth.ts" showLineNumbers
-    import { betterAuth, type BetterAuthOptions } from 'better-auth';
-    import { convex } from '@convex-dev/better-auth/plugins';
-    import { admin } from 'better-auth/plugins';
-    import { createClient, createApi, type AuthFunctions } from 'better-convex/auth';
-    import { internal } from './_generated/api';
-    import type { MutationCtx, QueryCtx } from './_generated/server';
-    import type { GenericCtx } from '../lib/crpc';
-    import type { DataModel } from './_generated/dataModel';
-    import { internalMutationWithTriggers } from '../lib/crpc';
-    import schema from './schema';
-    import authConfig from './auth.config';
+```ts title="convex/functions/auth.ts" showLineNumbers
+import { convex } from '@convex-dev/better-auth/plugins';
+import { betterAuth, type BetterAuthOptions } from 'better-auth';
+import { admin } from 'better-auth/plugins';
+import { createApi, createClient, type AuthFunctions } from 'better-convex/auth';
 
-    const authFunctions: AuthFunctions = internal.auth;
+import { internal } from './_generated/api';
+import type { DataModel } from './_generated/dataModel';
+import type { MutationCtx, QueryCtx } from './_generated/server';
+import type { GenericCtx } from '../lib/crpc';
+import { internalMutationWithTriggers } from '../lib/crpc';
 
-    export const authClient = createClient<DataModel, typeof schema>({
-      authFunctions,
-      schema,
-      internalMutation: internalMutationWithTriggers,
-      triggers: {
-        user: {
-          beforeCreate: async (_ctx, data) => {
-            const username =
-              data.username?.trim() ||
-              data.email?.split('@')[0] ||
-              `user-${Date.now()}`;
-            return { ...data, username };
-          },
-          onCreate: async (ctx, user) => {
-            await ctx.db.insert('profiles', {
-              userId: user._id,
-              bio: '',
-            });
-          },
-        },
+import authConfig from './auth.config';
+import schema, { profiles } from './schema';
+
+const authFunctions: AuthFunctions = internal.auth;
+
+export const authClient = createClient<DataModel, typeof schema>({
+  authFunctions,
+  schema,
+  internalMutation: internalMutationWithTriggers,
+  triggers: {
+    user: {
+      beforeCreate: async (_ctx, data) => {
+        const username =
+          data.username?.trim() ||
+          data.email?.split('@')[0] ||
+          `user-${Date.now()}`;
+        return { ...data, username };
       },
-    });
-
-    export const createAuthOptions = (ctx: GenericCtx) =>
-      ({
-        baseURL: process.env.SITE_URL!,
-        database: authClient.httpAdapter(ctx),
-        plugins: [
-          convex({
-            authConfig,
-            jwks: process.env.JWKS,
-            jwt: {
-              expirationSeconds: 60 * 60, // 1 hour
-            },
-          }),
-          admin(),
-        ],
-        session: {
-          expiresIn: 60 * 60 * 24 * 30,
-          updateAge: 60 * 60 * 24 * 15,
-        },
-        socialProviders: {
-          google: {
-            clientId: process.env.GOOGLE_CLIENT_ID!,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-          },
-        },
-        trustedOrigins: [process.env.SITE_URL ?? 'http://localhost:3000'],
-      }) satisfies BetterAuthOptions;
-
-    export const createAuth = (ctx: GenericCtx) => betterAuth(createAuthOptions(ctx));
-
-    export const getAuth = <Ctx extends QueryCtx | MutationCtx>(ctx: Ctx) => {
-      return betterAuth({
-        ...createAuthOptions(ctx),
-        database: authClient.adapter(ctx, createAuthOptions),
-      });
-    };
-
-    export const {
-      beforeCreate,
-      beforeDelete,
-      beforeUpdate,
-      onCreate,
-      onDelete,
-      onUpdate,
-    } = authClient.triggersApi();
-
-    export const {
-      create,
-      deleteMany,
-      deleteOne,
-      findMany,
-      findOne,
-      updateMany,
-      updateOne,
-      getLatestJwks,
-      rotateKeys,
-    } = createApi(schema, createAuth, {
-      internalMutation: internalMutationWithTriggers,
-      skipValidation: true,
-    });
-
-    // biome-ignore lint/suspicious/noExplicitAny: Required for CLI
-    export const auth = betterAuth(createAuthOptions({} as any));
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts title="convex/functions/auth.ts" showLineNumbers
-    import { betterAuth, type BetterAuthOptions } from 'better-auth';
-    import { convex } from '@convex-dev/better-auth/plugins';
-    import { admin } from 'better-auth/plugins';
-    import { createClient, createApi, type AuthFunctions } from 'better-convex/auth';
-    import { entsTableFactory } from 'convex-ents';
-    import { entDefinitions } from '../lib/ents';
-    import { internalMutationWithTriggers } from '../lib/crpc';
-    import { internal } from './_generated/api';
-    import type { MutationCtx, QueryCtx } from './_generated/server';
-    import type { GenericCtx } from '../lib/crpc';
-    import type { DataModel } from './_generated/dataModel';
-    import schema from './schema';
-    import authConfig from './auth.config';
-
-    const authFunctions: AuthFunctions = internal.auth;
-
-    export const authClient = createClient<DataModel, typeof schema>({
-      authFunctions,
-      schema,
-      internalMutation: internalMutationWithTriggers,
-      triggers: {
-        user: {
-          beforeCreate: async (_ctx, data) => {
-            const username =
-              data.username?.trim() ||
-              data.email?.split('@')[0] ||
-              `user-${Date.now()}`;
-            return { ...data, username };
-          },
-          onCreate: async (ctx, user) => {
-            const table = entsTableFactory(ctx, entDefinitions);
-
-            await table('profiles').insert({
-              userId: user._id,
-              bio: '',
-            });
-          },
-        },
+      onCreate: async (ctx, user) => {
+        await ctx.orm.insert(profiles).values({
+          userId: user._id,
+          bio: '',
+        });
       },
-    });
+    },
+  },
+});
 
-    export const createAuthOptions = (ctx: GenericCtx) =>
-      ({
-        baseURL: process.env.SITE_URL!,
-        database: authClient.httpAdapter(ctx),
-        plugins: [
-          convex({
-            authConfig,
-            jwks: process.env.JWKS,
-            jwt: {
-              expirationSeconds: 60 * 60, // 1 hour
-            },
-          }),
-          admin(),
-        ],
-        session: {
-          expiresIn: 60 * 60 * 24 * 30,
-          updateAge: 60 * 60 * 24 * 15,
+export const createAuthOptions = (ctx: GenericCtx) =>
+  ({
+    baseURL: process.env.SITE_URL!,
+    database: authClient.httpAdapter(ctx),
+    plugins: [
+      convex({
+        authConfig,
+        jwks: process.env.JWKS,
+        jwt: {
+          expirationSeconds: 60 * 60, // 1 hour
         },
-        socialProviders: {
-          google: {
-            clientId: process.env.GOOGLE_CLIENT_ID!,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-          },
-        },
-        trustedOrigins: [process.env.SITE_URL ?? 'http://localhost:3000'],
-      }) satisfies BetterAuthOptions;
+      }),
+      admin(),
+    ],
+    session: {
+      expiresIn: 60 * 60 * 24 * 30,
+      updateAge: 60 * 60 * 24 * 15,
+    },
+    socialProviders: {
+      google: {
+        clientId: process.env.GOOGLE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      },
+    },
+    trustedOrigins: [process.env.SITE_URL ?? 'http://localhost:3000'],
+  }) satisfies BetterAuthOptions;
 
-    export const createAuth = (ctx: GenericCtx) => betterAuth(createAuthOptions(ctx));
+export const createAuth = (ctx: GenericCtx) => betterAuth(createAuthOptions(ctx));
 
-    export const getAuth = <Ctx extends QueryCtx | MutationCtx>(ctx: Ctx) => {
-      return betterAuth({
-        ...createAuthOptions(ctx),
-        database: authClient.adapter(ctx, createAuthOptions),
-      });
-    };
+export const getAuth = <Ctx extends QueryCtx | MutationCtx>(ctx: Ctx) => {
+  return betterAuth({
+    ...createAuthOptions(ctx),
+    database: authClient.adapter(ctx, createAuthOptions),
+  });
+};
 
-    export const {
-      beforeCreate,
-      beforeDelete,
-      beforeUpdate,
-      onCreate,
-      onDelete,
-      onUpdate,
-    } = authClient.triggersApi();
+export const {
+  beforeCreate,
+  beforeDelete,
+  beforeUpdate,
+  onCreate,
+  onDelete,
+  onUpdate,
+} = authClient.triggersApi();
 
-    export const {
-      create,
-      deleteMany,
-      deleteOne,
-      findMany,
-      findOne,
-      updateMany,
-      updateOne,
-      getLatestJwks,
-      rotateKeys,
-    } = createApi(schema, createAuth, {
-      internalMutation: internalMutationWithTriggers,
-      skipValidation: true,
-    });
+export const {
+  create,
+  deleteMany,
+  deleteOne,
+  findMany,
+  findOne,
+  updateMany,
+  updateOne,
+  getLatestJwks,
+  rotateKeys,
+} = createApi(schema, createAuth, {
+  internalMutation: internalMutationWithTriggers,
+  skipValidation: true,
+});
 
-    // biome-ignore lint/suspicious/noExplicitAny: Required for CLI
-    export const auth = betterAuth(createAuthOptions({} as any));
-    ```
-  </Tab>
-</Tabs>
+// biome-ignore lint/suspicious/noExplicitAny: Required for CLI
+export const auth = betterAuth(createAuthOptions({} as any));
+```
+
 
 See [Auth Server documentation](/docs/auth/server) for detailed configuration.
 
@@ -1673,46 +1210,6 @@ export function HydrateClient({ children }: { children: React.ReactNode }) {
 
 ---
 
-## Convex Ents
-
-Optional - only needed if using Convex Ents for `ctx.table` access.
-
-### ents.ts
-
-Convex Ents helper for `ctx.table` access.
-
-```ts title="convex/lib/ents.ts" showLineNumbers {7,23-26}
-import type { GenericEnt, GenericEntWriter } from 'convex-ents';
-import { entsTableFactory, getEntDefinitions } from 'convex-ents';
-import type { TableNames } from '../functions/_generated/dataModel';
-import type { MutationCtx, QueryCtx } from '../functions/_generated/server';
-import schema from '../functions/schema';
-
-export const entDefinitions = getEntDefinitions(schema);
-
-export type Ent<TableName extends TableNames> = GenericEnt<
-  typeof entDefinitions,
-  TableName
->;
-
-export type EntWriter<TableName extends TableNames> = GenericEntWriter<
-  typeof entDefinitions,
-  TableName
->;
-
-export type CtxWithTable<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
-  ReturnType<typeof getCtxWithTable<Ctx>>;
-
-export const getCtxWithTable = <Ctx extends MutationCtx | QueryCtx>(ctx: Ctx) => ({
-  ...ctx,
-  table: entsTableFactory(ctx, entDefinitions),
-});
-```
-
-See [Convex Ents documentation](/docs/db/ents) for setup.
-
----
-
 ## Database Utilities
 
 Optional utilities for triggers and rate limiting.
@@ -1882,26 +1379,26 @@ export const deletePage = privateMutation
       tableName: z.string(),
     })
   )
-  .output(z.null())
-  .mutation(async ({ ctx, input }) => {
-    assertDevOnly();
+	  .output(z.null())
+	  .mutation(async ({ ctx, input }) => {
+	    assertDevOnly();
 
-    // biome-ignore lint/suspicious/noExplicitAny: dynamic table access
-    const results = await ctx
-      .table(input.tableName as any)
-      .paginate({ cursor: input.cursor, numItems: DELETE_BATCH_SIZE });
+	    // biome-ignore lint/suspicious/noExplicitAny: dynamic table access
+	    const query = (ctx.orm.query as any)[input.tableName];
+	    if (!query) return null;
 
-    for (const row of results.page) {
-      try {
-        // biome-ignore lint/suspicious/noExplicitAny: dynamic table access
-        await ctx
-          .table(input.tableName as any)
-          .getX(row._id)
-          .delete();
-      } catch {
-        // Document might have been deleted by a trigger
-      }
-    }
+	    const results = await query.findMany({
+	      paginate: { cursor: input.cursor, numItems: DELETE_BATCH_SIZE },
+	      orderBy: { _creationTime: 'desc' },
+	    });
+
+	    for (const row of results.page) {
+	      try {
+	        await ctx.orm.delete(row._id);
+	      } catch {
+	        // Document might have been deleted by a trigger
+	      }
+	    }
 
     if (!results.isDone) {
       await ctx.scheduler.runAfter(0, internal.reset.deletePage, {
@@ -1936,7 +1433,9 @@ export default privateMutation.mutation(async ({ ctx }) => {
   }
 
   // Check if database needs seeding (e.g., no users exist)
-  const existingUser = await ctx.table('user').first();
+  const existingUser = await ctx.orm.query.user.findFirst({
+    orderBy: { _creationTime: 'desc' },
+  });
 
   if (!existingUser) {
     console.info('  📦 First init - running seed...');

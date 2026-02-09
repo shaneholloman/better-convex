@@ -36,26 +36,26 @@ Full-text search enables searching string fields with relevance scoring. Each se
 Let's start by adding search indexes to your schema. Use the naming pattern `search_<searchField>`:
 
 ```ts title="convex/functions/schema.ts" showLineNumbers {8-12,14-16}
-import { v } from 'convex/values';
-import { defineEnt, defineEntSchema } from 'convex-ents';
+import { convexTable, defineSchema, searchIndex, text } from 'better-convex/orm';
 
-const schema = defineEntSchema({
-  articles: defineEnt({
-    title: v.string(),
-    content: v.string(),
-    author: v.string(),
-    category: v.string(),
-  })
-    // Search the content field, with category and author as filter fields
-    .searchIndex('search_content', {
-      searchField: 'content',
-      filterFields: ['category', 'author'],
-    })
+export const articles = convexTable(
+  'articles',
+  {
+    title: text().notNull(),
+    content: text().notNull(),
+    author: text().notNull(),
+    category: text().notNull(),
+  },
+  (t) => [
+    // Search content with category/author as filter fields
+    searchIndex('search_content').on(t.content).filter(t.category, t.author),
     // Separate index for title search
-    .searchIndex('search_title', {
-      searchField: 'title',
-    }),
-});
+    searchIndex('search_title').on(t.title),
+  ]
+);
+
+export const tables = { articles };
+export default defineSchema(tables, { strict: false });
 ```
 
 <Callout icon={<InfoIcon />}>
@@ -82,7 +82,7 @@ export const search = publicQuery
     content: z.string(),
   })))
   .query(async ({ ctx, input }) => {
-    return await ctx.table.query.articles.findMany({
+    return await ctx.orm.query.articles.findMany({
       search: {
         index: 'search_content',
         query: input.query,
@@ -93,7 +93,7 @@ export const search = publicQuery
 ```
 
 <Callout icon={<InfoIcon />}>
-**Important:** Always use `.take()` or `.paginate()` with search queries to limit results.
+**Important:** Always use `limit` or `paginate` with search queries to limit results.
 </Callout>
 
 ### Search with Filters
@@ -114,7 +114,7 @@ export const searchByCategory = publicQuery
     category: z.string(),
   })))
   .query(async ({ ctx, input }) => {
-    return await ctx.table.query.articles.findMany({
+    return await ctx.orm.query.articles.findMany({
       search: {
         index: 'search_content',
         query: input.query,
@@ -147,7 +147,7 @@ export const searchPaginated = publicQuery
   }))
   .paginated({ limit: 20, item: ArticleSchema })
   .query(async ({ ctx, input }) => {
-    return await ctx.table.query.articles.findMany({
+    return await ctx.orm.query.articles.findMany({
       search: {
         index: 'search_content',
         query: input.query,
@@ -181,7 +181,7 @@ export const searchCharacters = publicQuery
   }))
   .paginated({ limit: 20, item: CharacterSchema })
   .query(async ({ ctx, input }) => {
-    return await ctx.table.query.characters.findMany({
+    return await ctx.orm.query.characters.findMany({
       where: (char) => {
         if (input.category && !char.categories?.includes(input.category)) {
           return false;
@@ -235,10 +235,9 @@ Search mode supports `search.filters` plus base-table object `where`. For predic
 Add equality filters to your search index:
 
 ```ts showLineNumbers {2-3}
-.searchIndex('search_content', {
-  searchField: 'content',
-  filterFields: ['category', 'author', 'status', 'dateGroup'],
-})
+searchIndex('search_content')
+  .on(t.content)
+  .filter(t.category, t.author, t.status, t.dateGroup);
 ```
 
 **Option 2: Separate query paths**
@@ -254,7 +253,7 @@ export const searchOrFilter = publicQuery
   }))
   .paginated({ limit: 20, item: ArticleSchema })
   .query(async ({ ctx, input }) => {
-    const db = ctx.table;
+    const db = ctx.orm;
     if (input.query) {
       // Text search path - limited filtering
       return await db.query.articles.findMany({
@@ -285,7 +284,7 @@ export const searchOrFilter = publicQuery
 ```ts showLineNumbers {2-4,6-8}
 // Only viable for small result sets
 const searchResults = await ctx
-  .table.query.articles.findMany({
+  .orm.query.articles.findMany({
     search: { index: 'search_content', query },
     limit: 100, // Hard limit
   });
@@ -345,7 +344,7 @@ const page1 = await db.query.messages.findMany({
 Here are key practices to follow when using filters and search.
 
 1. **Create appropriate indexes** - Each search field needs its own search index
-2. **Limit results** - Always use `.take()` or `.paginate()`
+2. **Limit results** - Always use `limit` or `paginate`
 3. **Use filterFields** - Pre-filter with equality before text search
 4. **Bound predicate scans** - Use explicit `index` and cap reads with `maximumRowsRead`
 5. **Normalize search terms** - Consider lowercase for consistent matching
@@ -355,7 +354,7 @@ Here are key practices to follow when using filters and search.
 ## Next Steps
 
 <Cards>
-  <Card title="Ents" href="/docs/db/ents" />
+  <Card title="ORM" href="/docs/db/orm" />
   <Card title="Triggers" href="/docs/db/triggers" />
   <Card title="Aggregates" href="/docs/db/aggregates" />
   <Card title="convex-helpers" href="https://github.com/get-convex/convex-helpers" />

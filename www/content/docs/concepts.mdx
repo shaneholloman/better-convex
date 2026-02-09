@@ -14,7 +14,7 @@ import { InfoIcon } from "lucide-react"
 | **cRPC Builder** | tRPC-style fluent API for defining procedures |
 | **Real-time First** | WebSocket subscriptions flow into TanStack Query |
 | **Context & Middleware** | Composable layers for auth, rate limiting, custom logic |
-| **Database Layer** | Ents relationships, triggers, aggregates |
+| **Database Layer** | ORM relations, triggers, aggregates |
 | **File Structure** | Organized `functions/`, `lib/`, `shared/` directories |
 
 Let's explore each concept.
@@ -47,7 +47,8 @@ Better Convex introduces a tRPC-style builder for defining procedures. Instead o
       handler: async (ctx, args) => {
         const user = await getUser(ctx); // repeated everywhere
         if (!user) throw new Error('Unauthorized');
-        return ctx.db.query('todos').take(args.limit ?? 10).collect();
+        const { db } = ctx;
+        return db.query('todos').take(args.limit ?? 10).collect();
       },
     });
     ```
@@ -58,7 +59,7 @@ Better Convex introduces a tRPC-style builder for defining procedures. Instead o
       .input(z.object({ limit: z.number().optional() }))
       .query(async ({ ctx, input }) => {
         // ctx.user is already available from middleware
-        return ctx.table('todos').take(input.limit ?? 10);
+        return ctx.orm.query.todos.findMany({ limit: input.limit ?? 10 });
       });
     ```
   </CompareItem>
@@ -95,8 +96,7 @@ Every procedure receives a `ctx` object containing database access and any data 
 
 ```ts showLineNumbers {7-8}
 // Base context from cRPC setup
-ctx.db        // Native Convex database
-ctx.table     // Ents fluent API (if configured)
+ctx.orm       // Better-Convex ORM (queries + mutations)
 ctx.auth      // Convex auth object
 
 // Added by auth middleware
@@ -106,13 +106,18 @@ ctx.userId    // User's ID for quick access
 
 Middleware runs before your handler and can transform context:
 
-```ts showLineNumbers {1,6}
+```ts showLineNumbers {1-2,8}
+import type { GenericId } from 'convex/values';
+import { CRPCError } from 'better-convex/server';
+
 const authQuery = c.query.use(async ({ ctx, next }) => {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new CRPCError({ code: 'UNAUTHORIZED' });
 
-  const user = await ctx.table('user').get(identity.subject);
-  return next({ ctx: { user, userId: user._id } });
+  const userId = identity.subject as GenericId<'user'>;
+  const user = await ctx.orm.query.user.findFirst({ where: { _id: userId } });
+  if (!user) throw new CRPCError({ code: 'UNAUTHORIZED' });
+  return next({ ctx: { ...ctx, user, userId: user._id } });
 });
 ```
 
@@ -120,27 +125,18 @@ _Define the middleware once, use it everywhere. When you need admin-only access,
 
 ## Database Layer
 
-Better Convex works with Convex's native database, but integrates seamlessly with ecosystem tools for enhanced capabilities.
+Better Convex uses Better-Convex ORM for Drizzle-style queries, relations, and runtime enforcement.
 
-### Ents
+### ORM Relations
 
-[Convex Ents](https://github.com/xixixao/convex-ents) adds relationships and a fluent query API. Instead of manual ID lookups, you traverse edges:
+Define relations with `defineRelations()` and load them with `with:`:
 
-```ts showLineNumbers {3-6,10-11}
-// Define relationships in schema
-const schema = defineEntSchema({
-  user: defineEnt({ name: v.string() })
-    .edges('posts', { to: 'post', ref: 'authorId' }),
-  post: defineEnt({ title: v.string() })
-    .edge('author', { to: 'user', field: 'authorId' }),
+```ts showLineNumbers
+const user = await ctx.orm.query.user.findFirst({
+  where: { _id: userId },
+  with: { posts: { limit: 10, orderBy: { _creationTime: 'desc' } } },
 });
-
-// Query with relationships
-const user = await ctx.table('user').getX(userId);
-const posts = await user.edge('posts');
 ```
-
-_Ents makes your database feel like an ORM while keeping Convex's reactivity. The fluent API chains naturally with Better Convex's builder pattern._
 
 ### Triggers
 
@@ -152,13 +148,19 @@ Automatic side effects when data changes. Use [convex-helpers](https://github.co
 - Syncing to external systems
 
 ```ts showLineNumbers {1-2,4-8}
+import { eq } from 'better-convex/orm';
+import { post } from './schema';
+
 triggers.register('user', async (ctx, change) => {
   if (change.operation === 'delete') {
     // Cascade delete user's posts
-    const posts = await ctx.table('post')
-      .filter(q => q.eq(q.field('authorId'), change.id));
-    for (const post of posts) {
-      await ctx.table('post').delete(post._id);
+    // Index post.authorId.
+    const posts = await ctx.orm.query.post.findMany({
+      where: { authorId: change.id },
+      limit: 100,
+    });
+    for (const postRow of posts) {
+      await ctx.orm.delete(post).where(eq(post._id, postRow._id));
     }
   }
 });
@@ -170,7 +172,7 @@ O(log n) operations for counts, sums, and rankings. Essential for dashboards and
 
 ```ts showLineNumbers {5-6}
 // Slow: Counting all rows (O(n))
-const count = await ctx.table('user').count();
+const count = (await ctx.orm.query.user.findMany({ limit: 10_000 })).length;
 
 // Fast: Using aggregates (O(log n))
 const count = await userAggregate.count(ctx);
@@ -192,7 +194,7 @@ convex/
 │   └── todos.ts         # Todo procedures
 ├── lib/                 # Shared helpers (not deployed)
 │   ├── crpc.ts          # cRPC builder and middleware
-│   ├── ents.ts          # Ents configuration
+│   ├── orm.ts           # ORM context attachment
 │   ├── triggers.ts      # Database triggers
 │   └── rate-limiter.ts  # Rate limiting logic
 └── shared/              # Client-importable code

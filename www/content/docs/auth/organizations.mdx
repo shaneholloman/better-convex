@@ -100,155 +100,92 @@ export const authClient = createAuthClient({
 
 Add organization tables to your schema:
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {6-14,16-24,26-36,39-42}
-    import { defineSchema, defineTable } from 'convex/server';
-    import { v } from 'convex/values';
+```ts title="convex/functions/schema.ts" showLineNumbers {1-2,4-66}
+import { convexTable, defineSchema, id, index, integer, json, text } from 'better-convex/orm';
 
-    export default defineSchema({
-      // ... auth tables
+export const organization = convexTable(
+  'organization',
+  {
+    name: text().notNull(),
+    slug: text().notNull(),
+    logo: text(),
+    createdAt: integer().notNull(),
+    metadata: json<Record<string, unknown>>(),
+  },
+  (t) => [index('slug').on(t.slug), index('name').on(t.name)]
+);
 
-      organization: defineTable({
-        name: v.string(),
-        slug: v.string(),
-        logo: v.optional(v.string()),
-        createdAt: v.number(),
-        metadata: v.optional(v.string()),
-      })
-        .index('slug', ['slug'])
-        .index('name', ['name']),
+export const member = convexTable(
+  'member',
+  {
+    organizationId: id('organization').notNull(),
+    userId: id('user').notNull(),
+    role: text().notNull(),
+    createdAt: integer().notNull(),
+  },
+  (t) => [
+    index('userId').on(t.userId),
+    index('organizationId_userId').on(t.organizationId, t.userId),
+    index('organizationId_role').on(t.organizationId, t.role),
+  ]
+);
 
-      member: defineTable({
-        organizationId: v.id('organization'),
-        userId: v.id('user'),
-        role: v.string(),
-        createdAt: v.number(),
-      })
-        .index('userId', ['userId'])
-        .index('organizationId_userId', ['organizationId', 'userId'])
-        .index('organizationId_role', ['organizationId', 'role']),
+export const invitation = convexTable(
+  'invitation',
+  {
+    organizationId: id('organization').notNull(),
+    inviterId: id('user').notNull(),
+    email: text().notNull(),
+    role: text(),
+    status: text().notNull(),
+    expiresAt: integer().notNull(),
+    createdAt: integer().notNull(),
+  },
+  (t) => [
+    index('email').on(t.email),
+    index('status').on(t.status),
+    index('email_organizationId_status').on(t.email, t.organizationId, t.status),
+    index('organizationId_status').on(t.organizationId, t.status),
+  ]
+);
 
-      invitation: defineTable({
-        organizationId: v.id('organization'),
-        inviterId: v.id('user'),
-        email: v.string(),
-        role: v.optional(v.string()),
-        status: v.string(),
-        expiresAt: v.number(),
-        createdAt: v.number(),
-      })
-        .index('email', ['email'])
-        .index('status', ['status'])
-        .index('email_organizationId_status', ['email', 'organizationId', 'status'])
-        .index('organizationId_status', ['organizationId', 'status']),
+// Add these fields to your existing session table
+export const session = convexTable('session', {
+  // ... existing session fields
+  activeOrganizationId: id('organization'),
+  activeTeamId: id('team'),
+});
 
-      // Session needs activeOrganizationId
-      session: defineTable({
-        // ... existing session fields
-        activeOrganizationId: v.optional(v.string()),
-        activeTeamId: v.optional(v.string()),
-      }),
-    });
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {6-10,12-20,22-30,32-41,44-48}
-    import { v } from 'convex/values';
-    import { defineEnt, defineEntSchema } from 'convex-ents';
-
-    const schema = defineEntSchema({
-      // ... auth tables
-
-      user: defineEnt({
-        // ... existing fields
-      })
-        .edges('members', { to: 'member', ref: 'userId' })
-        .edges('invitations', { to: 'invitation', ref: 'inviterId' }),
-
-      organization: defineEnt({
-        logo: v.optional(v.string()),
-        createdAt: v.number(),
-        metadata: v.optional(v.string()),
-      })
-        .field('slug', v.string(), { unique: true })
-        .field('name', v.string(), { index: true })
-        .edges('members', { to: 'member', ref: true })
-        .edges('invitations', { to: 'invitation', ref: true }),
-
-      member: defineEnt({
-        createdAt: v.number(),
-      })
-        .field('role', v.string(), { index: true })
-        .edge('organization', { to: 'organization', field: 'organizationId' })
-        .edge('user', { to: 'user', field: 'userId' })
-        .index('organizationId_userId', ['organizationId', 'userId'])
-        .index('organizationId_role', ['organizationId', 'role']),
-
-      invitation: defineEnt({
-        role: v.optional(v.string()),
-        expiresAt: v.number(),
-        createdAt: v.number(),
-      })
-        .field('email', v.string(), { index: true })
-        .field('status', v.string(), { index: true })
-        .edge('organization', { to: 'organization', field: 'organizationId' })
-        .edge('inviter', { to: 'user', field: 'inviterId' })
-        .index('email_organizationId_status', ['email', 'organizationId', 'status'])
-        .index('organizationId_status', ['organizationId', 'status']),
-
-      // Session needs activeOrganizationId
-      session: defineEnt({
-        // ... existing session fields
-        activeOrganizationId: v.optional(v.string()),
-        activeTeamId: v.optional(v.string()),
-      }),
-    });
-    ```
-  </Tab>
-</Tabs>
+export const tables = { organization, member, invitation, session };
+export default defineSchema(tables, { strict: false });
+```
 
 ### Teams (Optional)
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {1-8,10-16}
-    team: defineTable({
-      name: v.string(),
-      organizationId: v.id('organization'),
-      createdAt: v.number(),
-      updatedAt: v.optional(v.number()),
-    })
-      .index('organizationId', ['organizationId']),
+```ts title="convex/functions/schema.ts" showLineNumbers {1-2,4-26}
+import { convexTable, id, index, integer, text } from 'better-convex/orm';
 
-    teamMember: defineTable({
-      teamId: v.id('team'),
-      userId: v.id('user'),
-      createdAt: v.optional(v.number()),
-    })
-      .index('teamId', ['teamId'])
-      .index('userId', ['userId']),
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {1-7,9-15}
-    team: defineEnt({
-      name: v.string(),
-      createdAt: v.number(),
-      updatedAt: v.optional(v.number()),
-    })
-      .edge('organization', { to: 'organization', field: 'organizationId' })
-      .index('organizationId', ['organizationId']),
+export const team = convexTable(
+  'team',
+  {
+    name: text().notNull(),
+    organizationId: id('organization').notNull(),
+    createdAt: integer().notNull(),
+    updatedAt: integer(),
+  },
+  (t) => [index('organizationId').on(t.organizationId)]
+);
 
-    teamMember: defineEnt({
-      createdAt: v.optional(v.number()),
-    })
-      .edge('team', { to: 'team', field: 'teamId' })
-      .edge('user', { to: 'user', field: 'userId' })
-      .index('userId', ['userId']),
-    ```
-  </Tab>
-</Tabs>
+export const teamMember = convexTable(
+  'teamMember',
+  {
+    teamId: id('team').notNull(),
+    userId: id('user').notNull(),
+    createdAt: integer(),
+  },
+  (t) => [index('teamId').on(t.teamId), index('userId').on(t.userId)]
+);
+```
 
 ### Additional Fields
 
@@ -282,42 +219,28 @@ organization({
 
 Then update your schema to include these fields:
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {3-6,10-11}
-    organization: defineTable({
-      // ... existing fields
-      description: v.optional(v.string()),
-      website: v.optional(v.string()),
-      industry: v.optional(v.string()),
-      size: v.optional(v.string()),
-    }),
+```ts title="convex/functions/schema.ts" showLineNumbers {1-2,4-26}
+import { convexTable, text } from 'better-convex/orm';
 
-    member: defineTable({
-      // ... existing fields
-      title: v.optional(v.string()),
-      department: v.optional(v.string()),
-    }),
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {3-6,10-11}
-    organization: defineEnt({
-      // ... existing fields
-      description: v.optional(v.string()),
-      website: v.optional(v.string()),
-      industry: v.optional(v.string()),
-      size: v.optional(v.string()),
-    }),
+export const organization = convexTable('organization', {
+  // ... existing fields
+  description: text(),
+  website: text(),
+  industry: text(),
+  size: text(),
+});
 
-    member: defineEnt({
-      // ... existing fields
-      title: v.optional(v.string()),
-      department: v.optional(v.string()),
-    }),
-    ```
-  </Tab>
-</Tabs>
+export const member = convexTable('member', {
+  // ... existing fields
+  title: text(),
+  department: text(),
+});
+
+export const invitation = convexTable('invitation', {
+  // ... existing fields
+  message: text(),
+});
+```
 
 ## 4. Access Control
 
@@ -411,9 +334,9 @@ organization({
       if (roles[role]) return roles[role];
 
       // Fetch custom role from database
-      const customRole = await ctx.table('customRole')
-        .filter((q) => q.eq(q.field('name'), role))
-        .first();
+      const customRole = await ctx.orm.query.customRole.findFirst({
+        where: { name: role, organizationId },
+      });
 
       if (customRole) {
         return ac.newRole(customRole.permissions);
@@ -467,10 +390,10 @@ if (data?.success) {
 
 ## Organization Functions
 
-**Pattern:** Use Better Auth API for multi-table operations (create, delete, invitations). Use direct table operations for simple reads/updates.
+**Pattern:** Use Better Auth API for multi-table operations (create, delete, invitations). Use `ctx.orm` for simple reads/updates.
 
 <Callout icon={<InfoIcon />}>
-Function examples use `ctx.table` (Convex Ents). For `ctx.db`, replace edge traversal with manual joins. See [Ents](/docs/db/ents) for migration patterns.
+Function examples use Better-Convex ORM via `ctx.orm`.
 </Callout>
 
 ### Check Slug Availability
@@ -482,7 +405,9 @@ export const checkSlug = authQuery
   .input(z.object({ slug: z.string() }))
   .output(z.object({ available: z.boolean() }))
   .query(async ({ ctx, input }) => {
-    const existing = await ctx.table('organization').get('slug', input.slug);
+    const existing = await ctx.orm.query.organization.findFirst({
+      where: { slug: input.slug },
+    });
     return { available: !existing };
   });
 ```
@@ -517,20 +442,26 @@ export const list = authQuery
     })
   )
   .query(async ({ ctx }) => {
-    const members = await ctx.table('member', 'userId', (q) =>
-      q.eq('userId', ctx.userId)
-    );
-
-    const orgs = await asyncMap(members, async (member) => {
-      const org = await member.edgeX('organization');
-      return {
-        id: org._id,
-        name: org.name,
-        slug: org.slug,
-        logo: org.logo,
-        isPersonal: org._id === ctx.user.personalOrganizationId,
-      };
+    const members = await ctx.orm.query.member.findMany({
+      where: { userId: ctx.userId },
+      limit: 100,
     });
+
+    const orgs = (
+      await asyncMap(members, async (member) => {
+        const org = await ctx.orm.query.organization.findFirst({
+          where: { _id: member.organizationId },
+        });
+        if (!org) return null;
+        return {
+          id: org._id,
+          name: org.name,
+          slug: org.slug,
+          logo: org.logo,
+          isPersonal: org._id === ctx.user.personalOrganizationId,
+        };
+      })
+    ).filter((org): org is NonNullable<typeof org> => !!org);
 
     return { organizations: orgs };
   });
@@ -580,7 +511,9 @@ export const create = authMutation
 ### Update Organization
 
 ```ts title="convex/functions/organization.ts" showLineNumbers {2-8,10-19}
-// Direct table patch (simpler for single-table updates)
+import { eq } from 'better-convex/orm';
+import { organization } from './schema';
+
 export const update = authMutation
   .input(
     z.object({
@@ -593,14 +526,10 @@ export const update = authMutation
   .mutation(async ({ ctx, input }) => {
     await hasPermission(ctx, { permissions: { organization: ['update'] } });
 
-    await ctx
-      .table('organization')
-      .getX(ctx.user.activeOrganization!.id)
-      .patch({
-        name: input.name,
-        logo: input.logo,
-        ...(input.slug ? { slug: input.slug } : {}),
-      });
+    await ctx.orm
+      .update(organization)
+      .set(input)
+      .where(eq(organization._id, ctx.user.activeOrganization!.id));
 
     return null;
   });
@@ -692,7 +621,9 @@ export const acceptInvitation = authMutation
   .input(z.object({ invitationId: zid('invitation') }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const invitation = await ctx.table('invitation').get(input.invitationId);
+    const invitation = await ctx.orm.query.invitation.findFirst({
+      where: { _id: input.invitationId },
+    });
 
     if (!invitation || invitation.email !== ctx.user.email) {
       throw new CRPCError({
@@ -724,7 +655,9 @@ export const rejectInvitation = authMutation
   .input(z.object({ invitationId: zid('invitation') }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const invitation = await ctx.table('invitation').get(input.invitationId);
+    const invitation = await ctx.orm.query.invitation.findFirst({
+      where: { _id: input.invitationId },
+    });
 
     if (!invitation || invitation.email !== ctx.user.email) {
       throw new CRPCError({
@@ -779,19 +712,24 @@ export const listUserInvitations = authQuery
     )
   )
   .query(async ({ ctx }) => {
-    const invitations = await ctx
-      .table('invitation', 'email', (q) => q.eq('email', ctx.user.email))
-      .filter((q) => q.eq(q.field('status'), 'pending'));
+    const invitations = await ctx.orm.query.invitation.findMany({
+      where: { email: ctx.user.email, status: 'pending' },
+      limit: 100,
+    });
 
     return asyncMap(invitations, async (inv) => {
-      const org = await inv.edgeX('organization');
-      const inviter = await inv.edgeX('inviter');
+      const org = await ctx.orm.query.organization.findFirst({
+        where: { _id: inv.organizationId },
+      });
+      const inviter = await ctx.orm.query.user.findFirst({
+        where: { _id: inv.inviterId },
+      });
       return {
         id: inv._id,
-        organizationName: org.name,
-        organizationSlug: org.slug,
+        organizationName: org?.name ?? '',
+        organizationSlug: org?.slug ?? '',
         role: inv.role || 'member',
-        inviterName: inviter.name,
+        inviterName: inviter?.name ?? null,
         expiresAt: inv.expiresAt,
       };
     });
@@ -814,14 +752,15 @@ export const listPendingInvitations = authQuery
     )
   )
   .query(async ({ ctx, input }) => {
-    const org = await ctx.table('organization').get('slug', input.slug);
+    const org = await ctx.orm.query.organization.findFirst({
+      where: { slug: input.slug },
+    });
     if (!org || ctx.user.activeOrganization?.id !== org._id) return [];
 
-    const invitations = await ctx
-      .table('invitation', 'organizationId_status', (q) =>
-        q.eq('organizationId', org._id).eq('status', 'pending')
-      )
-      .take(100);
+    const invitations = await ctx.orm.query.invitation.findMany({
+      where: { organizationId: org._id, status: 'pending' },
+      limit: 100,
+    });
 
     return invitations.map((inv) => ({
       id: inv._id,
@@ -850,13 +789,12 @@ export const getActiveMember = authQuery
   .query(async ({ ctx }) => {
     if (!ctx.user.activeOrganization) return null;
 
-    const member = await ctx
-      .table('member', 'organizationId_userId', (q) =>
-        q
-          .eq('organizationId', ctx.user.activeOrganization!.id)
-          .eq('userId', ctx.userId)
-      )
-      .first();
+    const member = await ctx.orm.query.member.findFirst({
+      where: {
+        organizationId: ctx.user.activeOrganization!.id,
+        userId: ctx.userId,
+      },
+    });
 
     if (!member) return null;
 
@@ -919,26 +857,36 @@ export const listMembers = authQuery
     })
   )
   .query(async ({ ctx, input }) => {
-    const org = await ctx.table('organization').get('slug', input.slug);
+    const org = await ctx.orm.query.organization.findFirst({
+      where: { slug: input.slug },
+    });
     if (!org) return { members: [] };
 
-    const members = await org.edge('members').take(100);
+    const members = await ctx.orm.query.member.findMany({
+      where: { organizationId: org._id },
+      limit: 100,
+    });
 
-    const enrichedMembers = await Promise.all(
-      members.map(async (member) => {
-        const user = await member.edgeX('user');
-        return {
-          id: member._id,
-          role: member.role,
-          user: {
-            id: user._id,
-            name: user.name,
-            email: user.email,
-            image: user.image,
-          },
-        };
-      })
-    );
+    const enrichedMembers = (
+      await Promise.all(
+        members.map(async (member) => {
+          const user = await ctx.orm.query.user.findFirst({
+            where: { _id: member.userId },
+          });
+          if (!user) return null;
+          return {
+            id: member._id,
+            role: member.role,
+            user: {
+              id: user._id,
+              name: user.name,
+              email: user.email,
+              image: user.image,
+            },
+          };
+        })
+      )
+    ).filter((row): row is NonNullable<typeof row> => !!row);
 
     return { members: enrichedMembers };
   });
@@ -947,6 +895,9 @@ export const listMembers = authQuery
 ### Update Member Role
 
 ```ts title="convex/functions/organization.ts" showLineNumbers {1-6,8-12}
+import { eq } from 'better-convex/orm';
+import { member } from './schema';
+
 export const updateMemberRole = authMutation
   .input(
     z.object({
@@ -958,7 +909,10 @@ export const updateMemberRole = authMutation
   .mutation(async ({ ctx, input }) => {
     await hasPermission(ctx, { permissions: { member: ['update'] } });
 
-    await ctx.table('member').getX(input.memberId).patch({ role: input.role });
+    await ctx.orm
+      .update(member)
+      .set({ role: input.role })
+      .where(eq(member._id, input.memberId));
 
     return null;
   });
@@ -993,13 +947,13 @@ export const leave = authMutation
   .mutation(async ({ ctx }) => {
     // Prevent last owner from leaving
     if (ctx.user.activeOrganization?.role === 'owner') {
-      const owners = await ctx
-        .table('member', 'organizationId_role', (q) =>
-          q
-            .eq('organizationId', ctx.user.activeOrganization!.id)
-            .eq('role', 'owner')
-        )
-        .take(2);
+      const owners = await ctx.orm.query.member.findMany({
+        where: {
+          organizationId: ctx.user.activeOrganization!.id,
+          role: 'owner',
+        },
+        limit: 2,
+      });
 
       if (owners.length <= 1) {
         throw new CRPCError({
@@ -1291,17 +1245,17 @@ await authClient.organization.setActiveTeam({
 | Operation | Method | Multi-table |
 |-----------|--------|-------------|
 | Create org | Better Auth API | Yes |
-| Update org | Direct table | No |
+| Update org | ORM | No |
 | Delete org | Better Auth API | Yes |
-| List orgs | Direct table | No |
-| Check slug | Direct table | No |
+| List orgs | ORM | No |
+| Check slug | ORM | No |
 | Invite member | Better Auth API | Yes |
 | Accept invite | Better Auth API | Yes |
 | Reject invite | Better Auth API | Yes |
 | Cancel invite | Better Auth API | Yes |
-| List user invites | Direct table | No |
+| List user invites | ORM | No |
 | Add member | Better Auth API | Yes |
-| Update role | Direct table | No |
+| Update role | ORM | No |
 | Remove member | Better Auth API | Yes |
 | Leave org | Better Auth API | Yes |
 | Create team | Better Auth API | Yes |

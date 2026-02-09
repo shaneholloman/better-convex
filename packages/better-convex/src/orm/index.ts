@@ -255,5 +255,6 @@ export type {
   VectorQueryConfig,
   VectorSearchProvider,
 } from './types';
+export { unsetToken } from './unset-token';
 // M4: Where Clause Compiler
 export type { WhereClauseResult } from './where-clause-compiler';

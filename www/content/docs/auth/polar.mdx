@@ -163,94 +163,55 @@ export const authClient = createAuthClient({
 
 ## 4. Schema
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {6-8,11-30}
-    import { defineSchema, defineTable } from 'convex/server';
-    import { v } from 'convex/values';
+```ts title="convex/functions/schema.ts" showLineNumbers {1-2,4-37}
+import { boolean, convexTable, defineSchema, id, index, integer, json, text } from 'better-convex/orm';
 
-    export default defineSchema({
-      // User table - add Polar customer ID
-      user: defineTable({
-        // ... existing fields
-        customerId: v.optional(v.string()), // Polar customer ID
-      }).index('customerId', ['customerId']),
+// User table - add Polar customer ID
+export const user = convexTable(
+  'user',
+  {
+    // ... existing fields
+    customerId: text(), // Polar customer ID
+  },
+  (t) => [index('customerId').on(t.customerId)]
+);
 
-      // Subscriptions table - organization-based
-      subscriptions: defineTable({
-        subscriptionId: v.string(),
-        organizationId: v.string(),
-        userId: v.id('user'),
-        productId: v.string(),
-        priceId: v.optional(v.string()),
-        status: v.string(), // 'active', 'canceled', 'trialing', 'past_due'
-        amount: v.optional(v.number()),
-        currency: v.optional(v.string()),
-        recurringInterval: v.optional(v.string()),
-        currentPeriodStart: v.string(),
-        currentPeriodEnd: v.optional(v.string()),
-        cancelAtPeriodEnd: v.boolean(),
-        startedAt: v.optional(v.string()),
-        endedAt: v.optional(v.string()),
-        createdAt: v.string(),
-        modifiedAt: v.optional(v.string()),
-        checkoutId: v.optional(v.string()),
-        metadata: v.record(v.string(), v.any()),
-        customerCancellationReason: v.optional(v.string()),
-        customerCancellationComment: v.optional(v.string()),
-      })
-        .index('subscriptionId', ['subscriptionId'])
-        .index('organizationId', ['organizationId'])
-        .index('organizationId_status', ['organizationId', 'status']),
-    });
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```ts title="convex/functions/schema.ts" showLineNumbers {6-10,13-15,18-37}
-    import { v } from 'convex/values';
-    import { defineEnt, defineEntSchema } from 'convex-ents';
+// Subscriptions table - organization-based
+export const subscriptions = convexTable(
+  'subscriptions',
+  {
+    subscriptionId: text().notNull(),
+    organizationId: text().notNull(),
+    userId: id('user').notNull(),
+    productId: text().notNull(),
+    priceId: text(),
+    status: text().notNull(), // 'active', 'canceled', 'trialing', 'past_due'
+    amount: integer(),
+    currency: text(),
+    recurringInterval: text(),
+    currentPeriodStart: text().notNull(),
+    currentPeriodEnd: text(),
+    cancelAtPeriodEnd: boolean().notNull(),
+    startedAt: text(),
+    endedAt: text(),
+    createdAt: text().notNull(),
+    modifiedAt: text(),
+    checkoutId: text(),
+    metadata: json<Record<string, unknown>>(),
+    customerCancellationReason: text(),
+    customerCancellationComment: text(),
+  },
+  (t) => [
+    index('subscriptionId').on(t.subscriptionId),
+    index('organizationId').on(t.organizationId),
+    index('organizationId_status').on(t.organizationId, t.status),
+    index('userId_status').on(t.userId, t.status),
+  ]
+);
 
-    const schema = defineEntSchema({
-      // User table - add Polar customer ID
-      user: defineEnt({
-        // ... existing fields
-      })
-        .field('customerId', v.optional(v.string()), { index: true })
-        .edges('subscriptions', { to: 'subscriptions', ref: 'userId' }),
-
-      // Organization table - add subscription edge
-      organization: defineEnt({
-        // ... existing fields
-      }).edge('subscription', { to: 'subscriptions', ref: true }),
-
-      // Subscriptions table - organization-based
-      subscriptions: defineEnt({
-        amount: v.optional(v.union(v.number(), v.null())),
-        cancelAtPeriodEnd: v.boolean(),
-        checkoutId: v.optional(v.union(v.string(), v.null())),
-        createdAt: v.string(),
-        currency: v.optional(v.union(v.string(), v.null())),
-        currentPeriodEnd: v.optional(v.union(v.string(), v.null())),
-        currentPeriodStart: v.string(),
-        customerCancellationComment: v.optional(v.union(v.string(), v.null())),
-        customerCancellationReason: v.optional(v.union(v.string(), v.null())),
-        endedAt: v.optional(v.union(v.string(), v.null())),
-        metadata: v.record(v.string(), v.any()),
-        modifiedAt: v.optional(v.union(v.string(), v.null())),
-        priceId: v.optional(v.string()),
-        productId: v.string(),
-        recurringInterval: v.optional(v.union(v.string(), v.null())),
-        startedAt: v.optional(v.union(v.string(), v.null())),
-        status: v.string(),
-      })
-        .field('subscriptionId', v.string(), { unique: true })
-        .edge('organization', { to: 'organization', field: 'organizationId' })
-        .edge('user', { to: 'user', field: 'userId' })
-        .index('organizationId_status', ['organizationId', 'status']),
-    });
-    ```
-  </Tab>
-</Tabs>
+export const tables = { user, subscriptions };
+export default defineSchema(tables, { strict: false });
+```
 
 ## 5. Helper Functions
 
@@ -517,7 +478,7 @@ webhooks({
 ## Convex Functions
 
 <Callout icon={<InfoIcon />}>
-Function examples use `ctx.table` (Convex Ents). For `ctx.db`, replace edge traversal with manual joins. See [Ents](/docs/db/ents) for migration patterns.
+Function examples use Better-Convex ORM (`ctx.orm`).
 </Callout>
 
 ### Customer Management
@@ -567,12 +528,15 @@ export const updateUserPolarCustomerId = privateMutation
   )
   .output(z.null())
   .mutation(async ({ ctx, input: args }) => {
-    const user = await ctx.table('user').getX(args.userId);
+    const targetUser = await ctx.orm.query.user.findFirst({
+      where: { _id: args.userId },
+    });
+    if (!targetUser) throw new CRPCError({ code: 'NOT_FOUND', message: 'User not found' });
 
     // Check for duplicate customer IDs
-    const existingUser = await ctx
-      .table('user')
-      .get('customerId', args.customerId);
+    const existingUser = await ctx.orm.query.user.findFirst({
+      where: { customerId: args.customerId },
+    });
 
     if (existingUser && existingUser._id !== args.userId) {
       throw new CRPCError({
@@ -581,7 +545,10 @@ export const updateUserPolarCustomerId = privateMutation
       });
     }
 
-    await user.patch({ customerId: args.customerId });
+    await ctx.orm
+      .update(user)
+      .set({ customerId: args.customerId })
+      .where(eq(user._id, targetUser._id));
     return null;
   });
 ```
@@ -603,9 +570,9 @@ export const createSubscription = privateMutation
   .input(z.object({ subscription: subscriptionSchema }))
   .output(z.null())
   .mutation(async ({ ctx, input: args }) => {
-    const existing = await ctx
-      .table('subscriptions')
-      .get('subscriptionId', args.subscription.subscriptionId);
+    const existing = await ctx.orm.query.subscriptions.findFirst({
+      where: { subscriptionId: args.subscription.subscriptionId },
+    });
 
     if (existing) {
       throw new CRPCError({
@@ -614,7 +581,7 @@ export const createSubscription = privateMutation
       });
     }
 
-    await ctx.table('subscriptions').insert(args.subscription);
+    await ctx.orm.insert(subscriptions).values(args.subscription);
     return null;
   });
 
@@ -623,15 +590,18 @@ export const updateSubscription = privateMutation
   .input(z.object({ subscription: subscriptionSchema }))
   .output(z.object({ updated: z.boolean() }))
   .mutation(async ({ ctx, input: args }) => {
-    const existing = await ctx
-      .table('subscriptions')
-      .get('subscriptionId', args.subscription.subscriptionId);
+    const existing = await ctx.orm.query.subscriptions.findFirst({
+      where: { subscriptionId: args.subscription.subscriptionId },
+    });
 
     if (!existing) {
       return { updated: false };
     }
 
-    await existing.patch(args.subscription);
+    await ctx.orm
+      .update(subscriptions)
+      .set(args.subscription)
+      .where(eq(subscriptions._id, existing._id));
     return { updated: true };
   });
 
@@ -640,11 +610,10 @@ export const getActiveSubscription = privateQuery
   .input(z.object({ userId: zid('user') }))
   .output(z.object({ subscriptionId: z.string() }).nullable())
   .query(async ({ ctx, input: args }) => {
-    const subscription = await ctx
-      .table('subscriptions')
-      .filter((q) => q.eq(q.field('userId'), args.userId))
-      .filter((q) => q.eq(q.field('status'), 'active'))
-      .first();
+    const subscription = await ctx.orm.query.subscriptions.findFirst({
+      where: { userId: args.userId, status: 'active' },
+      orderBy: { _creationTime: 'desc' },
+    });
 
     if (!subscription) return null;
 
@@ -767,11 +736,9 @@ https://your-domain.ngrok-free.app/api/auth/polar/webhook
 ### Check Organization Subscription
 
 ```ts showLineNumbers {1-5,7}
-const subscription = await ctx
-  .table('subscriptions', 'organizationId_status', (q) =>
-    q.eq('organizationId', organizationId).eq('status', 'active')
-  )
-  .first();
+const subscription = await ctx.orm.query.subscriptions.findFirst({
+  where: { organizationId, status: 'active' },
+});
 
 const isActive = subscription?.status === 'active';
 ```
@@ -779,11 +746,9 @@ const isActive = subscription?.status === 'active';
 ### Check User Subscription
 
 ```ts showLineNumbers {1-5,7}
-const subscription = await ctx
-  .table('subscriptions')
-  .filter((q) => q.eq(q.field('userId'), userId))
-  .filter((q) => q.eq(q.field('status'), 'active'))
-  .first();
+const subscription = await ctx.orm.query.subscriptions.findFirst({
+  where: { userId, status: 'active' },
+});
 
 const isPremium = !!subscription;
 ```

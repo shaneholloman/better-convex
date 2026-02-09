@@ -3,6 +3,7 @@ import {
   defineRelations,
   extractRelationsConfig,
   type InsertValue,
+  unsetToken,
 } from 'better-convex/orm';
 import type { GenericDatabaseWriter } from 'convex/server';
 import type { GenericId } from 'convex/values';
@@ -235,6 +236,29 @@ const baseUserInsert = {
       set: {
         // @ts-expect-error - age expects number | null
         age: 'not-a-number',
+      },
+    });
+}
+
+// onConflictDoUpdate set should allow unsetToken for nullable fields
+{
+  db.insert(users)
+    .values({ ...baseUserInsert })
+    .onConflictDoUpdate({
+      target: users.name,
+      set: { age: unsetToken },
+    });
+}
+
+// onConflictDoUpdate set should not allow unsetToken for notNull fields
+{
+  db.insert(users)
+    .values({ ...baseUserInsert })
+    .onConflictDoUpdate({
+      target: users.name,
+      set: {
+        // @ts-expect-error - cannot unset notNull column
+        name: unsetToken,
       },
     });
 }

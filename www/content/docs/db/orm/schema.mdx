@@ -125,7 +125,7 @@ export default defineSchema({ users, posts }, { strict: false });
 The `strict` flag controls how aggressively the ORM enforces index usage:
 
 - `strict` (default `true`): missing indexes throw unless `allowFullScan: true`.
-- `strict: false`: missing indexes still require `allowFullScan: true`, with fewer warnings.
+- `strict: false`: missing indexes still require `allowFullScan`, with fewer warnings.
 
 ### Runtime Defaults
 

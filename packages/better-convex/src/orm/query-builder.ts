@@ -405,4 +405,54 @@ export class RelationalQueryBuilder<
       this.vectorSearch
     );
   }
+
+  /**
+   * Find first row matching the query configuration, or throw if none exists.
+   *
+   * This is the ergonomic companion to `findFirst()` (Prisma-style),
+   * useful when callers expect a row to exist.
+   */
+  findFirstOrThrow<
+    TConfig extends SearchFindFirstConfig<TSchema, TTableConfig>,
+  >(
+    config: KnownKeysOnly<TConfig, SearchFindFirstConfig<TSchema, TTableConfig>>
+  ): GelRelationalQuery<
+    TSchema,
+    TTableConfig,
+    BuildQueryResult<TSchema, TTableConfig, TConfig>
+  >;
+  findFirstOrThrow<
+    TConfig extends FindFirstConfigNoSearch<TSchema, TTableConfig>,
+  >(
+    config?: KnownKeysOnly<
+      TConfig,
+      FindFirstConfigNoSearch<TSchema, TTableConfig>
+    > &
+      EnforcedConfig<TConfig, TTableConfig>
+  ): GelRelationalQuery<
+    TSchema,
+    TTableConfig,
+    BuildQueryResult<TSchema, TTableConfig, TConfig>
+  >;
+  findFirstOrThrow(
+    config?: any
+  ): GelRelationalQuery<TSchema, TTableConfig, any> {
+    return new GelRelationalQuery<TSchema, TTableConfig, any>(
+      this.schema,
+      this.tableConfig,
+      this.edgeMetadata,
+      this.db,
+      {
+        ...(config
+          ? (config as DBQueryConfig<'many', true, TSchema, TTableConfig>)
+          : ({} as DBQueryConfig<'many', true, TSchema, TTableConfig>)),
+        limit: 1,
+      },
+      'firstOrThrow',
+      this.allEdges,
+      this.rls,
+      this.relationLoading,
+      this.vectorSearch
+    );
+  }
 }

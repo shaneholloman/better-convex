@@ -4,6 +4,7 @@ import {
   eq,
   extractRelationsConfig,
   type UpdateSet,
+  unsetToken,
 } from 'better-convex/orm';
 import type { GenericDatabaseWriter } from 'convex/server';
 import { UserRow } from './fixtures/types';
@@ -184,11 +185,26 @@ const baseUpdate = {
   });
 }
 
+// set() should allow unsetToken for nullable fields
+{
+  db.update(users).set({
+    age: unsetToken,
+  });
+}
+
 // set() should not accept null for notNull field
 {
   db.update(users).set({
     // @ts-expect-error - name cannot be null
     name: null,
+  });
+}
+
+// set() should not allow unsetToken for notNull fields
+{
+  db.update(users).set({
+    // @ts-expect-error - cannot unset notNull column
+    name: unsetToken,
   });
 }
 

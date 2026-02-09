@@ -542,6 +542,28 @@ const db = orm.db(mockDb);
   Expect<Equal<IsArray, false>>;
 }
 
+// Test: findFirstOrThrow returns T (never undefined)
+{
+  const result = await db.query.users.findFirstOrThrow({
+    where: { name: 'Alice' },
+  });
+
+  type Expected = UserRow;
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
+// Test: findFirstOrThrow with no match still types as T (throws at runtime)
+{
+  const result = await db.query.users.findFirstOrThrow({
+    where: { name: 'NonExistent' },
+  });
+
+  type Expected = UserRow;
+
+  Expect<Equal<Expected, typeof result>>;
+}
+
 // ============================================================================
 // GETCOLUMNDATA MODE VERIFICATION TESTS
 // ============================================================================

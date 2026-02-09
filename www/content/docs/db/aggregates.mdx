@@ -33,10 +33,10 @@ Let's set it up.
 triggers.register('scores', scoresAggregate.trigger());
 
 // Just insert - trigger handles aggregate!
-await ctx.table('scores').insert({ score: 100 });
+await ctx.orm.insert(scores).values({ score: 100 });
 
 // ❌ WRONG: Manual updates in every mutation (easy to forget!)
-await ctx.table('scores').insert({ score: 100 });
+await ctx.orm.insert(scores).values({ score: 100 });
 await scoresAggregate.insert(ctx, doc); // Don't do this!
 ```
 
@@ -342,7 +342,9 @@ if (count === 0) return null;
 
 const randomIndex = Math.floor(Math.random() * count);
 const result = await randomAggregate.at(ctx, randomIndex);
-const song = result ? await ctx.table('songs').get(result.doc._id) : null;
+const song = result
+  ? await ctx.orm.query.songs.findFirst({ where: { _id: result.doc._id } })
+  : null;
 ```
 
 ### Paginate
@@ -414,9 +416,10 @@ export const backfillAggregate = privateMutation
     batchSize: z.number().default(100),
   }))
   .mutation(async ({ ctx, input }) => {
-    const results = await ctx.db
-      .query('scores')
-      .paginate({ numItems: input.batchSize, cursor: input.cursor });
+    const results = await ctx.orm.query.scores.findMany({
+      orderBy: { _creationTime: 'asc' },
+      paginate: { numItems: input.batchSize, cursor: input.cursor },
+    });
 
     // Idempotent - won't duplicate if already exists
     for (const doc of results.page) {
@@ -442,7 +445,10 @@ export const repairAggregate = privateMutation
     // Clear and rebuild from source of truth
     await aggregate.clear(ctx);
 
-    const docs = await ctx.db.query('scores').collect();
+    const docs = await ctx.orm.query.scores.findMany({
+      limit: 10_000,
+      orderBy: { _creationTime: 'asc' },
+    });
     for (const doc of docs) {
       await aggregate.insert(ctx, doc);
     }
@@ -514,12 +520,11 @@ Here are key practices to follow when using aggregates.
 ```ts showLineNumbers {1-3,5-7}
 // ✅ BEST: Triggers handle everything
 triggers.register('scores', scoresAggregate.trigger());
-await ctx.table('scores').insert(data); // Done!
+await ctx.orm.insert(scores).values(data); // Done!
 
 // ❌ AVOID: Manual updates are error-prone
-const id = await ctx.table('scores').insert(data);
-const doc = await ctx.table('scores').get(id);
-await aggregate.insert(ctx, doc!); // Easy to forget!
+const [row] = await ctx.orm.insert(scores).values(data).returning();
+await aggregate.insert(ctx, row); // Easy to forget!
 ```
 
 ### Choose Keys for Query Patterns
@@ -709,13 +714,15 @@ triggers.register('characters', aggregateCharacters.trigger());
 // Cascade delete - aggregates update automatically
 triggers.register('user', async (ctx, change) => {
   if (change.operation === 'delete') {
-    const characters = await ctx.table('characters', 'userId', (q) =>
-      q.eq('userId', change.id)
-    );
+    // Index characters.userId.
+    const characterRows = await ctx.orm.query.characters.findMany({
+      where: { userId: change.id },
+      limit: 1000,
+    });
 
-    for (const char of characters) {
+    for (const char of characterRows) {
       // Aggregate trigger fires on each delete!
-      await ctx.table('characters').getX(char._id).delete();
+      await ctx.orm.delete(characters).where(eq(characters._id, char._id));
     }
   }
 });
@@ -778,9 +785,11 @@ export const getUserStats = authQuery
   }))
   .query(async ({ ctx, input }) => {
     // User's scores in this game
-    const gameScores = await ctx.table('scores', 'user_game', (q) =>
-      q.eq('userId', ctx.userId).eq('gameId', input.gameId)
-    );
+    // Index scores.userId + scores.gameId.
+    const gameScores = await ctx.orm.query.scores.findMany({
+      where: { userId: ctx.userId, gameId: input.gameId },
+      limit: 1000,
+    });
 
     if (gameScores.length === 0) {
       return { highScore: 0, averageScore: 0, gamesPlayed: 0, globalRank: null, percentile: 0 };
@@ -841,7 +850,8 @@ Handle aggregate-specific errors gracefully:
 export const deleteScore = authMutation
   .input(z.object({ scoreId: zid('scores') }))
   .mutation(async ({ ctx, input }) => {
-    const doc = await ctx.table('scores').getX(input.scoreId);
+    const doc = await ctx.orm.query.scores.findFirst({ where: { _id: input.scoreId } });
+    if (!doc) throw new CRPCError({ code: 'NOT_FOUND', message: 'Score not found' });
 
     try {
       await aggregate.delete(ctx, doc);
@@ -854,7 +864,7 @@ export const deleteScore = authMutation
       }
     }
 
-    await ctx.table('scores').getX(input.scoreId).delete();
+    await ctx.orm.delete(scores).where(eq(scores._id, input.scoreId));
   });
 ```
 

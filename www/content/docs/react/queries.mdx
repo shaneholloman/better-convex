@@ -194,36 +194,18 @@ Procedures with `.meta({ auth: 'required' })` have two key behaviors:
 
 This prevents "unauthenticated" errors on first page load - the query won't run until we know the user's auth state.
 
-<Tabs groupId="db" items={["ctx.db", "ctx.table"]} persist>
-  <Tab value="ctx.db">
-    ```tsx showLineNumbers {4,12}
-    // Server-side (convex/functions/user.ts)
-    export const getSettings = c
-      .query()
-      .meta({ auth: 'required' })  // Won't run if not authenticated
-      .handler(async ({ ctx }) => {
-        return ctx.db.get(ctx.user._id);
-      });
+```tsx showLineNumbers {4,12}
+// Server-side (convex/functions/user.ts)
+export const getSettings = c
+  .query()
+  .meta({ auth: 'required' })  // Won't run if not authenticated
+  .handler(async ({ ctx }) => {
+    return ctx.orm.query.user.findFirst({ where: { _id: ctx.user._id } });
+  });
 
-    // Client-side - automatically skips when logged out
-    const { data } = useQuery(crpc.user.getSettings.queryOptions({}));
-    ```
-  </Tab>
-  <Tab value="ctx.table">
-    ```tsx showLineNumbers {4,12}
-    // Server-side (convex/functions/user.ts)
-    export const getSettings = c
-      .query()
-      .meta({ auth: 'required' })  // Won't run if not authenticated
-      .handler(async ({ ctx }) => {
-        return ctx.table('user').get(ctx.user._id);
-      });
-
-    // Client-side - automatically skips when logged out
-    const { data } = useQuery(crpc.user.getSettings.queryOptions({}));
-    ```
-  </Tab>
-</Tabs>
+// Client-side - automatically skips when logged out
+const { data } = useQuery(crpc.user.getSettings.queryOptions({}));
+```
 
 <Callout icon={<InfoIcon />}>
 **How Auth Loading Works:**

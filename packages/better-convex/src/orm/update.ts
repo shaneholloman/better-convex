@@ -34,6 +34,7 @@ import type {
   ReturningSelection,
   UpdateSet,
 } from './types';
+import { isUnsetToken } from './unset-token';
 import { WhereClauseCompiler } from './where-clause-compiler';
 
 const applyIndexFilter = (query: any, filter: FilterExpression<boolean>) => {
@@ -92,7 +93,32 @@ export class ConvexUpdateBuilder<
   }
 
   set(values: UpdateSet<TTable>): this {
-    this.setValues = values;
+    // Convex doesn't support `undefined` values. In Drizzle/Prisma-style builders,
+    // treat `undefined` as "not provided" so callers can pass partial form payloads.
+    // Use `unsetToken` to explicitly remove a field.
+    const filtered: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(values as any)) {
+      if (value !== undefined) {
+        if (isUnsetToken(value)) {
+          if (key === '_id' || key === '_creationTime') {
+            throw new Error(`Cannot unset system field '${key}'.`);
+          }
+          const config = (getTableColumns(this.table)[key] as any)?.config;
+          if (config?.notNull) {
+            throw new Error(
+              `Cannot unset NOT NULL column '${key}' on '${getTableName(
+                this.table
+              )}'. Use null (if nullable) or provide a value.`
+            );
+          }
+          // Convex patch unsets top-level fields when the value is `undefined`.
+          filtered[key] = undefined;
+        } else {
+          filtered[key] = value;
+        }
+      }
+    }
+    this.setValues = filtered as any;
     return this;
   }
 
@@ -180,6 +206,31 @@ export class ConvexUpdateBuilder<
   ): Promise<MutationExecuteResult<TTable, TReturning, TMode>> {
     if (!this.setValues) {
       throw new Error('set() must be called before execute()');
+    }
+
+    // No-op: empty updates should not run $onUpdateFn hooks, trigger writes,
+    // or require allowFullScan/scheduling wiring.
+    if (Object.keys(this.setValues as any).length === 0) {
+      const pagination = this.paginateConfig;
+      if (pagination !== undefined) {
+        const pagedBase = {
+          continueCursor: null,
+          isDone: true,
+          numAffected: 0,
+        };
+        if (!this.returningFields) {
+          return pagedBase as MutationExecuteResult<TTable, TReturning, TMode>;
+        }
+        return {
+          ...pagedBase,
+          page: [] as unknown as MutationResult<TTable, TReturning>,
+        } as unknown as MutationExecuteResult<TTable, TReturning, TMode>;
+      }
+
+      if (!this.returningFields) {
+        return undefined as MutationExecuteResult<TTable, TReturning, TMode>;
+      }
+      return [] as unknown as MutationExecuteResult<TTable, TReturning, TMode>;
     }
 
     const config = args[0] as MutationExecuteConfig | undefined;
