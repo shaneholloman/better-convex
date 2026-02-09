@@ -1383,6 +1383,28 @@ db.query.users.findMany({
   });
 }
 
+// id-branded strings should not be treated as full-scan operator objects
+// (GenericId includes String prototype keys like "endsWith")
+{
+  const cityId = 'city' as unknown as GenericId<'cities'>;
+
+  await db.query.users.findFirst({
+    where: { cityId },
+  });
+
+  await db.query.users.findMany({
+    where: { cityId },
+  });
+
+  await db.query.users.findFirst({
+    where: { cityId: { eq: cityId } },
+  });
+
+  await db.query.users.findMany({
+    where: { cityId: { eq: cityId } },
+  });
+}
+
 // non-indexable operators require allowFullScan
 {
   // @ts-expect-error - allowFullScan required for non-indexable operator (endsWith)

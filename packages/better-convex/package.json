@@ -23,7 +23,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "better-convex": "./dist/cli.cjs"
+    "better-convex": "./dist/cli.mjs"
   },
   "files": [
     "dist"

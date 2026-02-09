@@ -1,10 +1,8 @@
+/** biome-ignore-all lint/performance/useTopLevelRegex: inline regex assertions are intentional in tests. */
 import { expect, test } from 'vitest';
-import schema from '../../convex/schema';
-import { convexTest } from '../../convex/setup.testing';
-import {
-  mergedStream,
-  stream,
-} from '../../packages/better-convex/src/orm/stream';
+import schema from '../../../../convex/schema';
+import { convexTest } from '../../../../convex/setup.testing';
+import { mergedStream, stream } from './stream';
 
 test('stream.filter() throws guidance error and filterWith works', async () => {
   const t = convexTest(schema);

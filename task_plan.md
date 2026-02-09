@@ -1,103 +1,124 @@
-# Task Plan: ORM Performance Review (2026-02-05)
+# Task Plan: Full Coverage Rollout (Bun-First + Co-Located + TDD)
 
 ## Goal
-Review ORM code for non-scalable performance patterns, document findings, and create todos. No package code changes.
+Ship a full testing-coverage program for `packages/better-convex/src/**` with co-located tests, Bun as the default runner, and Vitest reserved for `convex-test` integration coverage only.
 
 ## Current Phase
-Complete
+Phase 11 (In Progress)
 
 ## Phases
-
-### Phase 1: Review Target & Setup
-- [x] Determine review target (current branch)
-- [x] Attempt PR metadata lookup
-- [x] Load Convex performance guidance docs
+### Phase 1: Baseline, Constraints, and Coverage Contract
+- [x] Confirm user constraints: Bun-first, co-located tests, Vitest only for `convex-test`.
+- [x] Capture current test topology (`convex/`, `/test`, co-located in `packages`).
+- [x] Capture baseline runtime coverage for `packages/better-convex/src/**/*.ts`.
+- [x] Record missing-surface map by concern in `findings.md`.
 - **Status:** complete
 
-### Phase 2: Scan ORM For Non-Scalable Patterns
-- [x] Review relation loading and query execution
-- [x] Review update/delete builders and FK cascade utilities
+### Phase 2: Runner Split and Test Location Migration Plan
+- [x] Update scripts so default order is `bun test` (packages) then `vitest run` (convex-only).
+- [x] Restrict Vitest include to `convex/**/*.test.ts(x)` and remove `/test/**` from Vitest scope.
+- [x] Define migration path from `/test/orm/*.test.ts` to co-located `packages/better-convex/src/orm/*.test.ts`.
+- [x] Document module test-placement rules in repo docs.
 - **Status:** complete
 
-### Phase 3: Synthesis & Todo Creation
-- [x] Consolidate findings by severity
-- [x] Create todo files in `todos/` (006-009)
+### Phase 3: ORM Co-Located Bun Suite (Non-Convex-Test Paths)
+- [x] Move/port `/test/orm/*` tests beside source files under `packages/better-convex/src/orm/**`.
+- [x] Convert runner-specific APIs where needed (Vitest -> Bun patterns).
+- [x] Keep `convex/orm/*.test.ts` as Vitest integration coverage using `convex-test`.
+- [x] TDD cycle per file cluster: RED fail, GREEN minimal fix, REFACTOR.
 - **Status:** complete
 
-### Phase 4: Summary & Reporting
-- [x] Deliver review summary and testing offer
+### Phase 4: CRPC Coverage Track
+- [x] Add co-located Bun tests for `crpc/error.ts`.
+- [x] Add co-located Bun tests for `crpc/query-options.ts`.
+- [x] Add co-located Bun tests for `crpc/http-types.ts`.
+- [x] Add export/contract tests for `crpc/index.ts` and relevant type-only guards.
+- [x] Apply strict TDD for behavior and edge-case branches.
 - **Status:** complete
 
-## Errors Encountered
-| Error | Attempt | Resolution |
-|-------|---------|------------|
-| `gh pr view` unknown JSON field `linkedIssues` | 1 | Retried without field |
-| `gh pr view` no PR found for branch | 1 | Proceeded with branch review |
-
----
-
-# Task Plan: Replace Native Convex Schema in Tests
-
-## Goal
-Create a comprehensive Drizzle-style SchemaDefinition (with full field/relations coverage) for convex-test codegen and update tests to use it, while keeping schema-independent tests in /test.
-
-## Current Phase
-Phase 4
-
-## Phases
-
-### Phase 1: Requirements & Discovery
-- [x] Understand current test layout and moved files
-- [x] Identify schema-dependent vs schema-independent tests
-- [x] Inspect existing schema helpers (example/convex/lib/ents.ts, example/convex/lib/crpc.ts)
-- [x] Document findings in findings.md
+### Phase 5: Auth Coverage Track (auth + auth-client + auth-nextjs)
+- [x] Add co-located Bun tests for `auth/adapter-utils.ts` and `auth/helpers.ts`.
+- [x] Add co-located Bun tests for `auth/adapter.ts`, `auth/create-api.ts`, `auth/create-client.ts`.
+- [x] Add co-located Bun tests for `auth/create-schema.ts`, `auth/middleware.ts`, `auth/registerRoutes.ts`.
+- [x] Add Bun tests for `auth-client` and `auth-nextjs` entry behavior.
+- [x] Apply strict TDD for high-complexity branches and error paths.
 - **Status:** complete
 
-### Phase 2: Schema Design & API Decisions
-- [x] Define full-coverage SchemaDefinition (fields, relations, edges)
-- [x] Choose ctx ORM accessor name (ctx.table vs alternative)
-- [x] Ensure export default schema for codegen in example/convex/functions/schema.ts
-- [x] Document decisions with rationale
+### Phase 6: React Coverage Track
+- [x] Add co-located Bun tests for `react/client.ts`, `react/proxy.ts`, `react/http-proxy.ts`.
+- [x] Add co-located Bun tests for `react/use-query-options.ts`.
+- [x] Add co-located Bun tests for `react/use-infinite-query.ts`.
+- [x] Add co-located Bun tests for `react/auth-mutations.ts`, `react/singleton.ts`, `react/vanilla-client.ts`.
+- [x] Add focused smoke tests for `react/index.ts` and context wiring.
+- [x] Use TDD for non-UI logic and deterministic hook behavior.
 - **Status:** complete
 
-### Phase 3: Implementation
-- [x] Implement or update schema file(s) for codegen
-- [x] Move/update schema-dependent tests under /test/types
-- [x] Move schema-independent tests under /test (name appropriately)
-- [x] Update test setup utilities to use new schema and ctx accessor
+### Phase 7: Server and RSC Coverage Track
+- [x] Add co-located Bun tests for `server/caller*.ts`, `server/error.ts`, `server/lazy-caller.ts`.
+- [x] Add co-located Bun tests for `server/http-router.ts`.
+- [x] Add co-located Bun tests for `server/builder.ts` (middleware, meta, internal/procedure flags, input merging).
+- [x] Add co-located Bun tests for `rsc/http-server.ts`, `rsc/proxy-server.ts`, `rsc/server-query-client.ts`.
+- [x] Deepen `server/http-builder.ts` coverage (query param coercion, method mismatch, JSON/form parsing, schema validation).
+- [x] Cover remaining critical error/validation branches and contract boundaries with TDD.
 - **Status:** complete
 
-### Phase 4: Testing & Verification
-- [x] Run bun convex codegen and confirm success
-- [x] Run relevant tests (type-only + runtime as applicable)
-- [x] Document test results in progress.md
-- [x] Fix any issues found
+### Phase 8: CLI Coverage Track
+- [x] Add co-located Bun tests for `cli/env.ts`.
+- [x] Add co-located Bun tests for `cli/watcher.ts`.
+- [x] Add co-located Bun tests for `cli/codegen.ts`.
+- [x] Add co-located Bun tests for `cli/cli.ts` command parsing and error handling.
+- [x] Use temporary fixtures and deterministic IO in TDD loops.
 - **Status:** complete
 
-### Phase 5: Delivery
-- [ ] Review all modified files for correctness
-- [ ] Summarize changes and remaining follow-ups
-- **Status:** pending
+### Phase 9: Internal + Shared + Type Contract Coverage
+- [x] Add/expand co-located Bun tests for `internal/auth.ts`.
+- [x] Add/expand co-located Bun tests for `internal/hash.ts`.
+- [x] Ensure `internal/query-key.ts` has direct or indirect runtime coverage.
+- [x] Keep `shared/meta-utils.test.ts` as reference pattern for co-location.
+- [x] Validate compile-time API guarantees via `bun run typecheck` and `test/types`.
+- [x] Ensure public entry points keep stable type/runtime contracts.
+- **Status:** complete
+
+### Phase 10: Coverage Gates, CI Wiring, and Ship Checklist
+- [x] Define coverage floors and enforce in CI (Bun non-ORM mean + critical per-file floors via `tooling/coverage-check.ts`; Vitest ORM integration thresholds via `--coverage.thresholds.*`).
+- [ ] Ensure every public export group has non-zero runtime coverage and critical branch tests.
+- [x] Final verification command set includes: `bun run check:ci` (lint + typecheck + coverage-gated tests)
+- [ ] Publish final gap report with remaining risks and explicit ship/no-ship call.
+- **Status:** in_progress
+
+### Phase 11: Hardening for Ship-Readiness (Low-Coverage Public Surfaces)
+- [x] Auth adapter hardening: raise coverage for `auth/adapter.ts` beyond smoke-level.
+- [ ] React client hardening: raise coverage for `react/client.ts` (client mode, error paths, auth integration).
+- [x] Fill remaining auth/react gaps: `auth/registerRoutes.ts`, `react/auth-store.tsx`, `react/auth-mutations.ts`.
+- [x] Decide and enforce minimum coverage floors for `server/builder.ts` and `cli/env.ts` (in `tooling/coverage-check.ts`).
+- **Status:** in_progress
 
 ## Key Questions
-1. Which tests are truly schema-independent and can live in /test?
-2. What should the canonical SchemaDefinition cover to hit 100% API coverage?
-3. What ctx accessor name best fits current conventions (ctx.table vs alternative)?
+1. What coverage floor is required to call this "ship-ready" per concern (`crpc`, `auth`, `react`, etc.)?
+2. Which files are runtime-critical vs type-only so we do not chase meaningless 100%?
+3. Which existing `/test/orm` specs should be migrated unchanged versus rewritten for Bun semantics?
+4. Where do we need integration tests in Vitest (`convex-test`) versus pure unit tests in Bun?
+5. Which public APIs require explicit regression tests for contributor safety guarantees?
 
 ## Decisions Made
 | Decision | Rationale |
 |----------|-----------|
-| `ctx.table` as ORM accessor | Matches convex-ents and avoids `ctx.db` collision. |
-| Shared schema in `convex/schema.ts` | Single source for runtime tests, type tests, and codegen. |
+| Bun is the default runner for non-Convex-test tests | Matches user requirement and keeps fast package-local feedback |
+| Vitest is reserved for `convex-test` integration suites under `convex/**` | Keeps edge-runtime + Convex simulation isolated |
+| Test files should be co-located beside source files in `packages/better-convex/src/**` | Improves ownership and discoverability per module |
+| Coverage rollout is concern-separated (`orm`, `crpc`, `auth`, `react`, `server`, `rsc`, `cli`) | Reduces cross-domain coupling and enables phased delivery |
+| TDD rule is strict for behavior-heavy logic: RED -> GREEN -> REFACTOR | Prevents false confidence from post-hoc tests |
 
 ## Errors Encountered
 | Error | Attempt | Resolution |
 |-------|---------|------------|
-| session-catchup.py missing at ${CLAUDE_PLUGIN_ROOT}/scripts | 1 | Used repo skill path /Users/zbeyens/GitHub/better-convex/.claude/skills/planning-with-files/scripts/session-catchup.py |
-| `bun convex codegen` failed: local backend not running | 1 | Needs `convex dev` running (see progress.md) |
-| `bun convex dev --once --env-file .env.local` failed: non-interactive login prompt | 1 | Requires authenticated session; not possible in non-interactive run |
+| No new errors in planning phase | 1 | N/A |
+| Biome `useTopLevelRegex` triggered on migrated test files | 1 | Added test-file-level ignore and style fixes; lint returned to green |
+| `unique symbol` type mismatch in `crpc/types.test.ts` (`toBe(Symbol.for(...))`) | 1 | Switched assertion to `Symbol.keyFor(FUNC_REF_SYMBOL)` |
+| Biome lint/format errors in new co-located auth/react tests | 1 | Applied Biome fixes (organize imports, `@ts-expect-error`, template literals, formatter output) and re-ran `bun run lint` |
+| ESLint warnings from generated `coverage/**` artifacts | 1 | Added `**/coverage/**` to `eslint.config.mjs` ignores |
 
 ## Notes
-- Update phase status as you progress: pending → in_progress → complete
-- Re-read this plan before major decisions
-- Log ALL errors
+- Existing unrelated working-tree changes remain untouched.
+- Execution order can be parallelized by concern once runner split is stable.
+- `test/types` remains a required gate even when runtime tests are green.

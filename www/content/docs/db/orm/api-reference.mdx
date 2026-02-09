@@ -1,11 +1,9 @@
 ---
 title: API Reference
 description: Complete API reference for Better-Convex ORM with functions, operators, and types
-links:
-  doc: https://orm.drizzle.team/docs/overview
 ---
 
-import { InfoIcon, CheckCircle, Code } from "lucide-react"
+import { InfoIcon } from "lucide-react"
 
 This is the full API surface for Better‑Convex ORM. The goal is to match Drizzle v1’s relational query builder while adapting to Convex’s document model.
 
@@ -13,7 +11,7 @@ This is the full API surface for Better‑Convex ORM. The goal is to match Drizz
 
 ### `convexTable()`
 
-```ts
+```ts showLineNumbers
 convexTable<TName extends string, TColumns>(
   name: TName,
   columns: TColumns,
@@ -28,7 +26,7 @@ convexTable<TName extends string, TColumns>(
 ```
 
 **Example**
-```ts
+```ts showLineNumbers
 const users = convexTable('users', {
   name: text().notNull(),
   email: text().notNull(),
@@ -42,7 +40,7 @@ const users = convexTable('users', {
 
 ### `convexTable.withRLS()`
 
-```ts
+```ts showLineNumbers
 convexTable.withRLS(name, columns, (t) => [
   rlsPolicy('policy_name', {
     for: 'select',
@@ -56,7 +54,7 @@ access is denied by default.
 
 ### `index()` / `uniqueIndex()`
 
-```ts
+```ts showLineNumbers
 import { index, uniqueIndex } from 'better-convex/orm';
 
 const posts = convexTable(
@@ -74,7 +72,7 @@ const posts = convexTable(
 
 ### `unique()`
 
-```ts
+```ts showLineNumbers
 import { unique } from 'better-convex/orm';
 
 const users = convexTable(
@@ -91,7 +89,7 @@ Use `.nullsNotDistinct()` to treat `null` as a value (PG parity).
 
 ### `foreignKey()`
 
-```ts
+```ts showLineNumbers
 import { foreignKey } from 'better-convex/orm';
 
 const memberships = convexTable(
@@ -111,7 +109,7 @@ Without an index, Better-Convex will throw when it detects referencing rows.
 
 ### `check()`
 
-```ts
+```ts showLineNumbers
 import { check, convexTable, gt, integer } from 'better-convex/orm';
 
 const users = convexTable(
@@ -127,7 +125,7 @@ Checks are enforced at runtime by Better-Convex ORM mutations and follow SQL-lik
 
 ### `searchIndex()`
 
-```ts
+```ts showLineNumbers
 import { searchIndex } from 'better-convex/orm';
 
 const posts = convexTable(
@@ -144,7 +142,7 @@ Use `.staged()` to stage a search index for later activation.
 
 ### `vectorIndex()`
 
-```ts
+```ts showLineNumbers
 import { vector, vectorIndex } from 'better-convex/orm';
 
 const posts = convexTable(
@@ -166,7 +164,7 @@ Vector indexes require `.dimensions(n)` and can be staged with `.staged()`.
 
 ### `deletion()`
 
-```ts
+```ts showLineNumbers
 import { deletion } from 'better-convex/orm';
 
 const users = convexTable(
@@ -195,7 +193,7 @@ vector('embedding', 768)
 
 ### Column Modifiers
 
-```ts
+```ts showLineNumbers
 const users = convexTable('users', {
   slug: text().notNull(),
 });
@@ -203,8 +201,8 @@ const users = convexTable('users', {
 text().notNull()
 text().default('member')
 text().$type<'admin' | 'member'>()
-number().$defaultFn(() => Date.now())
-number().$onUpdateFn(() => Date.now())
+integer().$defaultFn(() => Date.now())
+integer().$onUpdateFn(() => Date.now())
 text().unique()
 text().unique('handle_unique', { nulls: 'not distinct' })
 id('users').references(() => users._id)
@@ -213,7 +211,7 @@ text().references(() => users.slug, { onDelete: 'cascade' })
 
 ### `rlsPolicy()`
 
-```ts
+```ts showLineNumbers
 rlsPolicy(name, {
   as: 'permissive' | 'restrictive',
   for: 'all' | 'select' | 'insert' | 'update' | 'delete',
@@ -234,7 +232,7 @@ rlsRole('admin', { createRole: true }).existing();
 
 ### `defineRelations()`
 
-```ts
+```ts showLineNumbers
 defineRelations(schema, (r) => ({
   users: { posts: r.many.posts() },
   posts: {
@@ -256,7 +254,7 @@ Creates a unified ORM setup object. Use `orm.db(ctx)` to build a typed query/mut
 
 For async mutation batching, pass scheduler function refs and export generated handlers:
 
-```ts
+```ts showLineNumbers
 import { createOrm } from 'better-convex/orm';
 import { internal } from './_generated/api';
 import { internalMutation } from './functions';
@@ -276,7 +274,7 @@ Recommended: create `orm` once in your context layer and attach `orm.db(ctx)` to
 
 **RLS options**
 
-```ts
+```ts showLineNumbers
 const ormDb = orm.db(ctx, {
   rls: {
     ctx,
@@ -308,7 +306,7 @@ await db.system.query('_storage').take(20);
 
 ### `findMany()`
 
-```ts
+```ts showLineNumbers
 await db.query.users.findMany({
   where: { role: 'admin' },
   orderBy: { _creationTime: 'desc' },
@@ -360,7 +358,7 @@ Relation loading also enforces fan-out key caps: if unique relation lookup keys 
 
 ### `findMany({ search })`
 
-```ts
+```ts showLineNumbers
 await db.query.posts.findMany({
   search: {
     index: 'text_search',
@@ -373,7 +371,7 @@ await db.query.posts.findMany({
 
 ### `findMany({ vectorSearch })`
 
-```ts
+```ts showLineNumbers
 await db.query.posts.findMany({
   vectorSearch: {
     index: 'embedding_vec',
@@ -388,7 +386,7 @@ await db.query.posts.findMany({
 
 ### `findFirst()`
 
-```ts
+```ts showLineNumbers
 await db.query.users.findFirst({ where: { email: 'a@b.com' } });
 await db.query.posts.findFirst({
   search: { index: 'text_search', query: 'galaxy' },
@@ -397,7 +395,7 @@ await db.query.posts.findFirst({
 
 ### `findMany({ paginate })`
 
-```ts
+```ts showLineNumbers
 await db.query.posts.findMany({
   where: { published: true },
   orderBy: { _creationTime: 'desc' },
@@ -455,7 +453,7 @@ await db.insert(users).values({ name: 'Ada', email: 'ada@example.com' });
 
 ### `update()`
 
-```ts
+```ts showLineNumbers
 await db
   .update(users)
   .set({ name: 'Ada Lovelace' })
@@ -476,7 +474,7 @@ await db
 - Async `execute()` returns the same shape as sync `execute()` (`void` or first-batch `returning()` rows).
 - Paged mode currently supports single-range index plans only.
 
-```ts
+```ts showLineNumbers
 await db
   .update(users)
   .set({ name: 'Ada Lovelace' })
@@ -487,7 +485,7 @@ await db
 
 ### `delete()`
 
-```ts
+```ts showLineNumbers
 await db.delete(users).where(eq(users._id, userId));
 ```
 
@@ -505,7 +503,7 @@ await db.delete(users).where(eq(users._id, userId));
 - Async `execute()` returns the same shape as sync `execute()` (`void` or first-batch `returning()` rows).
 - Paged mode currently supports single-range index plans only.
 
-```ts
+```ts showLineNumbers
 await db
   .delete(users)
   .where(eq(users.email, email));
@@ -514,7 +512,7 @@ await db
 ```
 
 **Delete helpers**
-```ts
+```ts showLineNumbers
 // Soft delete (sets deletionTime)
 await db.delete(users).where(eq(users._id, userId)).soft();
 
@@ -541,7 +539,7 @@ Async mutation batches (`execute({ mode: 'async' })` / `.executeAsync()` for upd
 
 ### `returning()`
 
-```ts
+```ts showLineNumbers
 const [user] = await db
   .insert(users)
   .values({ name: 'Ada', email: 'ada@example.com' })
@@ -550,7 +548,7 @@ const [user] = await db
 
 ### `onConflictDoUpdate()`
 
-```ts
+```ts showLineNumbers
 await db
   .insert(users)
   .values({ email: 'ada@example.com', name: 'Ada' })
@@ -562,7 +560,7 @@ await db
 
 If the conflict target has no index, call `.allowFullScan()` to opt in:
 
-```ts
+```ts showLineNumbers
 await db
   .insert(users)
   .values({ email: 'ada@example.com', name: 'Ada' })
@@ -574,7 +572,7 @@ await db
 
 Use these in mutation `where(...)` clauses:
 
-```ts
+```ts showLineNumbers
 eq(field, value)
 ne(field, value)
 gt(field, value)

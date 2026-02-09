@@ -1,27 +1,27 @@
 ---
 title: Indexes & Constraints
 description: Drizzle-style indexes and constraints, enforced at runtime in Better-Convex
-links:
-  doc: https://orm.drizzle.team/docs/indexes-constraints
 ---
 
 import { InfoIcon, AlertTriangle } from "lucide-react"
 
-Indexes and constraints help you keep data consistent and make queries fast.
+In this guide, we'll learn how to define indexes and constraints for your tables. You'll master default values, not-null and unique constraints, foreign keys with cascading actions, check constraints, and all three index types -- standard, search, and vector.
 
-Better-Convex mirrors Drizzle’s schema API where it makes sense, but enforces constraints **at runtime** (in ORM mutations), not inside a SQL database.
+Better-Convex mirrors Drizzle's schema API where it makes sense, but enforces constraints **at runtime** (in ORM mutations), not inside a SQL database.
 
 <Callout icon={<AlertTriangle />}>
-Constraints are enforced **only** by Better-Convex ORM mutations (`insert/update/delete`). Direct `ctx.db` writes bypass them.
+**Important:** Constraints are enforced **only** by Better-Convex ORM mutations (`insert/update/delete`). Direct `ctx.db` writes bypass them.
 </Callout>
 
 ## Constraints
 
 ### Default
 
-Use `.default(value)` to define a default for inserts.
+Use `.default(value)` to define a default for inserts. Defaults are applied by ORM inserts when the value is `undefined`. Explicit `null` is preserved.
 
-```ts
+Here's how to set a default view count:
+
+```ts showLineNumbers {4}
 import { convexTable, integer, text } from 'better-convex/orm';
 
 export const posts = convexTable('posts', {
@@ -30,13 +30,11 @@ export const posts = convexTable('posts', {
 });
 ```
 
-Defaults are applied by ORM inserts when the value is `undefined`. Explicit `null` is preserved.
-
-### Not null
+### Not Null
 
 Fields are nullable by default. Use `.notNull()` to require a value.
 
-```ts
+```ts showLineNumbers {4-5}
 import { convexTable, text } from 'better-convex/orm';
 
 export const users = convexTable('users', {
@@ -47,11 +45,13 @@ export const users = convexTable('users', {
 
 ### Unique
 
-You can model uniqueness in a few Drizzle-style ways:
+You can model uniqueness in a few Drizzle-style ways.
 
 #### `uniqueIndex()`
 
-```ts
+Let's define a unique index on an email field:
+
+```ts showLineNumbers {6}
 import { convexTable, text, uniqueIndex } from 'better-convex/orm';
 
 export const users = convexTable(
@@ -65,7 +65,9 @@ export const users = convexTable(
 
 #### `unique()`
 
-```ts
+For compound uniqueness, use `unique('name').on(...)` with multiple columns:
+
+```ts showLineNumbers {8}
 import { convexTable, text, unique } from 'better-convex/orm';
 
 export const users = convexTable(
@@ -78,19 +80,17 @@ export const users = convexTable(
 );
 ```
 
-Use `.nullsNotDistinct()` for PostgreSQL parity when you want `null` to be treated as a value.
-
-<Callout icon={<InfoIcon />}>
-**Compound unique**: use `unique('name').on(t.col1, t.col2, ...)` or `uniqueIndex('name').on(...)` for multi‑column uniqueness.
-</Callout>
+You can use `.nullsNotDistinct()` for PostgreSQL parity when you want `null` to be treated as a value.
 
 <Callout icon={<AlertTriangle />}>
-Uniqueness is enforced at runtime and is **best‑effort** within a mutation. Concurrent mutations can still race. For strict guarantees, serialize writes per key or use `onConflictDoNothing()` / retries.
+**Important:** Uniqueness is enforced at runtime and is **best-effort** within a mutation. Concurrent mutations can still race. For strict guarantees, serialize writes per key or use `onConflictDoNothing()` / retries.
 </Callout>
 
 #### Column `.unique()`
 
-```ts
+For single-column uniqueness, you can call `.unique()` directly on the column builder:
+
+```ts showLineNumbers {4}
 import { convexTable, text } from 'better-convex/orm';
 
 export const users = convexTable('users', {
@@ -104,7 +104,9 @@ Foreign keys are enforced at runtime by the ORM mutation builders.
 
 #### Column `.references()`
 
-```ts
+Here's how to reference another table's `_id`:
+
+```ts showLineNumbers {8}
 import { convexTable, id, text } from 'better-convex/orm';
 
 export const users = convexTable('users', {
@@ -119,7 +121,9 @@ export const posts = convexTable('posts', {
 
 #### `foreignKey()`
 
-```ts
+For referencing non-`_id` columns, use the `foreignKey()` builder:
+
+```ts showLineNumbers {9}
 import { convexTable, foreignKey, text } from 'better-convex/orm';
 
 export const users = convexTable('users', {
@@ -141,7 +145,9 @@ export const memberships = convexTable(
 
 Better-Convex supports Drizzle-style foreign key actions, enforced at runtime by ORM mutations.
 
-```ts
+Here's how to cascade deletes when a user is removed:
+
+```ts showLineNumbers {5-7}
 export const posts = convexTable(
   'posts',
   {
@@ -155,15 +161,16 @@ export const posts = convexTable(
 ```
 
 <Callout icon={<InfoIcon />}>
-- For non-`_id` foreign keys, add an index on the referenced columns (parent table) so inserts/updates can validate quickly
-- For `cascade` / `set null` / `set default`, add an index on the referencing columns (child table). Without an index, Better-Convex will throw if it detects referencing rows.
+**Tip:** For non-`_id` foreign keys, add an index on the referenced columns (parent table) so inserts/updates can validate quickly. For `cascade` / `set null` / `set default`, add an index on the referencing columns (child table). Without an index, Better-Convex will throw if it detects referencing rows.
 </Callout>
 
 ### Check Constraints
 
 Use `check(name, expression)` to enforce invariants on inserts and updates.
 
-```ts
+Let's add age and email checks to a users table:
+
+```ts showLineNumbers {8-9}
 import { check, convexTable, gt, integer, isNotNull, text } from 'better-convex/orm';
 
 export const users = convexTable(
@@ -179,7 +186,9 @@ export const users = convexTable(
 );
 ```
 
-Checks follow SQL-like NULL semantics: they fail only when the expression evaluates to `false`. If it evaluates to `unknown` (because of `null`/`undefined`), it passes. Use `.notNull()` or `isNotNull(...)` for strict presence.
+<Callout icon={<InfoIcon />}>
+**Note:** Checks follow SQL-like NULL semantics: they fail only when the expression evaluates to `false`. If it evaluates to `unknown` (because of `null`/`undefined`), it passes. Use `.notNull()` or `isNotNull(...)` for strict presence.
+</Callout>
 
 ## Indexes
 
@@ -187,7 +196,7 @@ Checks follow SQL-like NULL semantics: they fail only when the expression evalua
 
 Add indexes for fields you filter or sort by.
 
-```ts
+```ts showLineNumbers {8}
 import { convexTable, id, index, text } from 'better-convex/orm';
 
 export const posts = convexTable(
@@ -202,9 +211,11 @@ export const posts = convexTable(
 
 ### `searchIndex()`
 
-Search indexes mirror Convex’s text search, with a Drizzle-style builder API.
+Search indexes mirror Convex's text search, with a Drizzle-style builder API.
 
-```ts
+Here's how to add a full-text search index on `title`, filtered by `authorId`:
+
+```ts showLineNumbers {8}
 import { convexTable, id, searchIndex, text } from 'better-convex/orm';
 
 export const posts = convexTable(
@@ -217,13 +228,17 @@ export const posts = convexTable(
 );
 ```
 
-Use `.staged()` to stage an index for later activation.
+<Callout icon={<InfoIcon />}>
+**Tip:** Use `.staged()` to stage an index for later activation.
+</Callout>
 
 ### `vectorIndex()`
 
-Vector indexes mirror Convex’s vector search API.
+Vector indexes mirror Convex's vector search API.
 
-```ts
+Let's define a vector index for embedding search filtered by author:
+
+```ts showLineNumbers {8-11}
 import { convexTable, id, vector, vectorIndex } from 'better-convex/orm';
 
 export const posts = convexTable(
@@ -243,8 +258,18 @@ export const posts = convexTable(
 
 ## Drizzle Differences
 
-<Callout icon={<AlertTriangle />}>
+A few things work differently from SQL-based Drizzle:
+
 - Convex creates `_id` automatically (no `primaryKey()` builder)
 - Check constraints are enforced at runtime (ORM mutations only)
 - SQL-only features (database-side cascades, triggers, raw SQL) are not applicable
-</Callout>
+
+You now know how to keep your data consistent with constraints and make queries fast with indexes. From unique fields to cascading deletes and vector search, Better-Convex gives you Drizzle's ergonomic API backed by Convex's runtime.
+
+## Next Steps
+
+<Cards>
+  <Card title="Operators (Filters)" href="/docs/db/orm/operators" />
+  <Card title="Queries" href="/docs/db/orm/queries" />
+  <Card title="Relations" href="/docs/db/orm/relations" />
+</Cards>

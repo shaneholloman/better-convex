@@ -232,29 +232,30 @@ Base context properties work identically:
 
 cRPC's `.use()` middleware replaces convex-helpers' `customQuery`/`customMutation`:
 
-**Before (convex-helpers):**
+<Compare>
+  <CompareItem title="Before (convex-helpers)">
+    ```ts showLineNumbers
+    import { customQuery, customCtx } from 'convex-helpers/server/customFunctions';
 
-```ts showLineNumbers
-import { customQuery, customCtx } from 'convex-helpers/server/customFunctions';
-
-const userQuery = customQuery(query,
-  customCtx(async (ctx) => {
-    const user = await getUser(ctx);
-    if (!user) throw new Error('Authentication required');
-    return { user };
-  })
-);
-```
-
-**After (cRPC):**
-
-```ts showLineNumbers {2-5}
-const userQuery = c.query.use(async ({ ctx, next }) => {
-  const user = await getUser(ctx);
-  if (!user) throw new CRPCError({ code: 'UNAUTHORIZED' });
-  return next({ ctx: { ...ctx, user } });
-});
-```
+    const userQuery = customQuery(query,
+      customCtx(async (ctx) => {
+        const user = await getUser(ctx);
+        if (!user) throw new Error('Authentication required');
+        return { user };
+      })
+    );
+    ```
+  </CompareItem>
+  <CompareItem title="After (cRPC)">
+    ```ts showLineNumbers {2-5}
+    const userQuery = c.query.use(async ({ ctx, next }) => {
+      const user = await getUser(ctx);
+      if (!user) throw new CRPCError({ code: 'UNAUTHORIZED' });
+      return next({ ctx: { ...ctx, user } });
+    });
+    ```
+  </CompareItem>
+</Compare>
 
 Key differences:
 - Call `next({ ctx })` instead of returning context directly

@@ -1,5 +1,4 @@
-import { describe, expect, test } from 'vitest';
-import { QueryPromise } from '../../packages/better-convex/src/orm/query-promise';
+import { QueryPromise } from './query-promise';
 
 class TestQueryPromise<T> extends QueryPromise<T> {
   constructor(private readonly run: () => Promise<T>) {

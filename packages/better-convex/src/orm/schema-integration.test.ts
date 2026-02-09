@@ -1,5 +1,4 @@
-import { convexTable, defineSchema, text } from 'better-convex/orm';
-import { expect, test } from 'vitest';
+import { convexTable, defineSchema, text } from './index';
 
 test('convexTable works with defineSchema()', () => {
   const users = convexTable('users', {

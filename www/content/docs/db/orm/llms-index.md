@@ -36,6 +36,7 @@ This file provides a structured index of Better‑Convex ORM documentation for A
 
 ## Migration & Comparison
 
+- `/docs/db/orm/migrate-from-convex` - Native Convex (`ctx.db`) → ORM migration guide
 - `/docs/db/orm/migrate-from-ents` - Convex Ents → ORM migration guide
 - `/docs/db/orm/comparison` - Drizzle v1 mapping and migration guidance
 
@@ -77,8 +78,10 @@ await db.query.table.findMany({
 })
 
 await db.query.table.findMany({
+  // Predicate where requires an explicit index plan (no allowFullScan fallback)
   where: (row) => row.status === 'active',
-  allowFullScan: true,
+  index: { name: 'by_status' },
+  paginate: { cursor: null, numItems: 20, maximumRowsRead: 2000 },
 })
 ```
 

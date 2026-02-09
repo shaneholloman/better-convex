@@ -1,3 +1,4 @@
+/** biome-ignore-all lint/performance/useTopLevelRegex: inline regex assertions are intentional in tests. */
 import {
   convexTable,
   defineSchema,
@@ -6,8 +7,7 @@ import {
   text,
   vector,
   vectorIndex,
-} from 'better-convex/orm';
-import { expect, test } from 'vitest';
+} from './index';
 
 test('search and vector index builders export correctly', () => {
   const posts = convexTable(

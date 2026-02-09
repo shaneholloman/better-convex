@@ -1,9 +1,4 @@
-import { expect, test } from 'vitest';
-import {
-  isRlsRole,
-  RlsRole,
-  rlsRole,
-} from '../../packages/better-convex/src/orm/rls/roles';
+import { isRlsRole, RlsRole, rlsRole } from './roles';
 
 test('RlsRole stores config flags and supports existing()', () => {
   const role = new RlsRole('admin', {

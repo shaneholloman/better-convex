@@ -44,10 +44,10 @@ export default defineConfig([
     dts: true,
     checks: { pluginTimings: false },
   },
-  // CLI builds (CJS) - skip bundling node_modules like tsup
+  // CLI builds (ESM) - skip bundling node_modules like tsup
   {
     entry: ['src/cli/cli.ts', 'src/cli/watcher.ts'],
-    format: 'cjs',
+    format: 'esm',
     platform: 'node',
     target: 'esnext',
     tsconfig: 'tooling/tsconfig.build.json',

@@ -16,7 +16,7 @@ import {
   type SchemaDefinition,
 } from 'convex/server';
 import { asyncMap } from 'convex-helpers';
-import { prop, sortBy, unique } from 'remeda';
+import { prop, sortBy, uniqueBy } from 'remeda';
 import type { SetOptional } from 'type-fest';
 import {
   createHandler,
@@ -115,6 +115,15 @@ const parseWhere = (
   }) as ConvexCleanedWhere[];
 };
 
+const uniqueDocs = (docs: any[]) =>
+  uniqueBy(docs, (doc) => {
+    if (doc && typeof doc === 'object') {
+      return doc._id ?? doc.id ?? doc;
+    }
+
+    return doc;
+  });
+
 export const adapterConfig = {
   adapterId: 'convex',
   adapterName: 'Convex Adapter',
@@ -192,7 +201,7 @@ export const httpAdapter = <
                   })
               )
             );
-            const docs = unique(results.flatMap((r) => r.docs));
+            const docs = uniqueDocs(results.flatMap((r) => r.docs));
 
             return docs.length;
           }
@@ -312,7 +321,7 @@ export const httpAdapter = <
                 { limit: data.limit }
               )
             );
-            const docs = unique(results.flatMap((r) => r.docs));
+            const docs = uniqueDocs(results.flatMap((r) => r.docs));
 
             if (data.sortBy) {
               const result = sortBy(docs, [
@@ -479,7 +488,7 @@ export const dbAdapter = <
                   )
               )
             );
-            const docs = unique(results.flatMap((r) => r.docs));
+            const docs = uniqueDocs(results.flatMap((r) => r.docs));
 
             return docs.length;
           }
@@ -614,7 +623,7 @@ export const dbAdapter = <
                 { limit: data.limit }
               )
             );
-            const docs = unique(results.flatMap((r) => r.docs));
+            const docs = uniqueDocs(results.flatMap((r) => r.docs));
 
             if (data.sortBy) {
               const result = sortBy(docs, [

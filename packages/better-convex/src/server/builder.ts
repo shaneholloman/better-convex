@@ -509,7 +509,7 @@ export class QueryProcedureBuilder<
     TContextOverrides,
     IntersectIfDefined<TInput, PaginatedInputSchema>,
     z.ZodObject<{
-      continueCursor: z.ZodString;
+      continueCursor: z.ZodUnion<[z.ZodString, z.ZodNull]>;
       isDone: z.ZodBoolean;
       page: z.ZodArray<TItem>;
     }>,
@@ -526,7 +526,7 @@ export class QueryProcedureBuilder<
 
     // Auto-wrap output with pagination result structure
     const outputSchema = z.object({
-      continueCursor: z.string(),
+      continueCursor: z.union([z.string(), z.null()]),
       isDone: z.boolean(),
       page: z.array(opts.item),
     });

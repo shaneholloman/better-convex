@@ -236,26 +236,27 @@ If you're coming from vanilla Convex, here's what changes.
 
 ### What's new
 
-**Before (vanilla Convex):**
+<Compare>
+  <CompareItem title="Before (vanilla Convex)">
+    ```ts showLineNumbers
+    import { ConvexError } from 'convex/values';
 
-```ts showLineNumbers
-import { ConvexError } from 'convex/values';
+    throw new ConvexError('Post not found');
+    // or
+    throw new ConvexError({ message: 'Post not found' });
+    ```
+  </CompareItem>
+  <CompareItem title="After (cRPC)">
+    ```ts showLineNumbers {1,3-6}
+    import { CRPCError } from 'better-convex/server';
 
-throw new ConvexError('Post not found');
-// or
-throw new ConvexError({ message: 'Post not found' });
-```
-
-**After (cRPC):**
-
-```ts showLineNumbers {1,3-6}
-import { CRPCError } from 'better-convex/server';
-
-throw new CRPCError({
-  code: 'NOT_FOUND',
-  message: 'Post not found',
-});
-```
+    throw new CRPCError({
+      code: 'NOT_FOUND',
+      message: 'Post not found',
+    });
+    ```
+  </CompareItem>
+</Compare>
 
 Key differences:
 - Typed error codes instead of free-form messages

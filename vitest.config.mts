@@ -12,12 +12,13 @@ export default defineConfig({
   },
   test: {
     environment: 'edge-runtime',
-    server: { deps: { inline: ['convex-test'] } },
+    // Inline monorepo deps so Vite applies our source aliases (avoid loading dist/* from package exports).
+    server: { deps: { inline: ['convex-test', 'better-convex'] } },
     include: [
       'convex/**/*.test.ts',
       'convex/**/*.test.tsx',
-      'test/**/*.test.ts',
-      'test/**/*.test.tsx',
+      'packages/**/*.vitest.ts',
+      'packages/**/*.vitest.tsx',
     ],
     exclude: ['**/node_modules/**', '**/tmp/**'],
   },

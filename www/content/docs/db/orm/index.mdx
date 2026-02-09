@@ -1,47 +1,44 @@
 ---
 title: Better-Convex ORM
-description: Drizzle v1-style relational queries for Convex with full type safety and real-time subscriptions
-links:
-  doc: https://orm.drizzle.team
+description: Drizzle v1-style relational queries for Convex with full type safety
 ---
 
-import { InfoIcon, CheckCircle, AlertTriangle } from "lucide-react"
+import { CheckCircle } from "lucide-react"
 
-Better-Convex ORM brings Drizzle v1’s relational query builder to Convex. You keep the familiar API while gaining Convex’s real‑time, serverless database.
+Better-Convex ORM mirrors Drizzle v1's relational query builder while adapting to Convex's document model.
 
 ## What You Get
 
-- Drizzle‑style schema and relations (`convexTable`, `defineRelations`, `one`, `many`)
-- Type‑safe queries (`findMany`, `findFirst`, `paginate`, `where`, `orderBy`, `with`)
+- Drizzle-style schema and relations (`convexTable`, `defineRelations`, `one`, `many`)
+- Type-safe queries (`findMany`, `findFirst`, `paginate`, `where`, `orderBy`, `with`)
 - Mutations (`insert`, `update`, `delete`, `returning`, `onConflictDoUpdate`)
 - Runtime RLS policies (`rlsPolicy`, `convexTable.withRLS`)
-- End‑to‑end TypeScript inference (`InferSelectModel`, `$inferSelect`)
-- Convex real‑time subscriptions by default
+- End-to-end TypeScript inference (`InferSelectModel`, `$inferSelect`)
 
-<Callout icon={<CheckCircle />}>
-**API Compatibility**: Better‑Convex mirrors Drizzle v1’s relational query builder surface while adapting to Convex’s document model.
-</Callout>
-
-<Callout icon={<InfoIcon />}>
-**Context setup**: attach ORM to `ctx.orm` once (see Quickstart). Examples below assume `ctx.orm` is available.
-</Callout>
+`ctx.orm` is attached once during setup (see [Quickstart](/docs/db/orm/quickstart)). All examples below assume `ctx.orm` is available.
 
 ## Where It Differs From SQL ORMs
 
-- `_id` and `_creationTime` are auto‑created
-- Fields are nullable by default (`text()` → `string | null`)
-- `columns` projection and string operators run post‑fetch
+Here's a quick summary of the key differences you'll encounter coming from a SQL-based ORM:
+
+- `_id` and `_creationTime` are auto-created by Convex
+- Fields are nullable by default (`text()` -> `string | null`)
+- `columns` projection and string operators run post-fetch
 - `with` is relation loading (no SQL joins)
 - Cursor pagination needs an index on the primary `orderBy` field
 
 ## Quick Example
 
-```ts title="convex/schema.ts"
-import { convexTable, defineRelations, text, boolean, id } from 'better-convex/orm';
+Let's define a simple schema with `users` and `posts` tables, then wire up relations between them:
+
+```ts title="convex/schema.ts" showLineNumbers {3-7,10-14}
+import { convexTable, defineRelations, text, boolean, integer, id, index } from 'better-convex/orm';
 
 export const users = convexTable('users', {
   name: text().notNull(),
   email: text().notNull(),
+  role: text(),
+  age: integer(),
 });
 
 export const posts = convexTable('posts', {
@@ -49,7 +46,7 @@ export const posts = convexTable('posts', {
   content: text().notNull(),
   published: boolean(),
   userId: id('users'),
-});
+}, (t) => [index('by_published').on(t.published)]);
 
 export const relations = defineRelations({ users, posts }, (r) => ({
   users: { posts: r.many.posts() },
@@ -59,20 +56,45 @@ export const relations = defineRelations({ users, posts }, (r) => ({
 }));
 ```
 
-```ts title="convex/queries.ts"
-import { query } from './_generated/server';
-export const getRecentPosts = query({
-  handler: async (ctx) => {
-    const db = ctx.orm;
-    return db.query.posts.findMany({
-      where: { published: true },
-      orderBy: { _creationTime: 'desc' },
-      limit: 10,
-      with: { author: true },
+Here's how to query published posts with their authors using `ctx.orm`.
+This docs site uses better-convex cRPC going forward, but here are both styles:
+
+<Tabs groupId="orm-procedure-style" items={["Convex", "cRPC"]} persist>
+  <Tab value="Convex">
+    ```ts title="convex/functions/posts.ts" showLineNumbers {4-9}
+    import { query } from './_generated/server';
+
+    export const getRecentPosts = query({
+      handler: async (ctx) => {
+        const db = ctx.orm;
+        return db.query.posts.findMany({
+          where: { published: true },
+          orderBy: { _creationTime: 'desc' },
+          limit: 10,
+          with: { author: true },
+        });
+      },
     });
-  },
-});
-```
+    ```
+  </Tab>
+  <Tab value="cRPC">
+    ```ts title="convex/functions/posts.ts" showLineNumbers {3-7}
+    import { publicQuery } from '../lib/crpc';
+
+    export const getRecentPosts = publicQuery.query(async ({ ctx }) => {
+      const db = ctx.orm;
+      return db.query.posts.findMany({
+        where: { published: true },
+        orderBy: { _creationTime: 'desc' },
+        limit: 10,
+        with: { author: true },
+      });
+    });
+    ```
+  </Tab>
+</Tabs>
+
+You now have a fully typed query with relation loading in just a few lines.
 
 ## Next Steps
 
@@ -80,8 +102,11 @@ export const getRecentPosts = query({
   <Card title="Quickstart" href="/docs/db/orm/quickstart">
     Get running in 5 minutes
   </Card>
+  <Card title="Migrate from native Convex" href="/docs/db/orm/migrate-from-convex">
+    ctx.db to ORM mapping guide
+  </Card>
   <Card title="Migrate from Convex Ents" href="/docs/db/orm/migrate-from-ents">
-    Ents → ORM mapping guide
+    Ents to ORM mapping guide
   </Card>
   <Card title="Schema Definition" href="/docs/db/orm/schema">
     Tables, relations, and indexes
@@ -93,6 +118,6 @@ export const getRecentPosts = query({
     rlsPolicy rules and enforcement
   </Card>
   <Card title="Drizzle Comparison" href="/docs/db/orm/comparison">
-    Side‑by‑side API mapping
+    Side-by-side API mapping
   </Card>
 </Cards>

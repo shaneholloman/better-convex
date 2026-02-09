@@ -1,11 +1,8 @@
+/** biome-ignore-all lint/performance/useTopLevelRegex: inline regex assertions are intentional in tests. */
 import { expect, test } from 'vitest';
-import schema from '../../convex/schema';
-import { convexTest } from '../../convex/setup.testing';
-import {
-  getPage,
-  paginator,
-  streamQuery,
-} from '../../packages/better-convex/src/orm/pagination';
+import schema from '../../../../convex/schema';
+import { convexTest } from '../../../../convex/setup.testing';
+import { getPage, paginator, streamQuery } from './pagination';
 
 test('getPage accepts explicit indexFields without schema', async () => {
   const t = convexTest(schema);

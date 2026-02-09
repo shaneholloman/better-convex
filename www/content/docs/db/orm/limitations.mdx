@@ -1,11 +1,9 @@
 ---
 title: Limitations & Performance
 description: Understand Better-Convex ORM limitations, workarounds, and performance characteristics
-links:
-  doc: https://docs.convex.dev/database
 ---
 
-import { InfoIcon, AlertTriangle, CheckCircle, Zap } from "lucide-react"
+import { AlertTriangle } from "lucide-react"
 
 Better-Convex mirrors Drizzle v1’s relational query builder on top of Convex’s document database. That means a few SQL-only features do not apply, and some features are implemented post-fetch for API parity.
 
@@ -23,7 +21,7 @@ These Drizzle features are SQL-specific and do not map to Convex:
 
 Use relation filters for Convex-style existence checks:
 
-```ts
+```ts showLineNumbers
 // Has at least one related post
 await db.query.users.findMany({
   where: { posts: true },
@@ -44,21 +42,21 @@ For aggregation use cases today, use the Convex aggregate component:
 These features keep Drizzle’s API shape but run after data is fetched:
 
 **Column selection**
-```ts
+```ts showLineNumbers
 const users = await db.query.users.findMany({
   columns: { name: true, email: true },
 });
 ```
 
 **String operators**
-```ts
+```ts showLineNumbers
 const users = await db.query.users.findMany({
   where: { email: { ilike: '%@example.com' } },
 });
 ```
 
 **Extras (computed fields)**
-```ts
+```ts showLineNumbers
 const users = await db.query.users.findMany({
   extras: {
     emailDomain: (row) => row.email.split('@')[1]!,
@@ -67,7 +65,7 @@ const users = await db.query.users.findMany({
 ```
 
 **Relation filters on `many()`**
-```ts
+```ts showLineNumbers
 const users = await db.query.users.findMany({
   with: {
     posts: {
@@ -88,12 +86,12 @@ const users = await db.query.users.findMany({
 - Compound index planning follows prefix validity. Non-leading-only predicates (for example `numLikes` on `[type, numLikes]`) are treated as non-indexable and require `allowFullScan: true`
 - Add `index('...').on(t.field)` on fields used for filter or sort
 
-```ts
+```ts showLineNumbers
 const posts = convexTable(
   'posts',
   {
     title: text().notNull(),
-    numLikes: number().notNull(),
+    numLikes: integer().notNull(),
   },
   (t) => [index('by_likes').on(t.numLikes)]
 );
@@ -179,7 +177,7 @@ Recommended patterns:
 
 Better-Convex exposes Drizzle-style helpers for runtime schema metadata:
 
-```ts
+```ts showLineNumbers
 import { getTableColumns, getTableConfig } from 'better-convex/orm';
 
 const columns = getTableColumns(users); // includes _id/_creationTime

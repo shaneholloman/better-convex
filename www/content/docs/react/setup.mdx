@@ -375,46 +375,47 @@ If you're coming from vanilla Convex, here's what changes.
 
 ### What's new
 
-**Before (vanilla Convex):**
+<Compare>
+  <CompareItem title="Before (vanilla Convex)">
+    ```tsx showLineNumbers
+    import { ConvexProvider, ConvexReactClient } from 'convex/react';
 
-```tsx showLineNumbers
-import { ConvexProvider, ConvexReactClient } from 'convex/react';
+    const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
-const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+    <ConvexProvider client={convex}>
+      {children}
+    </ConvexProvider>
+    ```
+  </CompareItem>
+  <CompareItem title="After (cRPC)">
+    ```tsx showLineNumbers {1-8,10-11,13-20}
+    import { QueryClientProvider } from '@tanstack/react-query';
+    import {
+      ConvexReactClient,
+      getQueryClientSingleton,
+      getConvexQueryClientSingleton,
+    } from 'better-convex/react';
+    import { CRPCProvider } from '@/lib/convex/crpc';
 
-<ConvexProvider client={convex}>
-  {children}
-</ConvexProvider>
-```
+    const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
-**After (cRPC):**
+    const queryClient = getQueryClientSingleton(createQueryClient);
+    const convexQueryClient = getConvexQueryClientSingleton({
+      convex,
+      queryClient,
+    });
 
-```tsx showLineNumbers {1-8,10-11,13-20}
-import { QueryClientProvider } from '@tanstack/react-query';
-import {
-  ConvexReactClient,
-  getQueryClientSingleton,
-  getConvexQueryClientSingleton,
-} from 'better-convex/react';
-import { CRPCProvider } from '@/lib/convex/crpc';
-
-const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-
-const queryClient = getQueryClientSingleton(createQueryClient);
-const convexQueryClient = getConvexQueryClientSingleton({
-  convex,
-  queryClient,
-});
-
-<QueryClientProvider client={queryClient}>
-  <CRPCProvider
-    convexClient={convex}
-    convexQueryClient={convexQueryClient}
-  >
-    {children}
-  </CRPCProvider>
-</QueryClientProvider>
-```
+    <QueryClientProvider client={queryClient}>
+      <CRPCProvider
+        convexClient={convex}
+        convexQueryClient={convexQueryClient}
+      >
+        {children}
+      </CRPCProvider>
+    </QueryClientProvider>
+    ```
+  </CompareItem>
+</Compare>
 
 Key differences:
 

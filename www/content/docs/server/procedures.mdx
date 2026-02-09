@@ -455,33 +455,34 @@ If you're coming from vanilla Convex, here's what changes.
 
 ### What's new
 
-**Before (vanilla Convex):**
+<Compare>
+  <CompareItem title="Before (vanilla Convex)">
+    ```ts showLineNumbers
+    import { query } from './_generated/server';
+    import { v } from 'convex/values';
 
-```ts showLineNumbers
-import { query } from './_generated/server';
-import { v } from 'convex/values';
+    export const getById = query({
+      args: { id: v.id('user') },
+      handler: async (ctx, args) => {
+        return ctx.db.get(args.id);
+      },
+    });
+    ```
+  </CompareItem>
+  <CompareItem title="After (cRPC)">
+    ```ts showLineNumbers {5-7}
+    import { z } from 'zod';
+    import { zid } from 'convex-helpers/server/zod4';
+    import { publicQuery } from '../lib/crpc';
 
-export const getById = query({
-  args: { id: v.id('user') },
-  handler: async (ctx, args) => {
-    return ctx.db.get(args.id);
-  },
-});
-```
-
-**After (cRPC):**
-
-```ts showLineNumbers {5-7}
-import { z } from 'zod';
-import { zid } from 'convex-helpers/server/zod4';
-import { publicQuery } from '../lib/crpc';
-
-export const getById = publicQuery
-  .input(z.object({ id: zid('user') }))
-  .query(async ({ ctx, input }) => {
-    return ctx.db.get(input.id);
-  });
-```
+    export const getById = publicQuery
+      .input(z.object({ id: zid('user') }))
+      .query(async ({ ctx, input }) => {
+        return ctx.db.get(input.id);
+      });
+    ```
+  </CompareItem>
+</Compare>
 
 Key differences:
 - Fluent builder API instead of object config

@@ -1,39 +1,35 @@
 ---
 title: Relations
 description: Define relationships between tables with Better-Convex ORM
-links:
-  doc: https://orm.drizzle.team/docs/relations-v2
 ---
 
-import { InfoIcon, CheckCircle, AlertTriangle } from "lucide-react"
+import { InfoIcon, AlertTriangle } from "lucide-react"
 
-Define relationships between tables using Drizzle v1 `defineRelations()` API. Better-Convex ORM mirrors Drizzle v1 relation syntax.
+In this guide, we'll learn how to define relationships between tables. You'll master one-to-one, one-to-many, and many-to-many relations, self-references, and eager loading with `with:`.
 
 ## Overview
 
 Relations in Better-Convex ORM use the same API as Drizzle v1 for **defining** and **loading** relationships. The `with:` option is type-safe, with a few nested constraints noted below.
 
-<Callout icon={<AlertTriangle />}>
-Relation loading via `with:` works end-to-end. Nested `with` has a depth limit and per-relation filters are post-fetch for `many()` relations.
-</Callout>
+Relation loading via `with:` works end-to-end. Nested `with` has a depth limit, and per-relation filters for `many()` relations are applied post-fetch.
+
+Relation loading requires indexes on relation fields (e.g. `posts.userId`). Missing indexes throw unless you opt in with `allowFullScan: true`. You can use `defineSchema(..., { strict: false })` to downgrade throws to warnings when `allowFullScan` is set.
 
 <Callout icon={<AlertTriangle />}>
-Relation loading requires indexes on relation fields (e.g. `posts.authorId`). Missing indexes throw unless you opt in with `allowFullScan: true`. Use `defineSchema(..., { strict: false })` to downgrade throws to warnings when `allowFullScan` is set.
-</Callout>
-
-<Callout icon={<AlertTriangle />}>
-Loading `many()` relations requires explicit sizing (`with.<relation>.limit`), a schema `defaults.defaultLimit`, or `allowFullScan: true` on the parent query.
+Loading `many()` relations requires explicit sizing: provide `with.<relation>.limit`, a schema `defaults.defaultLimit`, or `allowFullScan: true` on the parent query.
 </Callout>
 
 See Schema Options for strict policy details.
 
 ## Relation Config Options
 
-Better-Convex mirrors Drizzle’s `defineRelations()` config shape.
+Better-Convex mirrors Drizzle's `defineRelations()` config shape. Let's look at the two building blocks.
 
 ### `one()`
 
-```ts
+Here's the full set of options for a `one()` relation:
+
+```ts showLineNumbers
 r.one.users({
   from: r.posts.authorId,
   to: r.users._id,
@@ -50,7 +46,9 @@ r.one.users({
 
 ### `many()`
 
-```ts
+And the options for a `many()` relation:
+
+```ts showLineNumbers
 r.many.posts({
   from: r.users._id,
   to: r.posts.authorId,
@@ -67,7 +65,9 @@ r.many.posts({
 
 ### One-to-One Relations
 
-```ts title="convex/schema.ts" showLineNumbers {1-3,5-23}
+A one-to-one relation connects exactly one record in each table. Here's a user with a single profile:
+
+```ts title="convex/schema.ts" showLineNumbers {12-21}
 import { convexTable, defineRelations, text, id } from 'better-convex/orm';
 
 const users = convexTable('users', {
@@ -93,18 +93,18 @@ const relations = defineRelations({ users, profiles }, (r) => ({
 ```
 
 <Callout icon={<InfoIcon />}>
-**Relation Definition**: Use `from` and `to` to describe the foreign key relationship. In Convex, primary keys are `_id`.
+**Note**: Use `from` and `to` to describe the foreign key relationship. In Convex, primary keys are `_id`.
 </Callout>
 
 <Callout icon={<AlertTriangle />}>
-**1:1 uniqueness**: enforce a unique constraint on the foreign key column (`.unique()` / `uniqueIndex()`). Runtime uniqueness is best‑effort; concurrent mutations can still race.
+**Important**: Enforce a unique constraint on the foreign key column (`.unique()` / `uniqueIndex()`) for true 1:1 semantics. Runtime uniqueness is best-effort; concurrent mutations can still race.
 </Callout>
 
 ### One-to-Many Relations
 
-The most common relation type - one user has many posts.
+The most common relation type - one user has many posts. Let's define both sides:
 
-```ts title="convex/schema.ts" showLineNumbers {1-3,5-21,23-31}
+```ts title="convex/schema.ts" showLineNumbers {12-20}
 import { convexTable, defineRelations, text, boolean, id } from 'better-convex/orm';
 
 const users = convexTable('users', {
@@ -138,9 +138,9 @@ const relations = defineRelations({ users, posts }, (r) => ({
 
 ### Many-to-Many Relations (Join Table)
 
-Better-Convex does not auto-create join tables. Model many-to-many with an explicit join table:
+Better-Convex does not auto-create join tables. You model many-to-many with an explicit join table:
 
-```ts title="convex/schema.ts" showLineNumbers {1-3,5-24,26-40}
+```ts title="convex/schema.ts" showLineNumbers {15-24}
 import { convexTable, defineRelations, text, id } from 'better-convex/orm';
 
 const posts = convexTable('posts', {
@@ -172,10 +172,10 @@ const relations = defineRelations({ posts, tags, postsTags }, (r) => ({
 
 ### Many-to-Many With Data (Join Table + Payload)
 
-If you need extra data on the relationship (role, timestamps, etc.), put it on the join table. No special API required.
+If you need extra data on the relationship (role, timestamps, etc.), put it on the join table. No special API required:
 
-```ts title="convex/schema.ts" showLineNumbers {1-3,5-33,35-52}
-import { convexTable, defineRelations, id, text, number } from 'better-convex/orm';
+```ts title="convex/schema.ts" showLineNumbers {11-16,18-29}
+import { convexTable, defineRelations, id, integer, text } from 'better-convex/orm';
 
 const users = convexTable('users', {
   name: text().notNull(),
@@ -189,7 +189,7 @@ const memberships = convexTable('memberships', {
   userId: id('users').notNull(),
   groupId: id('groups').notNull(),
   role: text().notNull(),
-  joinedAt: number().notNull(),
+  joinedAt: integer().notNull(),
 });
 
 const relations = defineRelations({ users, groups, memberships }, (r) => ({
@@ -206,7 +206,9 @@ const relations = defineRelations({ users, groups, memberships }, (r) => ({
 }));
 ```
 
-```ts title="convex/queries.ts"
+You can then load the join table payload alongside nested relations:
+
+```ts title="convex/queries.ts" showLineNumbers {3-6}
 const usersWithGroups = await db.query.users.findMany({
   with: {
     memberships: {
@@ -221,7 +223,7 @@ const usersWithGroups = await db.query.users.findMany({
 
 You can also define direct many-to-many relations with `.through()` to point at junction table columns:
 
-```ts title="convex/schema.ts" showLineNumbers {1-3,5-27}
+```ts title="convex/schema.ts" showLineNumbers {16-27}
 import { boolean, convexTable, defineRelations, id, text } from 'better-convex/orm';
 
 const users = convexTable('users', {
@@ -257,9 +259,9 @@ const relations = defineRelations({ users, groups, usersToGroups }, (r) => ({
 
 ### Self-Referencing Relations
 
-Define relations where a table references itself (e.g., user followers).
+You can define relations where a table references itself. Here's a manager/reports hierarchy:
 
-```ts title="convex/schema.ts" showLineNumbers {1-8}
+```ts title="convex/schema.ts" showLineNumbers {7-17}
 import { convexTable, defineRelations, text, id } from 'better-convex/orm';
 
 const users = convexTable('users', {
@@ -284,16 +286,15 @@ const relations = defineRelations({ users }, (r) => ({
 }));
 ```
 
-**Important:**
-- **Use `alias`** to distinguish self-referencing relations
-- **Unique names** are required to disambiguate
+<Callout icon={<InfoIcon />}>
+**Important**: Use `alias` to distinguish self-referencing relations. Unique names are required to disambiguate.
+</Callout>
 
 ### Optional `one()` Relations
 
-By default, `one()` relations are optional and return `null` when no match is found.  
-Use `optional: false` when the relation is required:
+By default, `one()` relations are optional and return `null` when no match is found. Use `optional: false` when the relation is required:
 
-```ts title="convex/schema.ts" showLineNumbers {1-3,5-18}
+```ts title="convex/schema.ts" showLineNumbers {10-16}
 import { convexTable, defineRelations, id, text } from 'better-convex/orm';
 
 const users = convexTable('users', {
@@ -320,9 +321,9 @@ const relations = defineRelations({ users, posts }, (r) => ({
 
 ### Required Fields
 
-Define the `one()` side with `from` and `to`. The `many()` side can be inferred from the inverse relation.
+Define the `one()` side with `from` and `to`. The `many()` side can be inferred from the inverse relation:
 
-```ts
+```ts showLineNumbers {3-6}
 const relations = defineRelations({ users, posts }, (r) => ({
   posts: {
     author: r.one.users({
@@ -338,7 +339,9 @@ const relations = defineRelations({ users, posts }, (r) => ({
 
 ### Export Tables and Schema
 
-```ts
+Make sure to export both tables and relations from your schema:
+
+```ts showLineNumbers
 export const relations = defineRelations({ users, posts }, (r) => ({
   users: { posts: r.many.posts() },
   posts: { author: r.one.users({ from: r.posts.userId, to: r.users._id }) },
@@ -349,7 +352,7 @@ export const relations = defineRelations({ users, posts }, (r) => ({
 
 Use `defineRelationsPart` to split large relation graphs across modules and merge them later:
 
-```ts title="convex/relations.ts" showLineNumbers {1-4,6-26}
+```ts title="convex/relations.ts" showLineNumbers {4-12,14-21,23-30}
 import { defineRelations, defineRelationsPart } from 'better-convex/orm';
 import { users, posts, comments } from './schema';
 
@@ -382,23 +385,23 @@ export const relations = defineRelations({ users, posts, comments }, (r) => ({
 ```
 
 <Callout icon={<InfoIcon />}>
-If a relation relies on inference (no `from`/`to`), define both sides in the same part or use explicit `from`/`to`.
+**Tip**: If a relation relies on inference (no `from`/`to`), define both sides in the same part or use explicit `from`/`to`.
 </Callout>
 
 ### Bidirectional Definitions
 
-Define both sides when you want `with` loading in both directions.
+Define both sides when you want `with:` loading in both directions.
 
-### One‑Way Definitions
+### One-Way Definitions
 
-You can define relations only on the side you need. When you do, provide explicit `from`/`to` (and `alias` if ambiguous). The inverse side is optional and won’t be available for `with` unless you define it.
+You can define relations only on the side you need. When you do, provide explicit `from`/`to` (and `alias` if ambiguous). The inverse side is optional and won't be available for `with:` unless you define it.
 
 ### Predefined Filters
 
-You can attach a predefined `where` filter to a relation. It will always be applied:
+You can attach a predefined `where` filter to a relation. It will always be applied when loading:
 
-```ts title="convex/schema.ts" showLineNumbers {1-4,6-20}
-import { convexTable, defineRelations, id, text } from 'better-convex/orm';
+```ts title="convex/schema.ts" showLineNumbers {13-19}
+import { boolean, convexTable, defineRelations, id, text } from 'better-convex/orm';
 
 const users = convexTable('users', {
   name: text().notNull(),
@@ -424,9 +427,9 @@ const relations = defineRelations({ users, posts }, (r) => ({
 
 ## Relation Loading with `with:`
 
-Better-Convex ORM supports Drizzle-style relation loading:
+Better-Convex ORM supports Drizzle-style relation loading. Here's how to eagerly load posts for each user:
 
-```ts
+```ts showLineNumbers {3-7}
 const db = ctx.orm;
 
 const usersWithPosts = await db.query.users.findMany({
@@ -440,14 +443,14 @@ const usersWithPosts = await db.query.users.findMany({
 ```
 
 <Callout icon={<InfoIcon />}>
-**Note**: `limit`, `orderBy`, and `where` apply to `many()` relations. If `limit` is omitted, configure `defineSchema(..., { defaults: { defaultLimit } })` or use `allowFullScan: true` on the parent query. Relation loading also fail-fasts when unique lookup keys exceed `defineSchema(..., { defaults: { relationFanOutMaxKeys } })` (default `1000`) unless `allowFullScan: true` is set. Nested `with` works with a depth limit to prevent infinite recursion.
+**Note**: `limit`, `orderBy`, and `where` apply to `many()` relations. If `limit` is omitted, configure `defineSchema(..., { defaults: { defaultLimit } })` or use `allowFullScan: true` on the parent query. Relation loading also fail-fasts when unique lookup keys exceed `defineSchema(..., { defaults: { relationFanOutMaxKeys } })` (default `1000`) unless `allowFullScan: true` is set. Nested `with:` works with a depth limit to prevent infinite recursion.
 </Callout>
 
 ### Column Selection Semantics
 
-`columns` follows Drizzle v1 selection rules:
+`columns` follows Drizzle v1 selection rules. You can include specific columns, exclude them, or select none:
 
-```ts title="convex/queries.ts" showLineNumbers {1-4,6-24}
+```ts title="convex/queries.ts" showLineNumbers {2,6,10-11}
 const users = await db.query.users.findMany({
   columns: { name: true, email: true }, // include-only
 });
@@ -463,10 +466,12 @@ const usersOnlyPosts = await db.query.users.findMany({
 ```
 
 <Callout icon={<InfoIcon />}>
-`columns` only affects table columns. Relation data and `extras` are preserved.
+**Note**: `columns` only affects table columns. Relation data and `extras` are preserved.
 </Callout>
 
 ## Common Gotchas
+
+Here's a quick reference for the most frequent issues:
 
 | Issue | Solution |
 |-------|----------|
@@ -477,6 +482,8 @@ const usersOnlyPosts = await db.query.users.findMany({
 | **`with:` not working** | Ensure relations are defined on both tables (or explicit `from`/`to`) |
 | **`many()` relation throws sizing error** | Add `with.<relation>.limit`, configure `defaults.defaultLimit`, or set `allowFullScan: true` |
 | **Relation fan-out guardrail throws** | Reduce source cardinality, raise `defaults.relationFanOutMaxKeys`, or set `allowFullScan: true` |
+
+You now know how to define every kind of relation and load them eagerly with `with:`.
 
 ## Next Steps
 

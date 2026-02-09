@@ -1,61 +1,67 @@
 ---
 title: Delete
 description: Delete rows with Drizzle-style builders (Better-Convex ORM)
-links:
-  doc: https://orm.drizzle.team/docs/delete
 ---
 
 import { InfoIcon, AlertTriangle } from "lucide-react"
 
-Better-Convex ORM provides a Drizzle-style `delete()` builder for Convex mutations.
+In this guide, we'll learn how to delete rows using the ORM's Drizzle-style `delete()` builder. You'll see basic deletes, returning clauses, paginated execution, async batching, and advanced delete modes like soft and scheduled deletes.
 
 ## Delete Rows
 
-```ts
-import { eq } from 'better-convex/orm';
+Let's start with a mutation that deletes a user by `_id`:
 
-// db is ctx.orm
-await db.delete(users).where(eq(users.email, 'dan@example.com'));
+```ts showLineNumbers title="convex/functions/users.ts"
+import { z } from 'zod';
+import { zid } from 'convex-helpers/server/zod4';
+import { eq } from 'better-convex/orm';
+import { publicMutation } from '../lib/crpc';
+import { users } from '../schema';
+
+export const removeUser = publicMutation
+  .input(z.object({ userId: zid('users') }))
+  .mutation(async ({ ctx, input }) => {
+    await ctx.orm.delete(users).where(eq(users._id, input.userId));
+  });
 ```
 
 To delete all rows in a table (use with care):
 
-```ts
-await db.delete(users).allowFullScan();
+```ts showLineNumbers
+await ctx.orm.delete(users).allowFullScan();
 ```
 
 <Callout icon={<AlertTriangle />}>
-`delete()` without `.where(...)` throws unless you call `.allowFullScan()`.  
-`strict` controls warning behavior, not whether full scans are allowed.
+**Important:** `delete()` without `.where(...)` throws unless you call `.allowFullScan()`. See [Querying Data](/docs/db/orm/queries) for details on `allowFullScan`.
 </Callout>
 
 ## Returning
 
-```ts
-const deleted = await db
+Use `.returning()` to get back the deleted rows. You can return all fields or pick specific columns:
+
+```ts showLineNumbers
+const deleted = await ctx.orm
   .delete(users)
-  .where(eq(users.email, 'dan@example.com'))
+  .where(eq(users._id, userId))
   .returning();
 
-const ids = await db
+const ids = await ctx.orm
   .delete(users)
-  .where(eq(users.email, 'dan@example.com'))
+  .where(eq(users._id, userId))
   .returning({ id: users._id });
 ```
 
 ## Safety Limits
 
-`delete()` collects matching rows in bounded pages before applying writes:
+The ORM collects matching rows in bounded pages before applying writes. The key defaults are:
 
-- `mutationBatchSize`: defaults to `100`
-- `mutationLeafBatchSize`: defaults to `900` (async non-recursive FK fan-out)
-- `mutationMaxRows`: defaults to `1000`
-- `mutationMaxBytesPerBatch`: defaults to `2_097_152` (async measured-byte budget)
-- `mutationScheduleCallCap`: defaults to `100` (async schedule calls per mutation)
+- `mutationBatchSize`: `100`
+- `mutationMaxRows`: `1000`
+- `mutationLeafBatchSize`: `900` (async FK fan-out)
 
-If matched rows exceed `mutationMaxRows`, delete throws.
+If matched rows exceed `mutationMaxRows`, the delete throws. You can customize these values in your schema:
 
-```ts
+```ts showLineNumbers {2-3}
 export default defineSchema({ users, posts }, {
   defaults: {
     mutationBatchSize: 200,
@@ -64,71 +70,79 @@ export default defineSchema({ users, posts }, {
 });
 ```
 
+For the full list of configurable defaults, see [Schema Definition -- Runtime Defaults](/docs/db/orm/schema#runtime-defaults).
+
 ## Paginated Delete Execution
 
-For large workloads, process delete batches with `paginate({ cursor, numItems })`.
+For large workloads, you can process delete batches page-by-page with `.paginate()`. This requires an index on the filtered field:
 
-```ts
-const page1 = await db
+```ts showLineNumbers
+// Schema: index('by_role').on(t.role) on users table
+```
+
+```ts showLineNumbers {5}
+const page1 = await ctx.orm
   .delete(users)
-  .where(eq(users.status, 'inactive'))
+  .where(eq(users.role, 'inactive'))
   .paginate({ cursor: null, numItems: 100 });
 
 if (!page1.isDone) {
-  const page2 = await db
+  const page2 = await ctx.orm
     .delete(users)
-    .where(eq(users.status, 'inactive'))
+    .where(eq(users.role, 'inactive'))
     .paginate({ cursor: page1.continueCursor, numItems: 100 });
 }
 ```
 
-Paged delete result:
-- `continueCursor`: cursor for the next batch
-- `isDone`: `true` when no more pages remain
-- `numAffected`: rows deleted in this page
-- `page`: returned rows for this page (only when `.returning()` is used)
+Each page returns:
+
+- `continueCursor` -- cursor for the next batch
+- `isDone` -- `true` when no more pages remain
+- `numAffected` -- rows deleted in this page
+- `page` -- returned rows (only when `.returning()` is used)
 
 <Callout icon={<InfoIcon />}>
-`paginate()` currently supports single-range index plans. Multi-probe filters (`inArray`, some `OR` patterns, complement ranges) are not yet supported in paged mutation mode.
+**Note:** `paginate()` currently supports single-range index plans. Multi-probe filters (`inArray`, some `OR` patterns, complement ranges) are not yet supported in paged mutation mode.
 </Callout>
 
 ## Async Batched Delete
 
-Use async mode when a delete can affect large sets.
+When a delete can affect large sets of rows, use async mode. The first batch runs in the current mutation, then remaining batches are scheduled automatically.
 
-- Per call: `execute({ mode: 'async' })`
-- Convenience alias: `executeAsync(...)`
-- Global default: `defineSchema(..., { defaults: { mutationExecutionMode: 'async' } })`
+You can enable async mode in three ways:
 
-Async mode runs the first delete batch in the current mutation, then schedules remaining batches through Convex scheduler.
+- **Per call:** `.execute({ mode: 'async' })`
+- **Convenience alias:** `.executeAsync()`
+- **Global default:** `defineSchema(..., { defaults: { mutationExecutionMode: 'async' } })`
 
-```ts
-const firstBatch = await db
+Here's an async delete with custom batch size:
+
+```ts showLineNumbers {5}
+const firstBatch = await ctx.orm
   .delete(users)
-  .where(eq(users.status, 'inactive'))
+  .where(eq(users.role, 'inactive'))
   .returning({ id: users._id })
   .execute({ mode: 'async', batchSize: 200, delayMs: 0 });
 ```
 
-Important behavior:
-- `execute()` in async mode returns the same type shape as sync `execute()` (with `.returning()`, rows from the first batch only).
-- Remaining batches are scheduled asynchronously.
-- Explicit async APIs (`execute({ mode: 'async' })` / `executeAsync()`) cannot be combined with `.paginate()` or resolved scheduled delete mode (`.scheduled(...)` or table-level `deletion('scheduled')`).
-- `.paginate()` remains the caller-controlled execution path.
-- `batchSize` resolves as: per-call `batchSize` → `defaults.mutationBatchSize` → `100`.
-- `delayMs` resolves as: per-call `delayMs` → `defaults.mutationAsyncDelayMs` → `0`.
-- FK/cascade async fan-out uses:
-  - `mutationBatchSize` for recursive delete cascade (`onDelete: 'cascade'`)
-  - `mutationLeafBatchSize` for non-recursive actions (`set null`, `set default`)
-- Async fan-out stops at `mutationMaxBytesPerBatch` and may throw after `mutationScheduleCallCap` schedule calls in one mutation invocation.
+Key behaviors to keep in mind:
 
-Async execution requires wiring `scheduler` + `scheduledMutationBatch` when building `ctx.orm`.
+- `execute()` in async mode returns the same shape as sync mode (with `.returning()`, you get rows from the first batch only)
+- Remaining batches are scheduled asynchronously
+- Async APIs (`execute({ mode: 'async' })` / `executeAsync()`) cannot be combined with `.paginate()` or resolved scheduled delete mode (`.scheduled(...)` or table-level `deletion('scheduled')`)
+- `batchSize` resolves as: per-call `batchSize` > `defaults.mutationBatchSize` > `100`
+- `delayMs` resolves as: per-call `delayMs` > `defaults.mutationAsyncDelayMs` > `0`
+- FK/cascade async fan-out uses `mutationBatchSize` for recursive delete cascade (`onDelete: 'cascade'`) and `mutationLeafBatchSize` for non-recursive actions (`set null`, `set default`)
+
+<Callout icon={<AlertTriangle />}>
+**Important:** Async execution requires wiring `ormFunctions` and `scheduledMutationBatch` in your ORM setup. See [Mutations -- Async Wiring Setup](/docs/db/orm/mutations#wiring-setup) for the setup steps.
+</Callout>
 
 ## Table Default Delete Mode
 
-Use table-level deletion config when a table should always default to soft/scheduled semantics.
+You can configure default delete semantics per table using `deletion(...)` in the table definition. This is useful when a table should always default to soft or scheduled deletes.
 
-```ts
+```ts showLineNumbers title="convex/schema.ts" {8}
 import { convexTable, deletion, integer, text } from 'better-convex/orm';
 
 const users = convexTable(
@@ -141,27 +155,48 @@ const users = convexTable(
 );
 ```
 
-Delete mode precedence:
-- per-query override (`.hard()`, `.soft()`, `.scheduled({ delayMs })`)
-- table default via `deletion(...)`
-- fallback `'hard'`
+Delete mode precedence (highest to lowest):
 
-When a table defaults to scheduled mode, use `.hard()` to opt out for a specific delete (including `.hard().executeAsync(...)`).
+1. Per-query override (`.hard()`, `.soft()`, `.scheduled({ delayMs })`)
+2. Table default via `deletion(...)`
+3. Fallback: `'hard'`
+
+When a table defaults to scheduled mode, use `.hard()` to opt out for a specific delete:
+
+```ts showLineNumbers
+await ctx.orm.delete(users).where(eq(users._id, userId)).hard();
+```
 
 ## Scheduled Delete Cancellation
 
-`.scheduled({ delayMs })` stores the current `deletionTime` and passes it to the scheduled worker.
-The worker only proceeds if the row still has the same `deletionTime`.
+`.scheduled({ delayMs })` stores the current `deletionTime` and passes it to the scheduled worker. The worker only proceeds if the row still has the same `deletionTime`.
 
 To cancel a pending scheduled hard-delete, clear or change `deletionTime` before the worker runs.
 
 ## Drizzle Differences
 
-<Callout icon={<AlertTriangle />}>
-- SQL-only features like `limit`, `orderBy`, and `WITH` clauses are not applicable
+A few SQL-only features from Drizzle are not applicable in Convex:
+
+- `limit`, `orderBy`, and `WITH` clauses are not supported
 - Deletes are executed against Convex documents; there is no SQL `DELETE FROM ...`
-</Callout>
 
 <Callout icon={<InfoIcon />}>
-Foreign key actions and RLS policies are enforced at runtime for ORM deletes when you attach ORM to `ctx.orm`. Direct `ctx.db.delete(...)` bypasses these checks.
+**Note:** Foreign key actions and RLS policies are enforced at runtime for ORM deletes. Direct `ctx.db.delete(...)` bypasses these checks.
 </Callout>
+
+## Next Steps
+
+<Cards>
+  <Card title="Mutations Overview" href="/docs/db/orm/mutations">
+    Shared mutation concepts: returning, where, atomicity, and async wiring
+  </Card>
+  <Card title="Insert" href="/docs/db/orm/insert">
+    Insert rows, multi-row inserts, and upserts
+  </Card>
+  <Card title="Update" href="/docs/db/orm/update">
+    Update rows with set/where/returning
+  </Card>
+  <Card title="Schema Definition" href="/docs/db/orm/schema">
+    Configure delete modes and runtime defaults
+  </Card>
+</Cards>

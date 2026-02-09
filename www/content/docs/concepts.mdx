@@ -39,25 +39,30 @@ Before you know it, the elegant simplicity that drew you to Convex gets buried u
 
 Better Convex introduces a tRPC-style builder for defining procedures. Instead of writing standalone functions, you chain methods to build queries and mutations with validation, middleware, and type inference.
 
-```ts showLineNumbers {12-17}
-// Before: Manual validation, no middleware
-export const list = query({
-  args: { limit: v.optional(v.number()) },
-  handler: async (ctx, args) => {
-    const user = await getUser(ctx); // repeated everywhere
-    if (!user) throw new Error('Unauthorized');
-    return ctx.db.query('todos').take(args.limit ?? 10).collect();
-  },
-});
-
-// After: Fluent API with middleware and Zod validation
-export const list = authQuery
-  .input(z.object({ limit: z.number().optional() }))
-  .query(async ({ ctx, input }) => {
-    // ctx.user is already available from middleware
-    return ctx.table('todos').take(input.limit ?? 10);
-  });
-```
+<Compare>
+  <CompareItem title="Before (vanilla Convex)">
+    ```ts showLineNumbers
+    export const list = query({
+      args: { limit: v.optional(v.number()) },
+      handler: async (ctx, args) => {
+        const user = await getUser(ctx); // repeated everywhere
+        if (!user) throw new Error('Unauthorized');
+        return ctx.db.query('todos').take(args.limit ?? 10).collect();
+      },
+    });
+    ```
+  </CompareItem>
+  <CompareItem title="After (cRPC)">
+    ```ts showLineNumbers
+    export const list = authQuery
+      .input(z.object({ limit: z.number().optional() }))
+      .query(async ({ ctx, input }) => {
+        // ctx.user is already available from middleware
+        return ctx.table('todos').take(input.limit ?? 10);
+      });
+    ```
+  </CompareItem>
+</Compare>
 
 _The auth middleware runs once, adds `user` to context, and every procedure that uses `authQuery` gets it automatically. No more copy-pasting auth checks._
 

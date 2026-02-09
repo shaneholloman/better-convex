@@ -1,13 +1,6 @@
-import { convexTable, integer, text } from 'better-convex/orm';
-import { describe, expect, test } from 'vitest';
-import {
-  and,
-  eq,
-  gt,
-  isNull,
-  not,
-  or,
-} from '../../packages/better-convex/src/orm/filter-expression';
+/** biome-ignore-all lint/performance/useTopLevelRegex: inline regex assertions are intentional in tests. */
+import { and, eq, gt, isNull, not, or } from './filter-expression';
+import { convexTable, integer, text } from './index';
 import {
   decodeUndefinedDeep,
   deserializeFilterExpression,
@@ -21,7 +14,7 @@ import {
   serializeFilterExpression,
   takeRowsWithinByteBudget,
   toConvexFilter,
-} from '../../packages/better-convex/src/orm/mutation-utils';
+} from './mutation-utils';
 
 const users = convexTable('users', {
   name: text().notNull(),
@@ -172,7 +165,7 @@ describe('mutation-utils', () => {
     expect(firstOnly.rows.length).toBe(1);
     expect(firstOnly.hitLimit).toBe(true);
 
-    const allRows = takeRowsWithinByteBudget(rows as any, 10000);
+    const allRows = takeRowsWithinByteBudget(rows as any, 10_000);
     expect(allRows.rows.length).toBe(3);
     expect(allRows.hitLimit).toBe(false);
   });

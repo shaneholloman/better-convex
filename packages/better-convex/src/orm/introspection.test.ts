@@ -10,8 +10,7 @@ import {
   TableName,
   text,
   uniqueIndex,
-} from 'better-convex/orm';
-import { expect, test } from 'vitest';
+} from './index';
 
 test('getTableColumns includes system fields', () => {
   const users = convexTable('users', {

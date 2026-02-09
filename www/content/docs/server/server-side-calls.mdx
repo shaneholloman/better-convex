@@ -147,25 +147,26 @@ const data = await ctx.caller.user.list({});
 
 ### What's new
 
-**Before (vanilla Convex):**
+<Compare>
+  <CompareItem title="Before (vanilla Convex)">
+    ```ts title="src/app/api/users/route.ts" showLineNumbers
+    import { fetchQuery, fetchMutation } from 'convex/nextjs';
+    import { api } from '@convex/_generated/api';
 
-```ts title="src/app/api/users/route.ts" showLineNumbers
-import { fetchQuery, fetchMutation } from 'convex/nextjs';
-import { api } from '@convex/_generated/api';
+    const users = await fetchQuery(api.user.list, {});
+    const id = await fetchMutation(api.user.create, { name: 'John', email: 'john@example.com' });
+    ```
+  </CompareItem>
+  <CompareItem title="After (cRPC)">
+    ```ts title="src/app/api/users/route.ts" showLineNumbers {4-6}
+    import { createContext } from '@/lib/convex/server';
 
-const users = await fetchQuery(api.user.list, {});
-const id = await fetchMutation(api.user.create, { name: 'John', email: 'john@example.com' });
-```
-
-**After (cRPC):**
-
-```ts title="src/app/api/users/route.ts" showLineNumbers {4-6}
-import { createContext } from '@/lib/convex/server';
-
-const ctx = await createContext({ headers });
-const users = await ctx.caller.user.list({});
-const id = await ctx.caller.user.create({ name: 'John', email: 'john@example.com' });
-```
+    const ctx = await createContext({ headers });
+    const users = await ctx.caller.user.list({});
+    const id = await ctx.caller.user.create({ name: 'John', email: 'john@example.com' });
+    ```
+  </CompareItem>
+</Compare>
 
 Key differences:
 

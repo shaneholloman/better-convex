@@ -149,32 +149,33 @@ Before creating procedures, you'll need a database schema. cRPC works with both 
 
 Now let's use our builders to create a simple query. Here's the before and after:
 
-**Before (vanilla Convex):**
+<Compare>
+  <CompareItem title="Before (vanilla Convex)">
+    ```ts title="convex/functions/user.ts" showLineNumbers
+    import { query } from './_generated/server';
+    import { v } from 'convex/values';
 
-```ts title="convex/functions/user.ts" showLineNumbers
-import { query } from './_generated/server';
-import { v } from 'convex/values';
+    export const list = query({
+      args: { limit: v.number() },
+      handler: async (ctx, args) => {
+        return ctx.db.query('user').take(args.limit);
+      },
+    });
+    ```
+  </CompareItem>
+  <CompareItem title="After (cRPC)">
+    ```ts title="convex/functions/user.ts" showLineNumbers {4-7}
+    import { z } from 'zod';
+    import { publicQuery } from '../lib/crpc';
 
-export const list = query({
-  args: { limit: v.number() },
-  handler: async (ctx, args) => {
-    return ctx.db.query('user').take(args.limit);
-  },
-});
-```
-
-**After (cRPC):**
-
-```ts title="convex/functions/user.ts" showLineNumbers {4-7}
-import { z } from 'zod';
-import { publicQuery } from '../lib/crpc';
-
-export const list = publicQuery
-  .input(z.object({ limit: z.number() }))
-  .query(async ({ ctx, input }) => {
-    return ctx.db.query('user').take(input.limit);
-  });
-```
+    export const list = publicQuery
+      .input(z.object({ limit: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return ctx.db.query('user').take(input.limit);
+      });
+    ```
+  </CompareItem>
+</Compare>
 
 The key differences:
 - **Fluent API** - Chain `.input()` and `.query()` instead of object config
@@ -332,30 +333,33 @@ If you're coming from vanilla Convex, here's what changes.
 
 ### What's new
 
-**Before (vanilla Convex):**
-```ts title="convex/functions/user.ts" showLineNumbers
-import { query } from './_generated/server';
-import { v } from 'convex/values';
+<Compare>
+  <CompareItem title="Before (vanilla Convex)">
+    ```ts title="convex/functions/user.ts" showLineNumbers
+    import { query } from './_generated/server';
+    import { v } from 'convex/values';
 
-export const list = query({
-  args: { limit: v.number() },
-  handler: async (ctx, args) => {
-    return ctx.db.query('user').take(args.limit);
-  },
-});
-```
+    export const list = query({
+      args: { limit: v.number() },
+      handler: async (ctx, args) => {
+        return ctx.db.query('user').take(args.limit);
+      },
+    });
+    ```
+  </CompareItem>
+  <CompareItem title="After (cRPC)">
+    ```ts title="convex/functions/user.ts" showLineNumbers {4-7}
+    import { publicQuery } from '../lib/crpc';
+    import { z } from 'zod';
 
-**After (cRPC):**
-```ts title="convex/functions/user.ts" showLineNumbers {4-7}
-import { publicQuery } from '../lib/crpc';
-import { z } from 'zod';
-
-export const list = publicQuery
-  .input(z.object({ limit: z.number() }))
-  .query(async ({ ctx, input }) => {
-    return ctx.db.query('user').take(input.limit);
-  });
-```
+    export const list = publicQuery
+      .input(z.object({ limit: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return ctx.db.query('user').take(input.limit);
+      });
+    ```
+  </CompareItem>
+</Compare>
 
 Key differences:
 - Fluent builder API instead of object config

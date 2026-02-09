@@ -117,6 +117,9 @@ export class CRPCError extends ConvexError<CRPCErrorData> {
     this.name = 'CRPCError';
     this.code = opts.code;
     this.cause = cause;
+    // ConvexError formats the Error message from `data` by default.
+    // For cRPC we want the standard Error message string to match `data.message`.
+    this.message = message;
   }
 }
 

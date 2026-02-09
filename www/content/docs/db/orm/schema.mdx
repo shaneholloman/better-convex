@@ -1,45 +1,49 @@
 ---
 title: Schema Definition
 description: Define tables, relations, and type-safe schemas with Better-Convex ORM
-links:
-  doc: https://orm.drizzle.team/docs/sql-schema-declaration
 ---
 
-import { InfoIcon, CheckCircle, AlertTriangle } from "lucide-react"
+import { InfoIcon, AlertTriangle } from "lucide-react"
 
-Define your schema with Drizzle‑style table builders and relations. Better‑Convex keeps the API familiar while adapting it to Convex’s document model.
+In this guide, we'll learn how to define your database schema. You'll master table definitions with `convexTable`, relation wiring with `defineRelations`, indexes for performance, and runtime guardrails to keep your queries safe.
 
 ## Overview
 
-| Feature | Drizzle v1 | Better‑Convex |
+Here's how Better-Convex maps to Drizzle v1 concepts:
+
+| Feature | Drizzle v1 | Better-Convex |
 |---|---|---|
 | Table definition | `pgTable()` | `convexTable()` |
 | Relations | `defineRelations()` | `defineRelations()` |
 | Type inference | Automatic | Automatic |
 | Field types | Column builders | Column builders |
 
+Let's start with the basics.
+
 ## Table Definition
 
-```ts title="convex/schema.ts"
-import { convexTable, text, integer, boolean, id } from 'better-convex/orm';
+Define tables using `convexTable()` with Drizzle-style column builders. Here's a `users` table with name, email, age, and admin fields:
+
+```ts title="convex/schema.ts" showLineNumbers {3-7}
+import { convexTable, text, integer, id } from 'better-convex/orm';
 
 export const users = convexTable('users', {
   name: text().notNull(),
   email: text().notNull(),
+  role: text(),
   age: integer(),
-  isAdmin: boolean(),
 });
 ```
 
-**Auto‑generated fields:**
+Convex auto-generates two fields on every document:
 - `_id: Id<'table'>`
 - `_creationTime: number`
 
 ### Nullability
 
-Fields are nullable by default. Add `.notNull()` for required fields.
+Fields are nullable by default. Use `.notNull()` to make a field required:
 
-```ts
+```ts showLineNumbers
 const users = convexTable('users', {
   name: text().notNull(), // string
   bio: text(),            // string | null
@@ -48,9 +52,9 @@ const users = convexTable('users', {
 
 ### Table-Level Delete Defaults
 
-Configure default delete semantics per table with `deletion(...)`.
+You can configure default delete semantics per table with `deletion(...)`. Here's how to set up scheduled deletion with a 60-second delay:
 
-```ts
+```ts showLineNumbers {7}
 import { convexTable, deletion, integer, text } from 'better-convex/orm';
 
 const users = convexTable(
@@ -64,18 +68,20 @@ const users = convexTable(
 ```
 
 Available modes:
-- `deletion('hard')`
-- `deletion('soft')`
-- `deletion('scheduled', { delayMs? })`
+- `deletion('hard')` -- permanent delete
+- `deletion('soft')` -- mark as deleted, keep data
+- `deletion('scheduled', { delayMs? })` -- soft delete, then hard delete after delay
 
 ### Column Builder Types
+
+Here's the full mapping of TypeScript types to column builders:
 
 | TypeScript Type | Builder |
 |---|---|
 | `string` \| `null` | `text()` |
 | `string` | `text().notNull()` |
-| `number` \| `null` | `integer()` or `number()` |
-| `number` | `integer().notNull()` or `number().notNull()` |
+| `number` \| `null` | `integer()` |
+| `number` | `integer().notNull()` |
 | `boolean` \| `null` | `boolean()` |
 | `boolean` | `boolean().notNull()` |
 | `bigint` \| `null` | `bigint()` |
@@ -88,42 +94,44 @@ See [Column Types](/docs/db/orm/column-types) for the full Better-Convex builder
 
 ## Relations
 
-Use Drizzle‑style `defineRelations()` with `_id` references.
+Use Drizzle-style `defineRelations()` to wire up relationships between tables. Relations reference `_id` fields:
 
-```ts title="convex/schema.ts"
+```ts title="convex/schema.ts" showLineNumbers {5-10}
 import { defineRelations } from 'better-convex/orm';
 
 export const posts = convexTable('posts', {
   title: text().notNull(),
-  authorId: id('users'),
+  userId: id('users'),
 });
 
 export const relations = defineRelations({ users, posts }, (r) => ({
   users: { posts: r.many.posts() },
   posts: {
-    author: r.one.users({ from: r.posts.authorId, to: r.users._id }),
+    author: r.one.users({ from: r.posts.userId, to: r.users._id }),
   },
 }));
 ```
 
 ## Schema Options
 
-`defineSchema` accepts Convex schema options plus Better‑Convex runtime guardrail options.
+`defineSchema` accepts Convex schema options plus Better-Convex runtime guardrail options. Here's the simplest usage:
 
-```ts
+```ts showLineNumbers
 import { defineSchema } from 'better-convex/orm';
 
 export default defineSchema({ users, posts }, { strict: false });
 ```
+
+The `strict` flag controls how aggressively the ORM enforces index usage:
 
 - `strict` (default `true`): missing indexes throw unless `allowFullScan: true`.
 - `strict: false`: missing indexes still require `allowFullScan: true`, with fewer warnings.
 
 ### Runtime Defaults
 
-Use `defaults` to set global runtime guardrails.
+You can set global runtime guardrails via the `defaults` option. These control limits for queries, relation loading, and mutation batching:
 
-```ts
+```ts showLineNumbers {3-13}
 export default defineSchema({ users, posts }, {
   strict: true,
   defaults: {
@@ -140,22 +148,27 @@ export default defineSchema({ users, posts }, {
 });
 ```
 
-- `defaults.defaultLimit`: used when `findMany()` is non-paginated and `limit` is omitted. No implicit built-in fallback is applied when this is unset.
-- `defaults.relationFanOutMaxKeys`: maximum unique relation lookup keys allowed per relation-load step before fail-fast. Built-in fallback: `1000`.
-- `defaults.mutationBatchSize`: page size used to collect rows for `update()`/`delete()`. Built-in fallback: `100`.
-- `defaults.mutationLeafBatchSize`: async batch size for non-recursive FK fan-out actions (`set null`, `set default`, non-recursive update fan-out). Built-in fallback: `900`.
-- `defaults.mutationMaxRows`: sync-mode hard cap for matched rows in `update()`/`delete()`. Built-in fallback: `1000`.
-- `defaults.mutationMaxBytesPerBatch`: async measured-byte budget per continuation batch. Built-in fallback: `2_097_152` bytes.
-- `defaults.mutationScheduleCallCap`: async schedule calls allowed from one mutation invocation before throwing. Built-in fallback: `100`.
-- `defaults.mutationExecutionMode`: default execution mode for non-paginated `execute()` calls (`'sync'` or `'async'`). Built-in fallback: `'sync'`.
-- `defaults.mutationAsyncDelayMs`: default scheduler delay used by async mutation continuation. Built-in fallback: `0`.
-- Numeric defaults must be integers (`mutationAsyncDelayMs` allows `0`; others must be `>= 1`).
+Here's what each option does:
+
+- `defaults.defaultLimit` -- used when `findMany()` is non-paginated and `limit` is omitted. No implicit built-in fallback is applied when this is unset.
+- `defaults.relationFanOutMaxKeys` -- maximum unique relation lookup keys allowed per relation-load step before fail-fast. Built-in fallback: `1000`.
+- `defaults.mutationBatchSize` -- page size used to collect rows for `update()`/`delete()`. Built-in fallback: `100`.
+- `defaults.mutationLeafBatchSize` -- async batch size for non-recursive FK fan-out actions (`set null`, `set default`, non-recursive update fan-out). Built-in fallback: `900`.
+- `defaults.mutationMaxRows` -- sync-mode hard cap for matched rows in `update()`/`delete()`. Built-in fallback: `1000`.
+- `defaults.mutationMaxBytesPerBatch` -- async measured-byte budget per continuation batch. Built-in fallback: `2_097_152` bytes.
+- `defaults.mutationScheduleCallCap` -- async schedule calls allowed from one mutation invocation before throwing. Built-in fallback: `100`.
+- `defaults.mutationExecutionMode` -- default execution mode for non-paginated `execute()` calls (`'sync'` or `'async'`). Built-in fallback: `'sync'`.
+- `defaults.mutationAsyncDelayMs` -- default scheduler delay used by async mutation continuation. Built-in fallback: `0`.
+
+<Callout icon={<InfoIcon />}>
+**Note:** Numeric defaults must be integers. `mutationAsyncDelayMs` allows `0`; all others must be `>= 1`.
+</Callout>
 
 ### Strict Policy (Guardrails)
 
-Strict guardrails now cover relation indexes, relation fan-out cardinality, predicate where(), and unbounded update/delete.
+Strict guardrails cover relation indexes, relation fan-out cardinality, predicate `where()`, and unbounded `update`/`delete`. Here's the full behavior matrix:
 
-| Area | Current (2026‑02‑06) | Strict `true` | Strict `false` |
+| Area | Current (2026-02-06) | Strict `true` | Strict `false` |
 |---|---|---|---|
 | Relation loading missing index | throws unless `allowFullScan` | throws unless `allowFullScan`; warns when scanning | throws unless `allowFullScan`; no strict warning |
 | Predicate `where` | requires explicit `index: { name, range? }` (no `allowFullScan` fallback) | same | same |
@@ -168,9 +181,9 @@ Strict guardrails now cover relation indexes, relation fan-out cardinality, pred
 
 ## Indexes
 
-Add indexes for fields you filter or sort by.
+Add indexes for fields you filter or sort by. Here's how to add an index on `authorId`:
 
-```ts
+```ts showLineNumbers {7}
 import { convexTable, text, id, index } from 'better-convex/orm';
 
 const posts = convexTable(
@@ -185,7 +198,9 @@ const posts = convexTable(
 
 ### Search Indexes
 
-```ts
+For full-text search, use `searchIndex`. You can optionally filter results by additional fields:
+
+```ts showLineNumbers {9}
 import { convexTable, text, id, searchIndex } from 'better-convex/orm';
 
 const posts = convexTable(
@@ -200,7 +215,9 @@ const posts = convexTable(
 
 ### Vector Indexes
 
-```ts
+For vector similarity search, use `vectorIndex` with a `vector(dimensions)` field. Here's how to set up an embedding-based search:
+
+```ts showLineNumbers {9-13}
 import { convexTable, id, vector, vectorIndex } from 'better-convex/orm';
 
 const posts = convexTable(
@@ -218,25 +235,29 @@ const posts = convexTable(
 );
 ```
 
-Better‑Convex mirrors Convex’s vector search API with Drizzle‑style builders. Use `vector(dimensions)` for embedding fields.
+Better-Convex mirrors Convex's vector search API with Drizzle-style builders. Use `vector(dimensions)` for embedding fields.
 
-**Common errors:**
-- Missing `.on(...)` → "Did you forget to call .on(...)?"
-- Missing `.dimensions(n)` on vector indexes → "missing dimensions"
+<Callout icon={<AlertTriangle />}>
+**Important:** Missing `.on(...)` throws "Did you forget to call .on(...)?" and missing `.dimensions(n)` on vector indexes throws "missing dimensions".
+</Callout>
 
 ## Constraints And Defaults
 
-- Defaults set with `.default(...)` and `$defaultFn(...)` are applied by Better‑Convex inserts
+Here's how constraints and defaults work in Better-Convex:
+
+- Defaults set with `.default(...)` and `$defaultFn(...)` are applied by Better-Convex inserts
 - `$onUpdateFn(...)` columns are applied on updates (and can also fill missing values on insert)
 - `unique()` and column `.unique()` are enforced at runtime (ORM mutations only)
 - `foreignKey()` and column `.references()` are enforced at runtime (ORM mutations only)
 - `check()` constraints are enforced at runtime (ORM mutations only)
 
 <Callout icon={<AlertTriangle />}>
-Constraints and defaults are enforced only by ORM mutations. Direct `ctx.db` writes bypass these checks. For foreign key actions (`cascade`, `restrict`, `set null`, `set default`), add an index on the referencing columns.
+**Important:** Constraints and defaults are enforced only by ORM mutations. Direct `ctx.db` writes bypass these checks. For foreign key actions (`cascade`, `restrict`, `set null`, `set default`), add an index on the referencing columns.
 </Callout>
 
 ## Common Gotchas
+
+Here's a quick reference for common schema issues:
 
 | Issue | Fix |
 |---|---|
@@ -244,6 +265,8 @@ Constraints and defaults are enforced only by ORM mutations. Direct `ctx.db` wri
 | Fields unexpectedly nullable | Use `.notNull()` |
 | Relations not loading | Define both sides or use explicit `from`/`to` |
 | Slow ordering | Add `index('...').on(t.field)` for the primary `orderBy` field |
+
+You now have a fully defined schema with tables, relations, indexes, and guardrails. From here, you can start querying data or set up mutations.
 
 ## Next Steps
 
@@ -255,7 +278,7 @@ Constraints and defaults are enforced only by ORM mutations. Direct `ctx.db` wri
     Indexes, unique constraints, and foreign keys
   </Card>
   <Card title="Relations" href="/docs/db/orm/relations">
-    One‑to‑one, one‑to‑many, many‑to‑many
+    One-to-one, one-to-many, many-to-many
   </Card>
   <Card title="Querying Data" href="/docs/db/orm/queries">
     Filters, ordering, pagination

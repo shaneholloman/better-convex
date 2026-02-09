@@ -524,14 +524,36 @@ function createProcedure(
       // Parse path params
       let parsedParams: unknown;
       if (def.paramsSchema) {
-        parsedParams = def.paramsSchema.parse(pathParams as any);
+        try {
+          parsedParams = def.paramsSchema.parse(pathParams as any);
+        } catch (error) {
+          if (error instanceof z.ZodError) {
+            throw new CRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Invalid path params',
+              cause: error,
+            });
+          }
+          throw error;
+        }
       }
 
       // Parse query params - pass schema for array coercion
       let parsedQuery: unknown;
       if (def.querySchema) {
         const queryParams = parseQueryParams(url, def.querySchema);
-        parsedQuery = def.querySchema.parse(queryParams as any);
+        try {
+          parsedQuery = def.querySchema.parse(queryParams as any);
+        } catch (error) {
+          if (error instanceof z.ZodError) {
+            throw new CRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Invalid query params',
+              cause: error,
+            });
+          }
+          throw error;
+        }
       }
 
       // Parse body for non-GET methods
@@ -549,7 +571,18 @@ function createProcedure(
           body = await request.json().catch(() => ({}));
         }
 
-        parsedInput = def.inputSchema.parse(body as any);
+        try {
+          parsedInput = def.inputSchema.parse(body as any);
+        } catch (error) {
+          if (error instanceof z.ZodError) {
+            throw new CRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Invalid input',
+              cause: error,
+            });
+          }
+          throw error;
+        }
       }
 
       // Parse form data (multipart/form-data)
@@ -560,7 +593,18 @@ function createProcedure(
         for (const [key, value] of formData.entries()) {
           formObj[key] = value;
         }
-        parsedForm = def.formSchema.parse(formObj);
+        try {
+          parsedForm = def.formSchema.parse(formObj);
+        } catch (error) {
+          if (error instanceof z.ZodError) {
+            throw new CRPCError({
+              code: 'BAD_REQUEST',
+              message: 'Invalid form data',
+              cause: error,
+            });
+          }
+          throw error;
+        }
       }
 
       // Build handler options - ctx namespaced, include Hono Context `c`

@@ -1,4 +1,3 @@
-import { describe, expect, test } from 'vitest';
 import {
   and,
   between,
@@ -13,8 +12,8 @@ import {
   notInArray,
   or,
   startsWith,
-} from '../../packages/better-convex/src/orm/filter-expression';
-import { WhereClauseCompiler } from '../../packages/better-convex/src/orm/where-clause-compiler';
+} from './filter-expression';
+import { WhereClauseCompiler } from './where-clause-compiler';
 
 describe('WhereClauseCompiler advanced index planning', () => {
   test('plans inArray as multi-probe index union', () => {

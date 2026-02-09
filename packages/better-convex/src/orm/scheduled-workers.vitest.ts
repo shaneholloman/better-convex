@@ -1,9 +1,10 @@
+/** biome-ignore-all lint/performance/useTopLevelRegex: inline regex assertions are intentional in tests. */
 import type { SchedulableFunctionReference } from 'convex/server';
 import { expect, test } from 'vitest';
-import schema, { relations } from '../../convex/schema';
-import { convexTest } from '../../convex/setup.testing';
-import { scheduledDeleteFactory } from '../../packages/better-convex/src/orm/scheduled-delete';
-import { scheduledMutationBatchFactory } from '../../packages/better-convex/src/orm/scheduled-mutation-batch';
+import schema, { relations } from '../../../../convex/schema';
+import { convexTest } from '../../../../convex/setup.testing';
+import { scheduledDeleteFactory } from './scheduled-delete';
+import { scheduledMutationBatchFactory } from './scheduled-mutation-batch';
 
 const scheduledRef = {} as SchedulableFunctionReference;
 
@@ -124,7 +125,7 @@ test('scheduledMutationBatch validates root-update and root-delete constraints',
           deleteMode: 'scheduled',
         }
       )
-    ).rejects.toThrow(/deleteMode \"scheduled\" is not supported/i);
+    ).rejects.toThrow(/deleteMode "scheduled" is not supported/i);
   });
 });
 

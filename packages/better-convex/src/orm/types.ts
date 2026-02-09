@@ -468,22 +468,24 @@ type HasStaticFullScanWhere<TWhere, TDepth extends number = 6> = [
   ? false
   : TWhere extends (...args: any[]) => any
     ? false
-    : TWhere extends readonly (infer TItem)[]
-      ? HasStaticFullScanWhere<TItem, DepthPrev[TDepth]>
-      : TWhere extends object
-        ? HasFullScanOperatorKey<TWhere> extends true
-          ? true
-          : 'NOT' extends keyof TWhere
+    : TWhere extends string | number | boolean | bigint | null | undefined
+      ? false
+      : TWhere extends readonly (infer TItem)[]
+        ? HasStaticFullScanWhere<TItem, DepthPrev[TDepth]>
+        : TWhere extends object
+          ? HasFullScanOperatorKey<TWhere> extends true
             ? true
-            : true extends {
-                  [K in keyof TWhere]-?: HasStaticFullScanWhere<
-                    TWhere[K],
-                    DepthPrev[TDepth]
-                  >;
-                }[keyof TWhere]
+            : 'NOT' extends keyof TWhere
               ? true
-              : false
-        : false;
+              : true extends {
+                    [K in keyof TWhere]-?: HasStaticFullScanWhere<
+                      TWhere[K],
+                      DepthPrev[TDepth]
+                    >;
+                  }[keyof TWhere]
+                ? true
+                : false
+          : false;
 
 export type EnforceAllowFullScan<
   TConfig,

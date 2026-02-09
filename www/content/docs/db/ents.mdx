@@ -572,22 +572,23 @@ If you're coming from vanilla Convex, here's what changes.
 
 ### What's new
 
-**Before (vanilla Convex):**
-
-```ts showLineNumbers
-const user = await ctx.db.get(userId);
-const sessions = await ctx.db
-  .query('session')
-  .withIndex('userId', (q) => q.eq('userId', userId))
-  .collect();
-```
-
-**After (Ents):**
-
-```ts showLineNumbers {1,2}
-const user = await ctx.table('user').getX(userId);
-const sessions = await user.edge('sessions');
-```
+<Compare>
+  <CompareItem title="Before (vanilla Convex)">
+    ```ts showLineNumbers
+    const user = await ctx.db.get(userId);
+    const sessions = await ctx.db
+      .query('session')
+      .withIndex('userId', (q) => q.eq('userId', userId))
+      .collect();
+    ```
+  </CompareItem>
+  <CompareItem title="After (Ents)">
+    ```ts showLineNumbers {1,2}
+    const user = await ctx.table('user').getX(userId);
+    const sessions = await user.edge('sessions');
+    ```
+  </CompareItem>
+</Compare>
 
 Key differences:
 - `ctx.table` instead of `ctx.db.query`

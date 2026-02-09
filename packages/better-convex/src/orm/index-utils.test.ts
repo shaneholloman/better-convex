@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+/** biome-ignore-all lint/performance/useTopLevelRegex: inline regex assertions are intentional in tests. */
 import {
   findIndexForColumns,
   findRelationIndex,
@@ -8,7 +8,7 @@ import {
   getIndexes,
   getSearchIndexes,
   getVectorIndexes,
-} from '../../packages/better-convex/src/orm/index-utils';
+} from './index-utils';
 
 describe('index-utils', () => {
   test('getIndexes prefers method and falls back to legacy field shape', () => {
@@ -150,7 +150,7 @@ describe('index-utils', () => {
 
   test('findRelationIndex returns null with allowFullScan and warns in strict mode', () => {
     const table = { getIndexes: () => [{ name: 'by_name', fields: ['name'] }] };
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = spyOn(console, 'warn').mockImplementation(() => {});
 
     const strictNull = findRelationIndex(
       table as any,

@@ -328,44 +328,45 @@ If you're coming from vanilla Convex, here's what changes.
 
 ### What's new
 
-**Before (vanilla Convex):**
+<Compare>
+  <CompareItem title="Before (vanilla Convex)">
+    ```tsx showLineNumbers
+    import { usePaginatedQuery } from 'convex/react';
+    import { api } from '@convex/_generated/api';
 
-```tsx showLineNumbers
-import { usePaginatedQuery } from 'convex/react';
-import { api } from '@convex/_generated/api';
+    const { results, status, loadMore } = usePaginatedQuery(
+      api.session.list,
+      { userId },
+      { initialNumItems: 20 }
+    );
 
-const { results, status, loadMore } = usePaginatedQuery(
-  api.session.list,
-  { userId },
-  { initialNumItems: 20 }
-);
+    // Check status
+    if (status === 'LoadingFirstPage') return <Loading />;
 
-// Check status
-if (status === 'LoadingFirstPage') return <Loading />;
+    // Load more
+    <button onClick={() => loadMore(20)}>Load more</button>
+    ```
+  </CompareItem>
+  <CompareItem title="After (cRPC)">
+    ```tsx showLineNumbers {1-2,5-7,10,13}
+    import { useInfiniteQuery } from 'better-convex/react';
+    import { useCRPC } from '@/lib/crpc';
 
-// Load more
-<button onClick={() => loadMore(20)}>Load more</button>
-```
+    const crpc = useCRPC();
 
-**After (cRPC):**
+    // limit comes from server's .paginated(20)
+    const { data, hasNextPage, isLoading, fetchNextPage } = useInfiniteQuery(
+      crpc.session.list.infiniteQueryOptions({ userId })
+    );
 
-```tsx showLineNumbers {1-2,5-7,10,13}
-import { useInfiniteQuery } from 'better-convex/react';
-import { useCRPC } from '@/lib/crpc';
+    // Check status
+    if (isLoading) return <Loading />;
 
-const crpc = useCRPC();
-
-// limit comes from server's .paginated(20)
-const { data, hasNextPage, isLoading, fetchNextPage } = useInfiniteQuery(
-  crpc.session.list.infiniteQueryOptions({ userId })
-);
-
-// Check status
-if (isLoading) return <Loading />;
-
-// Load more (optional: pass lower value)
-<button onClick={() => fetchNextPage()}>Load more</button>
-```
+    // Load more (optional: pass lower value)
+    <button onClick={() => fetchNextPage()}>Load more</button>
+    ```
+  </CompareItem>
+</Compare>
 
 **Key differences:**
 

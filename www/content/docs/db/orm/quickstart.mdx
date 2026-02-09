@@ -1,53 +1,28 @@
 ---
 title: Quickstart - Better-Convex ORM
 description: Get started with Better-Convex ORM in 5 minutes
-links:
-  doc: https://orm.drizzle.team/docs/quick-start
 ---
 
-import { InfoIcon, CheckCircle } from "lucide-react"
+import { InfoIcon } from "lucide-react"
 
-Get up and running with Better‑Convex ORM in a few minutes. This assumes you already have a Convex project.
+In this guide, we'll add the ORM to an existing Better-Convex project. You'll define tables and relations, attach the ORM to your context, and run your first type-safe query.
 
-## Prerequisites
+<Callout icon={<InfoIcon />}>
+This quickstart shows both vanilla Convex procedures and better-convex cRPC. Other ORM docs use cRPC examples.
+</Callout>
 
-- Node.js 18+
-- A Convex project (or [create one](https://docs.convex.dev/quickstart))
-- Basic TypeScript familiarity
+## Step 1: Define Tables
 
-## Step 1: Install
+Next, we'll create `users` and `posts` tables using `convexTable`. Each field uses a Drizzle-style column builder:
 
-<Tabs groupId="package-manager" items={['npm', 'pnpm', 'yarn', 'bun']} persist>
-  <Tab value="npm">
-    ```bash
-    npm install better-convex
-    ```
-  </Tab>
-  <Tab value="pnpm">
-    ```bash
-    pnpm add better-convex
-    ```
-  </Tab>
-  <Tab value="yarn">
-    ```bash
-    yarn add better-convex
-    ```
-  </Tab>
-  <Tab value="bun">
-    ```bash
-    bun add better-convex
-    ```
-  </Tab>
-</Tabs>
-
-## Step 2: Define Tables
-
-```ts title="convex/schema.ts"
-import { convexTable, text, boolean, id } from 'better-convex/orm';
+```ts title="convex/schema.ts" showLineNumbers {3-7,10-14}
+import { convexTable, text, boolean, integer, id, index } from 'better-convex/orm';
 
 export const users = convexTable('users', {
   name: text().notNull(),
   email: text().notNull(),
+  role: text(),
+  age: integer(),
 });
 
 export const posts = convexTable('posts', {
@@ -55,19 +30,19 @@ export const posts = convexTable('posts', {
   content: text().notNull(),
   published: boolean(),
   userId: id('users'),
-});
+}, (t) => [index('by_published').on(t.published)]);
 ```
 
 <Callout icon={<InfoIcon />}>
-**Nullable by default**: `text()` is `string | null`. Use `.notNull()` for required fields.
+**Note:** Fields are nullable by default -- `text()` is `string | null`. Use `.notNull()` for required fields.
 </Callout>
 
-## Step 3: Define Relations
+## Step 2: Define Relations
 
-```ts title="convex/schema.ts"
-import {
-  defineRelations,
-} from 'better-convex/orm';
+Now let's wire up the relationships between tables. We'll add a one-to-many relation from `users` to `posts`:
+
+```ts title="convex/schema.ts" showLineNumbers {3-8}
+import { defineRelations } from 'better-convex/orm';
 
 export const relations = defineRelations({ users, posts }, (r) => ({
   users: { posts: r.many.posts() },
@@ -77,11 +52,11 @@ export const relations = defineRelations({ users, posts }, (r) => ({
 }));
 ```
 
-## Step 4: Attach ORM to Context (once)
+## Step 3: Attach ORM to Context (once)
 
-Create a small helper that attaches Better‑Convex ORM to `ctx.orm`. Do this once in your context setup.
+Create a small helper that attaches Better-Convex ORM to `ctx.orm`. You only need to do this once in your context setup:
 
-```ts title="convex/lib/orm.ts"
+```ts title="convex/lib/orm.ts" showLineNumbers {5-8}
 import type { GenericDatabaseWriter } from 'convex/server';
 import { createOrm } from 'better-convex/orm';
 import { relations } from '../schema';
@@ -93,9 +68,9 @@ export const withOrm = <Ctx extends { db: GenericDatabaseWriter<any> }>(ctx: Ctx
 };
 ```
 
-If you use better‑convex cRPC, wire it into the context:
+If you use better-convex cRPC, you can wire it into the context like this:
 
-```ts title="convex/lib/crpc.ts"
+```ts title="convex/lib/crpc.ts" showLineNumbers {3-4}
 const c = initCRPC
   .dataModel<DataModel>()
   .context({
@@ -105,40 +80,61 @@ const c = initCRPC
   .create({ ... });
 ```
 
-## Step 5: Query Data
+## Step 4: Query Data
 
-```ts title="convex/queries.ts"
-import { query } from './_generated/server';
+You're ready to query. Here's how to fetch published posts with their authors using `ctx.orm`:
 
-export const getPublishedPosts = query({
-  handler: async (ctx) => {
-    const db = ctx.orm;
+<Tabs groupId="orm-procedure-style" items={["Convex", "cRPC"]} persist>
+  <Tab value="Convex">
+    ```ts title="convex/functions/posts.ts" showLineNumbers {5-10}
+    import { query } from './_generated/server';
 
-    return db.query.posts.findMany({
-      where: { published: true },
-      orderBy: { _creationTime: 'desc' },
-      limit: 10,
-      with: { author: true },
+    export const getPublishedPosts = query({
+      handler: async (ctx) => {
+        const db = ctx.orm;
+
+        return db.query.posts.findMany({
+          where: { published: true },
+          orderBy: { _creationTime: 'desc' },
+          limit: 10,
+          with: { author: true },
+        });
+      },
     });
-  },
-});
-```
+    ```
+  </Tab>
+  <Tab value="cRPC">
+    ```ts title="convex/functions/posts.ts" showLineNumbers {4-9}
+    import { publicQuery } from '../lib/crpc';
+
+    export const getPublishedPosts = publicQuery.query(async ({ ctx }) => {
+      const db = ctx.orm;
+
+      return db.query.posts.findMany({
+        where: { published: true },
+        orderBy: { _creationTime: 'desc' },
+        limit: 10,
+        with: { author: true },
+      });
+    });
+    ```
+  </Tab>
+</Tabs>
 
 ## What You Learned
 
-- Defined tables with `convexTable()`
-- Added relations with `defineRelations()`
-- Attached the ORM once as `ctx.orm`
-- Queried data using Drizzle‑style `findMany()`
+You've now completed the full setup: defined tables with `convexTable()`, added relations with `defineRelations()`, attached the ORM once as `ctx.orm`, and queried data using Drizzle-style `findMany()`. From here, you can explore advanced querying, mutations, and row-level security.
 
 ## Common Gotchas
+
+Here's a quick reference for issues you might hit during setup:
 
 | Issue | Fix |
 |---|---|
 | `ctx.orm` is missing | Ensure `withOrm(ctx)` is applied in your context |
 | Relations not loading | Ensure `defineRelations()` includes both sides (or explicit `from`/`to`) |
 | Slow `orderBy` | Add `index('...').on(t.field)` in `convexTable` extraConfig |
-| `columns` doesn’t reduce reads | Projection is post‑fetch |
+| `columns` doesn't reduce reads | Projection is post-fetch |
 
 ## Next Steps
 
@@ -153,6 +149,6 @@ export const getPublishedPosts = query({
     Insert, update, delete
   </Card>
   <Card title="Drizzle Comparison" href="/docs/db/orm/comparison">
-    Side‑by‑side API mapping
+    Side-by-side API mapping
   </Card>
 </Cards>

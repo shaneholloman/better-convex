@@ -19,58 +19,59 @@ Convex Ents is in maintenance mode. Better‑Convex ORM is the successor: a Driz
 
 ## Schema & Relations
 
-**Before (Ents)**
+<Compare>
+  <CompareItem title="Before (Ents)">
+    ```ts title="convex/schema.ts" showLineNumbers
+    import { defineEnt, defineEntSchema } from 'convex-ents';
+    import { v } from 'convex/values';
 
-```ts title="convex/schema.ts"
-import { defineEnt, defineEntSchema } from 'convex-ents';
-import { v } from 'convex/values';
+    const schema = defineEntSchema({
+      users: defineEnt({
+        name: v.string(),
+        email: v.string(),
+      })
+        .field('username', v.string(), { unique: true })
+        .edges('posts', { ref: true }),
 
-const schema = defineEntSchema({
-  users: defineEnt({
-    name: v.string(),
-    email: v.string(),
-  })
-    .field('username', v.string(), { unique: true })
-    .edges('posts', { ref: true }),
+      posts: defineEnt({
+        title: v.string(),
+        body: v.string(),
+      }).edge('user', { field: 'userId' }),
+    });
+    ```
+  </CompareItem>
+  <CompareItem title="After (ORM)">
+    ```ts title="convex/schema.ts" showLineNumbers {12-15,18-20,22-25}
+    import {
+      convexTable,
+      defineSchema,
+      defineRelations,
+      text,
+      id,
+      uniqueIndex,
+      index,
+    } from 'better-convex/orm';
 
-  posts: defineEnt({
-    title: v.string(),
-    body: v.string(),
-  }).edge('user', { field: 'userId' }),
-});
-```
+    export const users = convexTable(
+      'users',
+      { name: text().notNull(), email: text().notNull(), username: text().notNull() },
+      (t) => [uniqueIndex('by_username').on(t.username)]
+    );
 
-**After (ORM)**
+    export const posts = convexTable(
+      'posts',
+      { title: text().notNull(), body: text().notNull(), userId: id('users') },
+      (t) => [index('by_user').on(t.userId)]
+    );
 
-```ts title="convex/schema.ts"
-import {
-  convexTable,
-  defineSchema,
-  defineRelations,
-  text,
-  id,
-  uniqueIndex,
-  index,
-} from 'better-convex/orm';
-
-export const users = convexTable(
-  'users',
-  { name: text().notNull(), email: text().notNull(), username: text().notNull() },
-  (t) => [uniqueIndex('by_username').on(t.username)]
-);
-
-export const posts = convexTable(
-  'posts',
-  { title: text().notNull(), body: text().notNull(), userId: id('users') },
-  (t) => [index('by_user').on(t.userId)]
-);
-
-export const relations = defineRelations({ users, posts }, (r) => ({
-  users: { posts: r.many.posts() },
-  posts: { user: r.one.users({ from: r.posts.userId, to: r.users._id }) },
-}));
-export default defineSchema({ users, posts });
-```
+    export const relations = defineRelations({ users, posts }, (r) => ({
+      users: { posts: r.many.posts() },
+      posts: { user: r.one.users({ from: r.posts.userId, to: r.users._id }) },
+    }));
+    export default defineSchema({ users, posts });
+    ```
+  </CompareItem>
+</Compare>
 
 <Callout icon={<InfoIcon />}>
 Ents auto‑creates edge indexes. In ORM you must add indexes for relation fields (`index('by_user').on(t.userId)`), or relation loading will throw unless `strict: false`.
@@ -122,7 +123,7 @@ const users = await ctx.orm.query.users.findMany({
 
 Ents required two 1:many edges for payloads. ORM always uses explicit join tables:
 
-```ts title="convex/schema.ts"
+```ts title="convex/schema.ts" showLineNumbers
 const memberships = convexTable('memberships', {
   userId: id('users').notNull(),
   groupId: id('groups').notNull(),
@@ -159,7 +160,8 @@ One‑way relations are allowed. Define only the sides you plan to query or load
 
 **Many‑to‑many edge mutations** become join‑table inserts/deletes:
 
-```ts
+```ts showLineNumbers
+// Schema: postsTags with index('by_post_tag').on(t.postId, t.tagId)
 import { and, eq } from 'better-convex/orm';
 
 // Add edge
@@ -212,7 +214,7 @@ There is no per‑field write rule hook; enforce invariants in mutations or `che
 - For large fan-out in ORM, use async execution (`execute({ mode: 'async' })` / `executeAsync()`).
 - Soft/scheduled deletes are mutation‑time helpers:
 
-```ts
+```ts showLineNumbers
 await ctx.orm.delete(users).where(eq(users._id, userId)).soft();
 await ctx.orm
   .delete(users)
@@ -224,7 +226,7 @@ Scheduled hard deletes are cancellation-safe: if `deletionTime` is cleared or ch
 
 Table-default scheduled mode with per-query hard override:
 
-```ts
+```ts showLineNumbers {7,10,11}
 const users = convexTable(
   'users',
   {

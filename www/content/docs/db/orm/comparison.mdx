@@ -5,8 +5,6 @@ links:
   doc: https://orm.drizzle.team
 ---
 
-import { InfoIcon, CheckCircle, AlertTriangle } from "lucide-react"
-
 This guide compares Drizzle v1 and Better-Convex ORM side-by-side. It focuses on API mapping and the behavioral differences that matter when moving from SQL to Convex.
 
 ## At A Glance
@@ -45,7 +43,7 @@ Better‑Convex is designed as a successor to Convex‑Ents, but it follows Driz
 - No ent‑object API (`getX()`, `patch()`, lazy promises); use `ctx.orm.query.*` and mutation builders
 - No edge methods on loaded rows; use relation loading + mutation builders
 
-See [Migrate from Convex Ents](/docs/db/orm/migrate-from-ents) for a step‑by‑step mapping.
+See [Migrate from native Convex](/docs/db/orm/migrate-from-convex) (for `ctx.db`) or [Migrate from Convex Ents](/docs/db/orm/migrate-from-ents) (for `ctx.table`) for step‑by‑step mappings.
 
 **Concurrency note:** uniqueness is best‑effort within a mutation; concurrent mutations can still race. Prefer `onConflictDoNothing()` / retries or serialize writes per key when strict guarantees are required.
 
@@ -63,7 +61,7 @@ See [Migrate from Convex Ents](/docs/db/orm/migrate-from-ents) for a step‑by�
 
 <Tabs groupId="migration" items={['Drizzle', 'Better-Convex']} persist>
   <Tab value="Drizzle">
-    ```ts
+    ```ts showLineNumbers
     import { pgTable, serial, text, integer, boolean } from 'drizzle-orm/pg-core';
 
     const users = pgTable('users', {
@@ -84,7 +82,7 @@ See [Migrate from Convex Ents](/docs/db/orm/migrate-from-ents) for a step‑by�
     ```
   </Tab>
   <Tab value="Better-Convex">
-    ```ts
+    ```ts showLineNumbers
     import { convexTable, text, integer, boolean, id } from 'better-convex/orm';
 
     const users = convexTable('users', {
@@ -115,7 +113,7 @@ See [Migrate from Convex Ents](/docs/db/orm/migrate-from-ents) for a step‑by�
 
 <Tabs groupId="migration" items={['Drizzle', 'Better-Convex']} persist>
   <Tab value="Drizzle">
-    ```ts
+    ```ts showLineNumbers
     import { defineRelations } from 'drizzle-orm';
 
     export const relations = defineRelations({ users, posts }, (r) => ({
@@ -132,7 +130,7 @@ See [Migrate from Convex Ents](/docs/db/orm/migrate-from-ents) for a step‑by�
     ```
   </Tab>
   <Tab value="Better-Convex">
-    ```ts
+    ```ts showLineNumbers {11}
     import { defineRelations } from 'better-convex/orm';
 
     export const relations = defineRelations({ users, posts }, (r) => ({
@@ -154,39 +152,34 @@ See [Migrate from Convex Ents](/docs/db/orm/migrate-from-ents) for a step‑by�
 
 <Tabs groupId="migration" items={['Drizzle', 'Better-Convex']} persist>
   <Tab value="Drizzle">
-    ```ts
+    ```ts showLineNumbers
     const users = await db.query.users.findMany();
 
     const user = await db.query.users.findFirst({
-      where: { email: 'alice@example.com' },
+      where: { id: userId },
     });
 
     const admins = await db.query.users.findMany({
-      where: {
-        role: 'admin',
-        lastSeen: { gt: Date.now() - 86_400_000 },
-      },
-      orderBy: { lastSeen: 'desc' },
+      where: { role: 'admin' },
+      orderBy: { createdAt: 'desc' },
       limit: 10,
     });
     ```
   </Tab>
   <Tab value="Better-Convex">
-    ```ts
+    ```ts showLineNumbers {1}
     const db = ctx.orm;
 
-    const users = await db.query.users.findMany();
+    const users = await db.query.users.findMany({ limit: 50 });
 
     const user = await db.query.users.findFirst({
-      where: { email: 'alice@example.com' },
+      where: { _id: userId },
     });
 
+    // Schema: index('by_role').on(t.role) on users table
     const admins = await db.query.users.findMany({
-      where: {
-        role: 'admin',
-        lastSeen: { gt: Date.now() - 86_400_000 },
-      },
-      orderBy: { lastSeen: 'desc' },
+      where: { role: 'admin' },
+      orderBy: { _creationTime: 'desc' },
       limit: 10,
     });
     ```

@@ -1,6 +1,7 @@
 /**
  * M2 Relations Layer - v1 Validation Tests
  */
+/** biome-ignore-all lint/performance/useTopLevelRegex: inline regex assertions are intentional in tests. */
 
 import {
   convexTable,
@@ -8,8 +9,7 @@ import {
   extractRelationsConfig,
   id,
   text,
-} from 'better-convex/orm';
-import { describe, expect, it } from 'vitest';
+} from './index';
 
 describe('M2 Relations Layer (v1)', () => {
   describe('Relation Definition', () => {
@@ -238,7 +238,7 @@ describe('M2 Relations Layer (v1)', () => {
             }),
           },
         }));
-      }).toThrow(/from\" columns must belong/);
+      }).toThrow(/from" columns must belong/);
     });
 
     it('should reject circular dependencies', () => {
