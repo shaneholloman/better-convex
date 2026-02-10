@@ -84,7 +84,7 @@ const baseUpdate = {
   const result = await db
     .update(users)
     .set({ ...baseUpdate })
-    .paginate({ cursor: null, numItems: 10 });
+    .paginate({ cursor: null, limit: 10 });
 
   type Expected = {
     continueCursor: string | null;
@@ -101,7 +101,7 @@ const baseUpdate = {
     .update(users)
     .set({ ...baseUpdate })
     .returning({ name: users.name })
-    .paginate({ cursor: null, numItems: 10 });
+    .paginate({ cursor: null, limit: 10 });
 
   type Expected = {
     continueCursor: string | null;
@@ -229,31 +229,31 @@ const baseUpdate = {
   db.update(users)
     .set({ ...baseUpdate })
     // @ts-expect-error - cursor must be string | null
-    .paginate({ cursor: 123, numItems: 10 });
+    .paginate({ cursor: 123, limit: 10 });
 }
 
-// paginate() should reject invalid numItems type
+// paginate() should reject invalid limit type
 {
   db.update(users)
     .set({ ...baseUpdate })
-    // @ts-expect-error - numItems must be number
-    .paginate({ cursor: null, numItems: '10' });
+    // @ts-expect-error - limit must be number
+    .paginate({ cursor: null, limit: '10' });
 }
 
 // paginate() cannot be called twice
 {
   db.update(users)
     .set({ ...baseUpdate })
-    .paginate({ cursor: null, numItems: 10 })
+    .paginate({ cursor: null, limit: 10 })
     // @ts-expect-error - paginate already called
-    .paginate({ cursor: null, numItems: 10 });
+    .paginate({ cursor: null, limit: 10 });
 }
 
 // executeAsync() is not available on paginated update builders
 {
   db.update(users)
     .set({ ...baseUpdate })
-    .paginate({ cursor: null, numItems: 10 })
+    .paginate({ cursor: null, limit: 10 })
     // @ts-expect-error - executeAsync is not available after paginate()
     .executeAsync();
 }
@@ -262,7 +262,7 @@ const baseUpdate = {
 {
   db.update(users)
     .set({ ...baseUpdate })
-    .paginate({ cursor: null, numItems: 10 })
+    .paginate({ cursor: null, limit: 10 })
     // @ts-expect-error - execute config is not available after paginate()
     .execute({ mode: 'async' });
 }

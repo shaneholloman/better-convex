@@ -247,7 +247,6 @@ export type {
   MutationRunMode,
   OrderByClause,
   OrderDirection,
-  PaginateConfig,
   PaginatedResult,
   PredicateWhereIndexConfig,
   ReturningAll,

@@ -64,7 +64,6 @@ import type {
   DBQueryConfig,
   OrderByClause,
   OrderByValue,
-  PaginateConfig,
   PredicateWhereIndexConfig,
   TableRelationalConfig,
   TablesRelationalConfig,
@@ -269,7 +268,7 @@ export class GelRelationalQuery<
         return;
       }
       throw new Error(
-        'findMany() requires explicit sizing. Provide limit, paginate, allowFullScan: true, or defineSchema(..., { defaults: { defaultLimit } }).'
+        'findMany() requires explicit sizing. Provide limit, provide cursor + limit for cursor pagination, allowFullScan: true, or defineSchema(..., { defaults: { defaultLimit } }).'
       );
     }
 
@@ -1409,7 +1408,9 @@ export class GelRelationalQuery<
    */
   async execute(): Promise<TResult> {
     const config = this.config as any;
-    const paginate = config.paginate as PaginateConfig | undefined;
+    const cursor = config.cursor as string | null | undefined;
+    const isCursorPaginated = cursor !== undefined;
+    const maxScan = config.maxScan as number | undefined;
     const searchConfig = config.search as
       | {
           index: string;
@@ -1437,6 +1438,16 @@ export class GelRelationalQuery<
     const strict = this.tableConfig.strict !== false;
     const allowFullScan = this.allowFullScan === true;
 
+    if (isCursorPaginated && this.mode !== 'many') {
+      throw new Error('cursor pagination is only supported on findMany().');
+    }
+
+    if (maxScan !== undefined && !isCursorPaginated) {
+      throw new Error(
+        'maxScan can only be used with cursor pagination (cursor + limit).'
+      );
+    }
+
     // Fast path: `_id` lookups use `db.get()` (primary key) instead of an index plan.
     // This keeps `where: { _id: ... }` and `where: { _id: { in: [...] } }` ergonomic
     // without requiring allowFullScan, and avoids full collection scans.
@@ -1446,7 +1457,7 @@ export class GelRelationalQuery<
       !vectorSearchConfig &&
       !searchConfig &&
       !wherePredicate &&
-      paginate === undefined &&
+      !isCursorPaginated &&
       config.index === undefined
     ) {
       const orderSpecs = this._orderBySpecs(config.orderBy);
@@ -1507,8 +1518,13 @@ export class GelRelationalQuery<
           'vectorSearch cannot be combined with orderBy. Vector results stay in similarity order.'
         );
       }
-      if (paginate !== undefined) {
-        throw new Error('vectorSearch cannot be combined with paginate.');
+      if (isCursorPaginated) {
+        throw new Error(
+          'vectorSearch cannot be combined with cursor pagination.'
+        );
+      }
+      if (maxScan !== undefined) {
+        throw new Error('vectorSearch cannot be combined with maxScan.');
       }
       if (config.where !== undefined) {
         throw new Error('vectorSearch cannot be combined with where.');
@@ -1583,6 +1599,21 @@ export class GelRelationalQuery<
       return this._returnSelectedRows(selectedRows);
     }
 
+    if (isCursorPaginated) {
+      const limit = config.limit;
+      if (config.offset !== undefined) {
+        throw new Error('cursor pagination cannot be combined with offset.');
+      }
+      if (cursor !== null && typeof cursor !== 'string') {
+        throw new Error('cursor must be a string or null.');
+      }
+      if (!Number.isInteger(limit) || limit < 1) {
+        throw new Error(
+          'cursor pagination requires limit to be a positive integer.'
+        );
+      }
+    }
+
     if (searchConfig) {
       if (config.orderBy !== undefined) {
         throw new Error(
@@ -1636,10 +1667,10 @@ export class GelRelationalQuery<
         }
       );
 
-      if (paginate) {
+      if (isCursorPaginated) {
         const paginationResult = await searchQuery.paginate({
-          cursor: paginate.cursor ?? null,
-          numItems: paginate.limit ?? 20,
+          cursor: cursor ?? null,
+          numItems: config.limit,
         } as any);
 
         let pageRows = paginationResult.page;
@@ -1800,7 +1831,7 @@ export class GelRelationalQuery<
           predicateIndex.range ? (predicateIndex.range as any) : (q: any) => q
         );
 
-      if (paginate) {
+      if (isCursorPaginated) {
         if (needsPostFetchSortForPrimary) {
           if (strict) {
             throw new Error(
@@ -1822,7 +1853,7 @@ export class GelRelationalQuery<
 
       if (primaryOrder && !needsPostFetchSortForPrimary) {
         streamQuery = streamQuery.order(primaryOrder.direction);
-      } else if (paginate) {
+      } else if (isCursorPaginated) {
         streamQuery = streamQuery.order('desc');
       }
 
@@ -1835,11 +1866,11 @@ export class GelRelationalQuery<
         return await wherePredicate(row);
       });
 
-      if (paginate) {
+      if (isCursorPaginated) {
         const paginationResult = await streamQuery.paginate({
-          cursor: paginate.cursor ?? null,
-          limit: paginate.limit ?? 20,
-          maxScan: paginate.maxScan,
+          cursor: cursor ?? null,
+          limit: config.limit,
+          maxScan,
         });
 
         let pageRows = paginationResult.page;
@@ -1973,7 +2004,7 @@ export class GelRelationalQuery<
     if (
       queryConfig.strategy === 'multiProbe' &&
       queryConfig.index &&
-      !paginate
+      !isCursorPaginated
     ) {
       const probeRows = await Promise.all(
         queryConfig.probeFilters.map(async (probeFilters) => {
@@ -2082,7 +2113,7 @@ export class GelRelationalQuery<
     }
 
     // M6.5 Phase 4: Handle cursor pagination separately
-    if (paginate) {
+    if (isCursorPaginated) {
       if (queryConfig.strategy === 'multiProbe') {
         if (!allowFullScan) {
           throw new Error(
@@ -2142,8 +2173,8 @@ export class GelRelationalQuery<
 
       // Use Convex native pagination (O(1) performance)
       const paginationResult = await query.paginate({
-        cursor: paginate.cursor ?? null,
-        numItems: paginate.limit ?? 20,
+        cursor: cursor ?? null,
+        numItems: config.limit,
       });
 
       let pageRows = paginationResult.page;

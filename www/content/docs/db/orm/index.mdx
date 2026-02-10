@@ -10,7 +10,7 @@ Better-Convex ORM mirrors Drizzle v1's relational query builder while adapting t
 ## What You Get
 
 - Drizzle-style schema and relations (`convexTable`, `defineRelations`, `one`, `many`)
-- Type-safe queries (`findMany`, `findFirst`, `paginate`, `where`, `orderBy`, `with`)
+- Type-safe queries (`findMany`, `findFirst`, cursor pagination, `where`, `orderBy`, `with`)
 - Mutations (`insert`, `update`, `delete`, `returning`, `onConflictDoUpdate`)
 - Runtime RLS policies (`rlsPolicy`, `convexTable.withRLS`)
 - End-to-end TypeScript inference (`InferSelectModel`, `$inferSelect`)
@@ -113,6 +113,9 @@ You now have a fully typed query with relation loading in just a few lines.
   </Card>
   <Card title="Querying Data" href="/docs/db/orm/queries">
     Filters, ordering, and pagination
+  </Card>
+  <Card title="Pagination" href="/docs/db/orm/pagination">
+    Offset vs cursor pagination reference
   </Card>
   <Card title="Row-Level Security" href="/docs/db/orm/rls">
     rlsPolicy rules and enforcement

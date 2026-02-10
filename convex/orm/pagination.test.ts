@@ -1,7 +1,7 @@
 /**
  * M6.5 Phase 4: Cursor Pagination Tests
  *
- * Tests for findMany({ paginate }) with Convex-native cursor pagination (O(1) performance)
+ * Tests for findMany({ cursor, limit }) with Convex-native cursor pagination (O(1) performance)
  */
 
 import { expect, test } from 'vitest';
@@ -27,10 +27,8 @@ test('basic pagination - null cursor returns first page', async () => {
     const db = ctx.orm;
 
     const result = await db.query.users.findMany({
-      paginate: {
-        cursor: null,
-        limit: 10,
-      },
+      cursor: null,
+      limit: 10,
     });
 
     expect(result.page).toHaveLength(10);
@@ -59,10 +57,8 @@ test('pagination - multiple pages with cursor', async () => {
 
     // Page 1
     const page1 = await db.query.users.findMany({
-      paginate: {
-        cursor: null,
-        limit: 10,
-      },
+      cursor: null,
+      limit: 10,
     });
     expect(page1.page).toHaveLength(10);
     expect(page1.isDone).toBe(false);
@@ -70,10 +66,8 @@ test('pagination - multiple pages with cursor', async () => {
 
     // Page 2
     const page2 = await db.query.users.findMany({
-      paginate: {
-        cursor: page1.continueCursor,
-        limit: 10,
-      },
+      cursor: page1.continueCursor,
+      limit: 10,
     });
     expect(page2.page).toHaveLength(10);
     expect(page2.isDone).toBe(false);
@@ -81,10 +75,8 @@ test('pagination - multiple pages with cursor', async () => {
 
     // Page 3 (last page - only 5 items)
     const page3 = await db.query.users.findMany({
-      paginate: {
-        cursor: page2.continueCursor,
-        limit: 10,
-      },
+      cursor: page2.continueCursor,
+      limit: 10,
     });
     expect(page3.page).toHaveLength(5);
     expect(page3.isDone).toBe(true);
@@ -117,11 +109,9 @@ test('predicate pagination honors maxScan', async () => {
     const page1 = await db.query.users.findMany({
       where: (row) => row.name.endsWith('0'),
       index: { name: 'by_name' },
-      paginate: {
-        cursor: null,
-        limit: 5,
-        maxScan: 10,
-      },
+      cursor: null,
+      limit: 5,
+      maxScan: 10,
     });
 
     expect(page1.page.length).toBeLessThanOrEqual(5);
@@ -131,11 +121,9 @@ test('predicate pagination honors maxScan', async () => {
     const page2 = await db.query.users.findMany({
       where: (row) => row.name.endsWith('0'),
       index: { name: 'by_name' },
-      paginate: {
-        cursor: page1.continueCursor,
-        limit: 5,
-        maxScan: 10,
-      },
+      cursor: page1.continueCursor,
+      limit: 5,
+      maxScan: 10,
     });
 
     expect(page2.page.length).toBeGreaterThan(0);
@@ -154,10 +142,8 @@ test('pagination - empty result set', async () => {
     const db = ctx.orm;
 
     const result = await db.query.users.findMany({
-      paginate: {
-        cursor: null,
-        limit: 10,
-      },
+      cursor: null,
+      limit: 10,
     });
 
     expect(result.page).toHaveLength(0);
@@ -185,10 +171,8 @@ test('pagination - single page (isDone: true)', async () => {
     const db = ctx.orm;
 
     const result = await db.query.users.findMany({
-      paginate: {
-        cursor: null,
-        limit: 10,
-      },
+      cursor: null,
+      limit: 10,
     });
 
     expect(result.page).toHaveLength(5);
@@ -218,10 +202,8 @@ test('pagination with WHERE filter', async () => {
 
     const result = await db.query.users.findMany({
       where: { age: { gte: 25 } },
-      paginate: {
-        cursor: null,
-        limit: 10,
-      },
+      cursor: null,
+      limit: 10,
     });
 
     expect(result.page.length).toBeGreaterThan(0);
@@ -253,10 +235,8 @@ test('pagination with index-union filter requires allowFullScan opt-in', async (
     await expect(
       db.query.users.findMany({
         where: { status: { in: ['active', 'pending'] } },
-        paginate: {
-          cursor: null,
-          limit: 5,
-        },
+        cursor: null,
+        limit: 5,
       })
     ).rejects.toThrow(/allowFullScan: true/i);
   });
@@ -282,10 +262,8 @@ test('pagination with index-union filter works with allowFullScan', async () => 
 
     const page = await db.query.users.findMany({
       where: { status: { in: ['active', 'pending'] } },
-      paginate: {
-        cursor: null,
-        limit: 5,
-      },
+      cursor: null,
+      limit: 5,
       allowFullScan: true,
     });
 
@@ -322,19 +300,15 @@ test('pagination on non-leading compound field requires allowFullScan opt-in', a
     await expect(
       db.query.posts.findMany({
         where: { numLikes: 10 },
-        paginate: {
-          cursor: null,
-          limit: 2,
-        },
+        cursor: null,
+        limit: 2,
       })
     ).rejects.toThrow(/allowFullScan: true/i);
 
     const page = await db.query.posts.findMany({
       where: { numLikes: 10 },
-      paginate: {
-        cursor: null,
-        limit: 2,
-      },
+      cursor: null,
+      limit: 2,
       allowFullScan: true,
     });
 
@@ -365,10 +339,8 @@ test('pagination with ORDER BY ascending', async () => {
     await expect(
       db.query.users.findMany({
         orderBy: { role: 'asc' },
-        paginate: {
-          cursor: null,
-          limit: 3,
-        },
+        cursor: null,
+        limit: 3,
       })
     ).rejects.toThrow(/Pagination: Field 'role' has no index/);
   });
@@ -402,10 +374,8 @@ test('pagination with ORDER BY _creationTime', async () => {
 
     const result = await db.query.posts.findMany({
       orderBy: { _creationTime: 'desc' },
-      paginate: {
-        cursor: null,
-        limit: 5,
-      },
+      cursor: null,
+      limit: 5,
     });
 
     expect(result.page).toHaveLength(5);
@@ -432,25 +402,19 @@ test('pagination - cursor stability (replaying cursor returns same results)', as
 
     // Get first page
     const page1 = await db.query.users.findMany({
-      paginate: {
-        cursor: null,
-        limit: 5,
-      },
+      cursor: null,
+      limit: 5,
     });
 
     // Replay second page cursor twice
     const page2a = await db.query.users.findMany({
-      paginate: {
-        cursor: page1.continueCursor,
-        limit: 5,
-      },
+      cursor: page1.continueCursor,
+      limit: 5,
     });
 
     const page2b = await db.query.users.findMany({
-      paginate: {
-        cursor: page1.continueCursor,
-        limit: 5,
-      },
+      cursor: page1.continueCursor,
+      limit: 5,
     });
 
     // Both should return identical results
@@ -481,10 +445,8 @@ test('pagination - default ordering (_creationTime desc)', async () => {
     const db = ctx.orm;
 
     const result = await db.query.users.findMany({
-      paginate: {
-        cursor: null,
-        limit: 5,
-      },
+      cursor: null,
+      limit: 5,
     });
 
     expect(result.page).toHaveLength(5);
@@ -521,10 +483,8 @@ test('pagination - large result set (100+ items)', async () => {
     // Paginate until done
     while (true) {
       const result: any = await db.query.users.findMany({
-        paginate: {
-          cursor,
-          limit: 20,
-        },
+        cursor,
+        limit: 20,
       });
 
       totalFetched += result.page.length;
@@ -573,10 +533,8 @@ test('pagination with combined WHERE and ORDER BY (non-indexed)', async () => {
       db.query.posts.findMany({
         where: { published: true },
         orderBy: { numLikes: 'desc' },
-        paginate: {
-          cursor: null,
-          limit: 5,
-        },
+        cursor: null,
+        limit: 5,
       })
     ).rejects.toThrow(/Pagination: Field 'numLikes' has no index/);
   });

@@ -186,15 +186,16 @@ export const list = publicQuery
   .input(z.object({ userId: zid('user').optional() }))
   .paginated({ limit: 20, item: SessionSchema })
   .query(async ({ ctx, input }) => {
-    return ctx.orm.query.session.findMany({
-      where: input.userId ? { userId: input.userId } : {},
-      orderBy: { _creationTime: 'desc' },
-      paginate: input,
-    });
-  });
+	    return ctx.orm.query.session.findMany({
+	      where: input.userId ? { userId: input.userId } : {},
+	      orderBy: { _creationTime: 'desc' },
+	      cursor: input.cursor,
+	      limit: input.limit,
+	    });
+	  });
 ```
 
-The handler receives flat `input.cursor` and `input.limit`. Pass `input` directly to `paginate`. The output is automatically typed as `{ continueCursor: string, isDone: boolean, page: T[] }`.
+The handler receives flat `input.cursor` and `input.limit`. Pass them to `findMany({ cursor, limit })`. The output is automatically typed as `{ continueCursor: string, isDone: boolean, page: T[] }`.
 
 See [Infinite Queries](/docs/react/infinite-queries) for client-side usage with `useInfiniteQuery`.
 

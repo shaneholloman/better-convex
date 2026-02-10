@@ -2,16 +2,16 @@ import type { GenericCtx } from '@convex-dev/better-auth';
 import type { BetterAuthOptions } from 'better-auth';
 
 import {
+  type DocumentByName,
   type FunctionReference,
   type GenericDataModel,
   type GenericMutationCtx,
   type GenericSchema,
-  type IdField,
   internalMutationGeneric,
   type SchemaDefinition,
-  type SystemFields,
+  type TableNamesInDataModel,
 } from 'convex/server';
-import { type Infer, v } from 'convex/values';
+import { v } from 'convex/values';
 
 import { dbAdapter, httpAdapter } from './adapter';
 
@@ -35,40 +35,42 @@ export type Triggers<
   DataModel extends GenericDataModel,
   Schema extends SchemaDefinition<any, any>,
 > = {
-  [K in keyof Schema['tables'] & string]?: {
+  [K in Extract<
+    keyof Schema['tables'] & string,
+    TableNamesInDataModel<DataModel>
+  >]?: {
     beforeCreate?: (
       ctx: GenericMutationCtx<DataModel>,
-      data: Infer<Schema['tables'][K]['validator']>
-    ) => Promise<Infer<Schema['tables'][K]['validator']> | undefined>;
+      data: Omit<DocumentByName<DataModel, K>, '_id' | '_creationTime'>
+    ) => Promise<
+      Omit<DocumentByName<DataModel, K>, '_id' | '_creationTime'> | undefined
+    >;
     beforeDelete?: (
       ctx: GenericMutationCtx<DataModel>,
-      doc: Infer<Schema['tables'][K]['validator']> & IdField<K> & SystemFields
-    ) => Promise<
-      | (Infer<Schema['tables'][K]['validator']> & IdField<K> & SystemFields)
-      | undefined
-    >;
+      doc: DocumentByName<DataModel, K>
+    ) => Promise<DocumentByName<DataModel, K> | undefined>;
     beforeUpdate?: (
       ctx: GenericMutationCtx<DataModel>,
-      doc: Infer<Schema['tables'][K]['validator']> & IdField<K> & SystemFields,
-      update: Partial<Infer<Schema['tables'][K]['validator']>>
-    ) => Promise<Partial<Infer<Schema['tables'][K]['validator']>> | undefined>;
+      doc: DocumentByName<DataModel, K>,
+      update: Partial<
+        Omit<DocumentByName<DataModel, K>, '_id' | '_creationTime'>
+      >
+    ) => Promise<
+      | Partial<Omit<DocumentByName<DataModel, K>, '_id' | '_creationTime'>>
+      | undefined
+    >;
     onCreate?: (
       ctx: GenericMutationCtx<DataModel>,
-      doc: Infer<Schema['tables'][K]['validator']> & IdField<K> & SystemFields
+      doc: DocumentByName<DataModel, K>
     ) => Promise<void>;
     onDelete?: (
       ctx: GenericMutationCtx<DataModel>,
-      doc: Infer<Schema['tables'][K]['validator']> & IdField<K> & SystemFields
+      doc: DocumentByName<DataModel, K>
     ) => Promise<void>;
     onUpdate?: (
       ctx: GenericMutationCtx<DataModel>,
-      newDoc: Infer<Schema['tables'][K]['validator']> &
-        IdField<K> & {
-          _creationTime: number;
-        },
-      oldDoc: Infer<Schema['tables'][K]['validator']> &
-        IdField<K> &
-        SystemFields
+      newDoc: DocumentByName<DataModel, K>,
+      oldDoc: DocumentByName<DataModel, K>
     ) => Promise<void>;
   };
 };
@@ -91,6 +93,8 @@ export const createClient = <
   httpAdapter: (ctx: GenericCtx<DataModel>) => httpAdapter(ctx, config),
   triggersApi: () => {
     const mutationBuilder = config.internalMutation ?? internalMutationGeneric;
+    const getTriggers = (model: string) =>
+      config.triggers?.[model as keyof Triggers<DataModel, Schema>];
 
     return {
       beforeCreate: mutationBuilder({
@@ -99,10 +103,8 @@ export const createClient = <
           model: v.string(),
         },
         handler: async (ctx, args) =>
-          (await config?.triggers?.[args.model]?.beforeCreate?.(
-            ctx,
-            args.data
-          )) ?? args.data,
+          (await getTriggers(args.model)?.beforeCreate?.(ctx, args.data)) ??
+          args.data,
       }),
       beforeDelete: mutationBuilder({
         args: {
@@ -110,10 +112,8 @@ export const createClient = <
           model: v.string(),
         },
         handler: async (ctx, args) =>
-          (await config?.triggers?.[args.model]?.beforeDelete?.(
-            ctx,
-            args.doc
-          )) ?? args.doc,
+          (await getTriggers(args.model)?.beforeDelete?.(ctx, args.doc)) ??
+          args.doc,
       }),
       beforeUpdate: mutationBuilder({
         args: {
@@ -122,7 +122,7 @@ export const createClient = <
           update: v.any(),
         },
         handler: async (ctx, args) =>
-          (await config?.triggers?.[args.model]?.beforeUpdate?.(
+          (await getTriggers(args.model)?.beforeUpdate?.(
             ctx,
             args.doc,
             args.update
@@ -134,7 +134,7 @@ export const createClient = <
           model: v.string(),
         },
         handler: async (ctx, args) => {
-          await config?.triggers?.[args.model]?.onCreate?.(ctx, args.doc);
+          await getTriggers(args.model)?.onCreate?.(ctx, args.doc);
         },
       }),
       onDelete: mutationBuilder({
@@ -143,7 +143,7 @@ export const createClient = <
           model: v.string(),
         },
         handler: async (ctx, args) => {
-          await config?.triggers?.[args.model]?.onDelete?.(ctx, args.doc);
+          await getTriggers(args.model)?.onDelete?.(ctx, args.doc);
         },
       }),
       onUpdate: mutationBuilder({
@@ -153,7 +153,7 @@ export const createClient = <
           oldDoc: v.any(),
         },
         handler: async (ctx, args) => {
-          await config?.triggers?.[args.model]?.onUpdate?.(
+          await getTriggers(args.model)?.onUpdate?.(
             ctx,
             args.newDoc,
             args.oldDoc

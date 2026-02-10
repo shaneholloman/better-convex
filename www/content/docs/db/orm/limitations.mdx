@@ -79,7 +79,7 @@ const users = await db.query.users.findMany({
 
 ## Indexes And Ordering
 
-- `findMany({ paginate })` relies on the first `orderBy` field for cursor ordering
+- `findMany({ cursor, limit })` relies on the first `orderBy` field for cursor ordering
 - Sorting without an index falls back to `_creationTime` ordering
 - Post-fetch sorting (multi-field or non-indexable orderBy) sorts before `offset`/`limit`, so Better-Convex must read the full filtered candidate set first
 - For these post-fetch sort paths, size non-paginated queries intentionally (`limit`, schema `defaultLimit`, or `allowFullScan`)
@@ -103,13 +103,13 @@ const posts = convexTable(
 - Foreign key actions require an index on the referencing columns
 - Relation loading requires indexes on relation fields (missing indexes throw unless `allowFullScan`)
 - Relation loading fail-fasts when unique relation lookup keys exceed `defaults.relationFanOutMaxKeys` (default `1000`) unless `allowFullScan`
-- Non-paginated `findMany()` must be explicitly sized (`limit`, `paginate`, schema `defaultLimit`, or `allowFullScan`)
+- Non-paginated `findMany()` must be explicitly sized (`limit`, cursor pagination (`cursor` + `limit`), schema `defaultLimit`, or `allowFullScan`)
 - `many()` relation loading must be explicitly sized per parent (`with.<relation>.limit`, schema `defaultLimit`, or `allowFullScan`)
 - System tables (`_storage`, `_scheduled_functions`) are accessed via raw `db.system.get/query`, not `db.query.<table>.findMany()`
 - Predicate `where` requires explicit `index: { name, range? }` and runs post‑fetch via stream filtering
 - Search mode (`findMany({ search })`) is relevance-ordered; `orderBy` is not supported
 - Search mode supports base-table object `where`, but not predicate `where` or relation-based `where`
-- Vector mode (`findMany({ vectorSearch })`) does not support `paginate`, `where`, `orderBy`, `index`, or `offset`
+- Vector mode (`findMany({ vectorSearch })`) does not support `cursor`, `limit`, `maxScan`, `where`, `orderBy`, `index`, or `offset`
 - Update/delete without `where()` throws unless `allowFullScan`
 - Update/delete matched rows are capped by `mutationMaxRows` (default `1000`) and collected in `mutationBatchSize` pages (default `100`)
 - Async FK fan-out uses `mutationLeafBatchSize` for non-recursive actions (default `900`)
@@ -155,7 +155,7 @@ Recommended patterns:
 - Index every field you filter or order by frequently
 - Use search indexes for large text filtering
 - Use vector indexes only for embedding search
-- Prefer `findMany({ paginate })` for infinite scroll and large datasets
+- Prefer cursor pagination (`cursor` + `limit`) for infinite scroll and large datasets
 - Avoid deep offset pagination for large tables
 - Use `with` to avoid N+1 queries
 
@@ -164,8 +164,8 @@ Recommended patterns:
 | Issue | Cause | Fix |
 |---|---|---|
 | Slow ordering | Missing index | Add `index('...').on(t.field)` in schema |
-| `findMany({ paginate })` order changes | No index on primary sort | Add index on first `orderBy` field |
-| `findMany()` throws explicit sizing error | Non-paginated query has no `limit` and no schema `defaultLimit` | Add `limit`, use `paginate`, set `defaults.defaultLimit`, or opt in with `allowFullScan` |
+| `findMany({ cursor, limit })` order changes | No index on primary sort | Add index on first `orderBy` field |
+| `findMany()` throws explicit sizing error | Non-paginated query has no `limit` and no schema `defaultLimit` | Add `limit`, use cursor pagination (`cursor` + `limit`), set `defaults.defaultLimit`, or opt in with `allowFullScan` |
 | `like` or `ilike` is slow | Post-fetch filtering | Use search indexes |
 | `vectorSearch` throws provider error | `createOrm(...).db(ctx)` was called without `vectorSearch` | Pass `vectorSearch: ctx.vectorSearch` when building ORM db |
 | Relations not loading | Incomplete relation metadata | Define both relation sides or explicit `from`/`to` |

@@ -22,7 +22,7 @@ This file provides a structured index of Better‑Convex ORM documentation for A
 - `/docs/db/orm/relations` - One‑to‑one, one‑to‑many, many‑to‑many relations
 
 **Querying Data:**
-- `/docs/db/orm/queries` - findMany(), findFirst(), findMany({ paginate }), filters, orderBy
+- `/docs/db/orm/queries` - findMany(), findFirst(), cursor pagination (`cursor` + `limit`), filters, orderBy
 - `/docs/db/orm/operators` - All supported `where` operators (query + mutation)
 
 **Mutations:**
@@ -74,14 +74,17 @@ await db.query.table.findFirst({
 
 await db.query.table.findMany({
   where: { active: true },
-  paginate: { cursor: null, limit: 20 },
+  cursor: null,
+  limit: 20,
 })
 
 await db.query.table.findMany({
   // Predicate where requires an explicit index plan (no allowFullScan fallback)
   where: (row) => row.status === 'active',
   index: { name: 'by_status' },
-  paginate: { cursor: null, limit: 20, maxScan: 2000 },
+  cursor: null,
+  limit: 20,
+  maxScan: 2000,
 })
 ```
 
@@ -148,7 +151,7 @@ isNotNull(field)
 **Core features:**
 - Schema definition (convexTable, column builders)
 - Relations definition and loading (one, many, with)
-- Query operations (findMany, findFirst, paginate)
+- Query operations (findMany, findFirst, cursor pagination)
 - Where filtering (object filters)
 - Pagination (limit, offset)
 - Order by (multi‑field, index‑aware first sort)
@@ -172,7 +175,7 @@ isNotNull(field)
 - `findUnique is not a function` → Use `findFirst` with `where`
 - `count/sum/avg/max/min is not on db.query.*` → Use `/docs/db/aggregates` (`@convex-dev/aggregate`)
 - `'include' does not exist` → Use `with` instead of `include`
-- `findMany() requires explicit sizing` → Add `limit`, use `paginate`, set schema `defaultLimit`, or opt in with `allowFullScan`
+- `findMany() requires explicit sizing` → Add `limit`, use cursor pagination (`cursor` + `limit`), set schema `defaultLimit`, or opt in with `allowFullScan`
 - `allowFullScan required` → Predicate `where`, missing relation index, or unbounded update/delete requires `allowFullScan`
 - `matched more than mutationMaxRows` → Narrow update/delete filter or raise `defaults.mutationMaxRows`
 - `update/delete pagination does not support multi-probe filters yet` → Rewrite to a single-range index filter, or run non-paginated mode with row cap

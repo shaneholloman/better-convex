@@ -243,9 +243,18 @@ export type DBQueryConfig<
   /** Skip first N results */
   offset?: number | undefined;
   /**
-   * Cursor pagination (Convex native)
+   * Cursor pagination (Convex native). When `cursor` is provided, `limit` is
+   * required and the result type changes to a paginated shape.
+   *
+   * - First page: cursor: null
+   * - Next page: cursor: previous.continueCursor
    */
-  paginate?: PaginateConfig | undefined;
+  cursor?: _TIsRoot extends true ? string | null : never;
+  /**
+   * Maximum documents to scan during predicate `where(fn)` pagination.
+   * Only valid when `cursor` is provided.
+   */
+  maxScan?: _TIsRoot extends true ? number : never;
   /**
    * Full-text search query configuration.
    * Only available on tables that declare search indexes.
@@ -563,8 +572,9 @@ export type EnforceVectorSearchConstraints<
           | 'search'
           | 'where'
           | 'orderBy'
-          | 'paginate'
           | 'index'
+          | 'cursor'
+          | 'maxScan'
           | 'offset'
           | 'limit'
           | 'allowFullScan'
@@ -573,8 +583,9 @@ export type EnforceVectorSearchConstraints<
           search?: never;
           where?: never;
           orderBy?: never;
-          paginate?: never;
           index?: never;
+          cursor?: never;
+          maxScan?: never;
           offset?: never;
           limit?: never;
           allowFullScan?: never;
@@ -791,12 +802,6 @@ type InferRelationalQueryTableResult<
 type TableColumns<TTableConfig extends TableRelationalConfig> =
   TTableConfig['table']['_']['columns'] &
     SystemFields<TTableConfig['table']['_']['name']>;
-
-export type PaginateConfig = {
-  cursor: string | null;
-  limit: number;
-  maxScan?: number;
-};
 
 export type PaginatedResult<T> = {
   page: T[];

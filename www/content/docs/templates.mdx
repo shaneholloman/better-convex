@@ -1390,12 +1390,13 @@ export const deletePage = privateMutation
 
 	    // biome-ignore lint/suspicious/noExplicitAny: dynamic table access
 	    const query = (ctx.orm.query as any)[input.tableName];
-	    if (!query) return null;
-
-	    const results = await query.findMany({
-	      paginate: { cursor: input.cursor, limit: DELETE_BATCH_SIZE },
-	      orderBy: { _creationTime: 'desc' },
-	    });
+		    if (!query) return null;
+	
+		    const results = await query.findMany({
+		      cursor: input.cursor,
+		      limit: DELETE_BATCH_SIZE,
+		      orderBy: { _creationTime: 'desc' },
+		    });
 
 		    for (const row of results.page) {
 		      try {

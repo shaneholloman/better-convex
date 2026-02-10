@@ -195,10 +195,8 @@ test('search pagination works with cursor flow', async () => {
         index: 'text_search',
         query: 'galaxy',
       },
-      paginate: {
-        cursor: null,
-        limit: 1,
-      },
+      cursor: null,
+      limit: 1,
     });
 
     expect(page1.page).toHaveLength(1);
@@ -210,10 +208,8 @@ test('search pagination works with cursor flow', async () => {
         index: 'text_search',
         query: 'galaxy',
       },
-      paginate: {
-        cursor: page1.continueCursor,
-        limit: 1,
-      },
+      cursor: page1.continueCursor,
+      limit: 1,
     });
 
     expect(page2.page).toHaveLength(1);

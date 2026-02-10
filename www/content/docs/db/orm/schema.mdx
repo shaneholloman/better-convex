@@ -173,7 +173,7 @@ Strict guardrails cover relation indexes, relation fan-out cardinality, predicat
 | Relation loading missing index | throws unless `allowFullScan` | throws unless `allowFullScan`; warns when scanning | throws unless `allowFullScan`; no strict warning |
 | Predicate `where` | requires explicit `index: { name, range? }` (no `allowFullScan` fallback) | same | same |
 | Pagination orderBy missing index | strict `true` throws; strict `false` warns + falls back to `_creationTime` | throws (add index or disable strict) | warns + falls back to `_creationTime` |
-| Unsized non-paginated `findMany()` | throws unless `limit`/`paginate`/`defaultLimit`/`allowFullScan` | same | same |
+| Unsized non-paginated `findMany()` | throws unless `limit`/cursor pagination (`cursor` + `limit`)/`defaultLimit`/`allowFullScan` | same | same |
 | `many()` relation without per-parent limit | throws unless relation `limit`/`defaultLimit`/`allowFullScan` | same | same |
 | Relation lookup fan-out keys exceed cap | throws unless `allowFullScan` (`defaults.relationFanOutMaxKeys`, default `1000`) | throws unless `allowFullScan`; warns when scanning | throws unless `allowFullScan`; no strict warning |
 | Update/delete without `where()` | throws unless `allowFullScan` | throws unless `allowFullScan`; warns when scanning | throws unless `allowFullScan`; no strict warning |

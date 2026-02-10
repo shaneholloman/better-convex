@@ -1,0 +1,135 @@
+---
+title: Pagination
+description: Offset pagination and cursor-based pagination in Better-Convex ORM
+---
+
+import { AlertTriangle, InfoIcon } from "lucide-react"
+
+Better-Convex ORM supports two pagination styles:
+
+- **Offset pagination**: `offset` + `limit` (simple, but gets slower as `offset` grows)
+- **Cursor pagination**: `cursor` + `limit` (efficient and consistent; best for infinite scroll)
+
+## Offset pagination
+
+Offset pagination uses `offset` to skip rows and `limit` to cap the number returned:
+
+```ts showLineNumbers
+const rows = await db.query.users.findMany({
+  orderBy: { _creationTime: 'desc' },
+  offset: 20,
+  limit: 10,
+});
+```
+
+In a typical page-based UI:
+
+- `limit` is the page size
+- `offset = (pageNumber - 1) * limit`
+
+### Pros of offset pagination
+
+- You can jump to any page immediately (compute `offset`).
+- Works with any sort order (including non-unique fields).
+
+### Cons of offset pagination
+
+- Performance degrades as `offset` increases (Better-Convex must fetch `offset + limit` rows then slice).
+- Results can shift if rows are inserted/deleted between requests (duplicates or skips).
+
+### Use cases for offset pagination
+
+- Shallow pagination on small datasets.
+- Admin tables where “jump to page N” matters more than infinite-scroll performance.
+
+## Cursor-based pagination
+
+Cursor pagination uses an **opaque cursor token** from Convex to fetch the next page efficiently.
+
+### How it works
+
+First page: pass `cursor: null` and a required `limit`:
+
+```ts showLineNumbers
+const page1 = await db.query.posts.findMany({
+  where: { published: true },
+  orderBy: { _creationTime: 'desc' },
+  cursor: null,
+  limit: 20,
+});
+```
+
+Next page: pass `continueCursor` back as `cursor`:
+
+```ts showLineNumbers
+if (!page1.isDone) {
+  const page2 = await db.query.posts.findMany({
+    where: { published: true },
+    orderBy: { _creationTime: 'desc' },
+    cursor: page1.continueCursor,
+    limit: 20,
+  });
+}
+```
+
+The return shape matches Convex pagination:
+
+```ts
+type PaginationResult<T> = {
+  page: T[];
+  continueCursor: string | null;
+  isDone: boolean;
+};
+```
+
+### Ordering rules (Convex semantics)
+
+- Cursor pagination relies on Convex’s pagination, which is tied to the query’s underlying index order.
+- If you pass `orderBy`, the **first** `orderBy` field is used for cursor ordering.
+- For stable cursor pagination, ensure the primary `orderBy` field is indexed.
+  - In strict mode (default), Better-Convex throws if the primary `orderBy` field has no index.
+  - With `strict: false`, Better-Convex warns and falls back to `_creationTime` ordering for cursor stability.
+
+### Pros of cursor pagination
+
+- Efficient for large datasets (no growing `offset` scan).
+- More consistent page boundaries under concurrent inserts/deletes than offset pagination.
+
+### Cons of cursor pagination
+
+- You can’t jump directly to page 400 without iterating pages.
+- You must keep the cursor from the previous page.
+
+### FAQ
+
+#### Do I need a `skip: 1` like Prisma?
+
+No. Better-Convex cursor pagination is exclusive: the next page begins after the cursor.
+
+#### Can I guess the next cursor?
+
+No. Treat `continueCursor` as opaque; always use the value returned by the previous page.
+
+#### What if the cursor is invalid?
+
+The cursor must come from the previous page of the **same query shape**.
+If you lose it (or your query changes), restart from `cursor: null`.
+
+## Predicate `where(fn)` pagination and `maxScan`
+
+Predicate `where(fn)` runs post-fetch against an index stream, so you should cap scan cost.
+Use `maxScan` together with cursor pagination:
+
+```ts showLineNumbers
+const page = await db.query.users.findMany({
+  where: (u) => u.email.endsWith('@example.com'),
+  index: { name: 'by_email' },
+  cursor: null,
+  limit: 20,
+  maxScan: 500,
+});
+```
+
+<Callout icon={<AlertTriangle />}>
+`maxScan` is only valid with cursor pagination (`cursor` + `limit`). Without cursor pagination, Better-Convex throws.
+</Callout>

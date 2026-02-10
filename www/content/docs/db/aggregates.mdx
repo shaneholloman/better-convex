@@ -416,10 +416,11 @@ export const backfillAggregate = privateMutation
     batchSize: z.number().default(100),
   }))
   .mutation(async ({ ctx, input }) => {
-    const results = await ctx.orm.query.scores.findMany({
-      orderBy: { _creationTime: 'asc' },
-      paginate: { limit: input.batchSize, cursor: input.cursor },
-    });
+	    const results = await ctx.orm.query.scores.findMany({
+	      orderBy: { _creationTime: 'asc' },
+	      cursor: input.cursor,
+	      limit: input.batchSize,
+	    });
 
     // Idempotent - won't duplicate if already exists
     for (const doc of results.page) {

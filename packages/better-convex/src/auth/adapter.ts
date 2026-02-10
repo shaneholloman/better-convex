@@ -180,6 +180,9 @@ export const httpAdapter = <
       debugLogs: debugLogs || false,
     },
     adapter: ({ options }) => {
+      const getTriggers = (model: string) =>
+        triggers?.[model as keyof Triggers<DataModel, Schema>];
+
       // Disable telemetry in all cases because it requires Node
       options.telemetry = { enabled: false };
 
@@ -223,13 +226,13 @@ export const httpAdapter = <
           }
 
           const onCreateHandle =
-            authFunctions.onCreate && triggers?.[model]?.onCreate
+            authFunctions.onCreate && getTriggers(model)?.onCreate
               ? ((await createFunctionHandle(
                   authFunctions.onCreate
                 )) as FunctionHandle<'mutation'>)
               : undefined;
           const beforeCreateHandle =
-            authFunctions.beforeCreate && triggers?.[model]?.beforeCreate
+            authFunctions.beforeCreate && getTriggers(model)?.beforeCreate
               ? ((await createFunctionHandle(
                   authFunctions.beforeCreate
                 )) as FunctionHandle<'mutation'>)
@@ -253,13 +256,13 @@ export const httpAdapter = <
           }
 
           const onDeleteHandle =
-            authFunctions.onDelete && triggers?.[data.model]?.onDelete
+            authFunctions.onDelete && getTriggers(data.model)?.onDelete
               ? ((await createFunctionHandle(
                   authFunctions.onDelete
                 )) as FunctionHandle<'mutation'>)
               : undefined;
           const beforeDeleteHandle =
-            authFunctions.beforeDelete && triggers?.[data.model]?.beforeDelete
+            authFunctions.beforeDelete && getTriggers(data.model)?.beforeDelete
               ? ((await createFunctionHandle(
                   authFunctions.beforeDelete
                 )) as FunctionHandle<'mutation'>)
@@ -279,13 +282,13 @@ export const httpAdapter = <
           }
 
           const onDeleteHandle =
-            authFunctions.onDelete && triggers?.[data.model]?.onDelete
+            authFunctions.onDelete && getTriggers(data.model)?.onDelete
               ? ((await createFunctionHandle(
                   authFunctions.onDelete
                 )) as FunctionHandle<'mutation'>)
               : undefined;
           const beforeDeleteHandle =
-            authFunctions.beforeDelete && triggers?.[data.model]?.beforeDelete
+            authFunctions.beforeDelete && getTriggers(data.model)?.beforeDelete
               ? ((await createFunctionHandle(
                   authFunctions.beforeDelete
                 )) as FunctionHandle<'mutation'>)
@@ -374,13 +377,14 @@ export const httpAdapter = <
           }
           if (data.where?.length === 1 && data.where[0].operator === 'eq') {
             const onUpdateHandle =
-              authFunctions.onUpdate && triggers?.[data.model]?.onUpdate
+              authFunctions.onUpdate && getTriggers(data.model)?.onUpdate
                 ? ((await createFunctionHandle(
                     authFunctions.onUpdate
                   )) as FunctionHandle<'mutation'>)
                 : undefined;
             const beforeUpdateHandle =
-              authFunctions.beforeUpdate && triggers?.[data.model]?.beforeUpdate
+              authFunctions.beforeUpdate &&
+              getTriggers(data.model)?.beforeUpdate
                 ? ((await createFunctionHandle(
                     authFunctions.beforeUpdate
                   )) as FunctionHandle<'mutation'>)
@@ -405,13 +409,13 @@ export const httpAdapter = <
           }
 
           const onUpdateHandle =
-            authFunctions.onUpdate && triggers?.[data.model]?.onUpdate
+            authFunctions.onUpdate && getTriggers(data.model)?.onUpdate
               ? ((await createFunctionHandle(
                   authFunctions.onUpdate
                 )) as FunctionHandle<'mutation'>)
               : undefined;
           const beforeUpdateHandle =
-            authFunctions.beforeUpdate && triggers?.[data.model]?.beforeUpdate
+            authFunctions.beforeUpdate && getTriggers(data.model)?.beforeUpdate
               ? ((await createFunctionHandle(
                   authFunctions.beforeUpdate
                 )) as FunctionHandle<'mutation'>)
@@ -463,6 +467,9 @@ export const dbAdapter = <
       debugLogs: debugLogs || false,
     },
     adapter: ({ options }) => {
+      const getTriggers = (model: string) =>
+        triggers?.[model as keyof Triggers<DataModel, Schema>];
+
       // Disable telemetry in all cases because it requires Node
       options.telemetry = { enabled: false };
 
@@ -511,13 +518,13 @@ export const dbAdapter = <
         },
         create: async ({ data, model, select }): Promise<any> => {
           const onCreateHandle =
-            authFunctions.onCreate && triggers?.[model]?.onCreate
+            authFunctions.onCreate && getTriggers(model)?.onCreate
               ? ((await createFunctionHandle(
                   authFunctions.onCreate
                 )) as FunctionHandle<'mutation'>)
               : undefined;
           const beforeCreateHandle =
-            authFunctions.beforeCreate && triggers?.[model]?.beforeCreate
+            authFunctions.beforeCreate && getTriggers(model)?.beforeCreate
               ? ((await createFunctionHandle(
                   authFunctions.beforeCreate
                 )) as FunctionHandle<'mutation'>)
@@ -542,13 +549,13 @@ export const dbAdapter = <
         },
         delete: async (data) => {
           const onDeleteHandle =
-            authFunctions.onDelete && triggers?.[data.model]?.onDelete
+            authFunctions.onDelete && getTriggers(data.model)?.onDelete
               ? ((await createFunctionHandle(
                   authFunctions.onDelete
                 )) as FunctionHandle<'mutation'>)
               : undefined;
           const beforeDeleteHandle =
-            authFunctions.beforeDelete && triggers?.[data.model]?.beforeDelete
+            authFunctions.beforeDelete && getTriggers(data.model)?.beforeDelete
               ? ((await createFunctionHandle(
                   authFunctions.beforeDelete
                 )) as FunctionHandle<'mutation'>)
@@ -570,13 +577,13 @@ export const dbAdapter = <
         },
         deleteMany: async (data) => {
           const onDeleteHandle =
-            authFunctions.onDelete && triggers?.[data.model]?.onDelete
+            authFunctions.onDelete && getTriggers(data.model)?.onDelete
               ? ((await createFunctionHandle(
                   authFunctions.onDelete
                 )) as FunctionHandle<'mutation'>)
               : undefined;
           const beforeDeleteHandle =
-            authFunctions.beforeDelete && triggers?.[data.model]?.beforeDelete
+            authFunctions.beforeDelete && getTriggers(data.model)?.beforeDelete
               ? ((await createFunctionHandle(
                   authFunctions.beforeDelete
                 )) as FunctionHandle<'mutation'>)
@@ -686,13 +693,14 @@ export const dbAdapter = <
         update: async (data): Promise<any> => {
           if (data.where?.length === 1 && data.where[0].operator === 'eq') {
             const onUpdateHandle =
-              authFunctions.onUpdate && triggers?.[data.model]?.onUpdate
+              authFunctions.onUpdate && getTriggers(data.model)?.onUpdate
                 ? ((await createFunctionHandle(
                     authFunctions.onUpdate
                   )) as FunctionHandle<'mutation'>)
                 : undefined;
             const beforeUpdateHandle =
-              authFunctions.beforeUpdate && triggers?.[data.model]?.beforeUpdate
+              authFunctions.beforeUpdate &&
+              getTriggers(data.model)?.beforeUpdate
                 ? ((await createFunctionHandle(
                     authFunctions.beforeUpdate
                   )) as FunctionHandle<'mutation'>)
@@ -718,13 +726,13 @@ export const dbAdapter = <
         },
         updateMany: async (data) => {
           const onUpdateHandle =
-            authFunctions.onUpdate && triggers?.[data.model]?.onUpdate
+            authFunctions.onUpdate && getTriggers(data.model)?.onUpdate
               ? ((await createFunctionHandle(
                   authFunctions.onUpdate
                 )) as FunctionHandle<'mutation'>)
               : undefined;
           const beforeUpdateHandle =
-            authFunctions.beforeUpdate && triggers?.[data.model]?.beforeUpdate
+            authFunctions.beforeUpdate && getTriggers(data.model)?.beforeUpdate
               ? ((await createFunctionHandle(
                   authFunctions.beforeUpdate
                 )) as FunctionHandle<'mutation'>)

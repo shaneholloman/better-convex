@@ -341,12 +341,13 @@ export const getAllUsers = authQuery
     role: z.enum(['all', 'user', 'admin']).optional(),
     search: z.string().optional(),
   }))
-  .paginated({ limit: 20, item: UserListItemSchema.nullable() })
-  .query(async ({ ctx, input }) => {
-    const result = await ctx.orm.query.user.findMany({
-      paginate: input,
-      orderBy: { _creationTime: 'desc' },
-    });
+	  .paginated({ limit: 20, item: UserListItemSchema.nullable() })
+	  .query(async ({ ctx, input }) => {
+	    const result = await ctx.orm.query.user.findMany({
+	      cursor: input.cursor,
+	      limit: input.limit,
+	      orderBy: { _creationTime: 'desc' },
+	    });
 
     const enrichedPage = result.page.map((user) => ({
       ...user,

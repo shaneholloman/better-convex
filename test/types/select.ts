@@ -1140,14 +1140,15 @@ db.query.users.findMany({
 }
 
 // ============================================================================
-// FINDMANY PAGINATE TYPE TESTS
+// FINDMANY CURSOR PAGINATION TYPE TESTS
 // ============================================================================
 
-// Paginate returns page + cursor metadata
+// Cursor pagination returns page + cursor metadata
 {
   const result = await db.query.users.findMany({
     where: { name: 'Alice' },
-    paginate: { cursor: null, numItems: 10 },
+    cursor: null,
+    limit: 10,
   });
 
   type Expected = {
@@ -1159,17 +1160,31 @@ db.query.users.findMany({
   Expect<Equal<typeof result, Expected>>;
 }
 
-// Paginate config should not accept limit/offset
+// Non-paginated findMany returns an array
+{
+  const result = await db.query.users.findMany({ limit: 10 });
+  type Row = (typeof result)[number];
+  Expect<Equal<Row, UserRow>>;
+}
+
+// Cursor pagination requires limit when cursor is provided
 db.query.users.findMany({
-  limit: 10,
-  // @ts-expect-error - limit is not allowed with paginate
-  paginate: { cursor: null, numItems: 5 },
+  // @ts-expect-error - limit is required
+  cursor: null,
 });
 
-// Paginate requires numItems when options provided
+// Cursor pagination forbids offset
 db.query.users.findMany({
-  // @ts-expect-error - numItems is required
-  paginate: { cursor: null },
+  // @ts-expect-error - cursor pagination cannot be combined with offset
+  cursor: null,
+  limit: 10,
+  offset: 1,
+});
+
+// maxScan requires cursor pagination
+db.query.users.findMany({
+  // @ts-expect-error - maxScan requires cursor pagination
+  maxScan: 100,
 });
 
 // ============================================================================
@@ -1246,10 +1261,11 @@ db.query.users.findMany({
   Expect<Not<IsAny<Row>>>;
 }
 
-// findMany paginate row type should not be any
+// findMany cursor pagination row type should not be any
 {
   const result = await db.query.users.findMany({
-    paginate: { cursor: null, numItems: 1 },
+    cursor: null,
+    limit: 1,
   });
   type Row = (typeof result)['page'][number];
   Expect<Not<IsAny<Row>>>;
@@ -1380,12 +1396,14 @@ db.query.users.findMany({
   });
 }
 
-// predicate where paginate supports maximumRowsRead
+// predicate where cursor pagination supports maxScan
 {
   const result = await db.query.users.findMany({
     where: (row) => row.name.startsWith('A'),
     index: { name: 'by_name' },
-    paginate: { cursor: null, numItems: 1, maximumRowsRead: 50 },
+    cursor: null,
+    limit: 1,
+    maxScan: 50,
   });
 
   type Row = (typeof result)['page'][number];
@@ -1643,17 +1661,17 @@ db.query.users.findMany({
   });
 }
 
-// vectorSearch + paginate is disallowed
+// vectorSearch + cursor pagination is disallowed
 {
   await db.query.posts.findMany({
-    // @ts-expect-error - vector search does not support paginate
+    // @ts-expect-error - vector search does not support cursor pagination
     vectorSearch: {
       index: 'embedding_vec',
       vector: [0.1, 0.2, 0.3],
       limit: 10,
     },
-    // @ts-expect-error - vector search does not support paginate
-    paginate: { cursor: null, numItems: 5 },
+    // @ts-expect-error - vector search does not support cursor pagination
+    cursor: null,
   });
 }
 

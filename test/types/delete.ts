@@ -65,9 +65,7 @@ const db = orm.db(mockDb);
 
 // Test 6: paginated delete without returning
 {
-  const result = await db
-    .delete(users)
-    .paginate({ cursor: null, numItems: 10 });
+  const result = await db.delete(users).paginate({ cursor: null, limit: 10 });
 
   type Expected = {
     continueCursor: string | null;
@@ -83,7 +81,7 @@ const db = orm.db(mockDb);
   const result = await db
     .delete(users)
     .returning({ name: users.name })
-    .paginate({ cursor: null, numItems: 10 });
+    .paginate({ cursor: null, limit: 10 });
 
   type Expected = {
     continueCursor: string | null;
@@ -158,28 +156,28 @@ const db = orm.db(mockDb);
 {
   db.delete(users)
     // @ts-expect-error - cursor must be string | null
-    .paginate({ cursor: 123, numItems: 10 });
+    .paginate({ cursor: 123, limit: 10 });
 }
 
-// paginate() should reject invalid numItems type
+// paginate() should reject invalid limit type
 {
   db.delete(users)
-    // @ts-expect-error - numItems must be number
-    .paginate({ cursor: null, numItems: '10' });
+    // @ts-expect-error - limit must be number
+    .paginate({ cursor: null, limit: '10' });
 }
 
 // paginate() cannot be called twice
 {
   db.delete(users)
-    .paginate({ cursor: null, numItems: 10 })
+    .paginate({ cursor: null, limit: 10 })
     // @ts-expect-error - paginate already called
-    .paginate({ cursor: null, numItems: 10 });
+    .paginate({ cursor: null, limit: 10 });
 }
 
 // executeAsync() is not available on paginated delete builders
 {
   db.delete(users)
-    .paginate({ cursor: null, numItems: 10 })
+    .paginate({ cursor: null, limit: 10 })
     // @ts-expect-error - executeAsync is not available after paginate()
     .executeAsync();
 }
@@ -187,7 +185,7 @@ const db = orm.db(mockDb);
 // execute(config) is not available on paginated delete builders
 {
   db.delete(users)
-    .paginate({ cursor: null, numItems: 10 })
+    .paginate({ cursor: null, limit: 10 })
     // @ts-expect-error - execute config is not available after paginate()
     .execute({ mode: 'async' });
 }

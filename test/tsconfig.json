@@ -19,7 +19,8 @@
     "allowJs": true,
     "paths": {
       "*": ["./*"],
-      "better-convex/orm": ["../packages/better-convex/src/orm/index.ts"]
+      "better-convex/orm": ["../packages/better-convex/src/orm/index.ts"],
+      "better-convex/auth": ["../packages/better-convex/src/auth/index.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],

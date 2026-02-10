@@ -93,7 +93,7 @@ export const search = publicQuery
 ```
 
 <Callout icon={<InfoIcon />}>
-**Important:** Always use `limit` or `paginate` with search queries to limit results.
+**Important:** Always use `limit` or cursor pagination (`cursor` + `limit`) with search queries to limit results.
 </Callout>
 
 ### Search with Filters
@@ -130,7 +130,7 @@ export const searchByCategory = publicQuery
 
 ### Paginated Search
 
-Use `.paginate()` with the [paginated builder](/docs/server/procedures#paginated-queries) for cursor-based pagination:
+Use `.paginated({ limit, item })` ([paginated builder](/docs/server/procedures#paginated-queries)) for cursor-based pagination:
 
 ```ts title="convex/functions/articles.ts" showLineNumbers {3,9-17}
 const ArticleSchema = z.object({
@@ -153,7 +153,8 @@ export const searchPaginated = publicQuery
         query: input.query,
         filters: input.category ? { category: input.category } : undefined,
       },
-      paginate: { cursor: input.cursor, limit: input.limit },
+      cursor: input.cursor,
+      limit: input.limit,
     });
   });
 ```
@@ -195,7 +196,8 @@ export const searchCharacters = publicQuery
         name: 'private',
         range: (q) => q.eq('private', false),
       },
-      paginate: { cursor: input.cursor, limit: input.limit },
+      cursor: input.cursor,
+      limit: input.limit,
     });
   });
 ```
@@ -213,7 +215,7 @@ Understanding when to use each approach is critical. Here's a comparison:
 | Text matching | Full-text search with relevance | No text search |
 | Complex filters | `filterFields` only (equality) | Full TypeScript |
 | Range queries | No | Yes |
-| Pagination | Standard | Works with `paginate` |
+| Pagination | Standard | Works with cursor pagination (`cursor` + `limit`) |
 | UNION/JOIN | No | Manual merge in app code |
 | Performance | Optimized for text | Depends on chosen index + predicate selectivity |
 | **Combined** | **Supported with base-field object `where`** | Predicate / relation `where` still unsupported |
@@ -262,7 +264,8 @@ export const searchOrFilter = publicQuery
           query: input.query!,
           filters: input.category ? { category: input.category } : undefined,
         },
-        paginate: { cursor: input.cursor, limit: input.limit },
+        cursor: input.cursor,
+        limit: input.limit,
       });
     }
 
@@ -274,7 +277,8 @@ export const searchOrFilter = publicQuery
         return true;
       },
       index: { name: 'by_creation_time' },
-      paginate: { cursor: input.cursor, limit: input.limit },
+      cursor: input.cursor,
+      limit: input.limit,
     });
   });
 ```
@@ -302,7 +306,7 @@ Understanding performance is critical for production apps.
 
 - Search indexes have overhead - don't over-index
 - Use `filterFields` to narrow results before text matching
-- Always limit results with `limit` or `paginate`
+- Always limit results with `limit` or cursor pagination (`cursor` + `limit`)
 
 ### Predicate `where` Performance
 
@@ -312,7 +316,9 @@ Predicate `where` runs post‑fetch against an explicit index stream. Use `maxSc
 const results = await db.query.posts.findMany({
   where: (post) => expensiveCheck(post),
   index: { name: 'by_created_at' },
-  paginate: { cursor: input.cursor, limit: input.limit, maxScan: 500 },
+  cursor: input.cursor,
+  limit: input.limit,
+  maxScan: 500,
 });
 ```
 
@@ -329,13 +335,14 @@ const page1 = await db.query.messages.findMany({
   where: (m) => m.read,
   index: { name: 'by_creation_time' },
   orderBy: { _creationTime: 'desc' },
-  paginate: { cursor: null, limit: 20 },
+  cursor: null,
+  limit: 20,
 });
 ```
 
 ### Memory Efficiency
 
-- Prefer `findMany({ paginate })` for user‑facing lists
+- Prefer cursor pagination (`cursor` + `limit`) for user‑facing lists
 - Keep limits small for non‑paginated queries
 - Use selective index ranges for predicate `where` and cap reads with `maxScan`
 
@@ -344,12 +351,12 @@ const page1 = await db.query.messages.findMany({
 Here are key practices to follow when using filters and search.
 
 1. **Create appropriate indexes** - Each search field needs its own search index
-2. **Limit results** - Always use `limit` or `paginate`
+2. **Limit results** - Always use `limit` or cursor pagination (`cursor` + `limit`)
 3. **Use filterFields** - Pre-filter with equality before text search
 4. **Bound predicate scans** - Use explicit `index` and cap reads with `maxScan`
 5. **Normalize search terms** - Consider lowercase for consistent matching
 6. **Handle empty queries** - Decide behavior when search query is empty
-7. **Prefer cursor pagination** - Use `findMany({ paginate })` for large lists
+7. **Prefer cursor pagination** - Use `findMany({ cursor: null, limit: 20 })` for large lists
 
 ## Next Steps
 

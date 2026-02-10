@@ -116,7 +116,7 @@ If you need RLS, build the DB with `orm.db(ctx, { rls: { ctx } })`.
 | `ctx.orm('users').get('email', v)` | `ctx.orm.query.users.findFirst({ where: { email: v } })` |
 | `ctx.orm('users').getMany(ids)` | `ctx.orm.query.users.findMany({ where: { _id: { in: ids } }, limit: ids.length })` |
 | `ctx.orm('users').order('desc').take(5)` | `ctx.orm.query.users.findMany({ orderBy: { _creationTime: 'desc' }, limit: 5 })` |
-| `ctx.orm('users').paginate(opts)` | `ctx.orm.query.users.findMany({ paginate: opts })` |
+| `ctx.orm('users').paginate(opts)` | `ctx.orm.query.users.findMany({ cursor: opts.cursor, limit: opts.numItems })` |
 | `ctx.orm('users').map(...)` | Prefer `columns` / `extras` (example below). Fall back to `rows.map(...)` when you need custom reshaping. |
 | `ctx.orm('users').search(...)` | `ctx.orm.query.users.findMany({ search: { index, query, filters? } })` |
 

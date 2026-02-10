@@ -248,9 +248,10 @@ test('vector search guardrails reject incompatible options', async () => {
           vector: [0.1, 0.2, 0.3],
           limit: 1,
         },
-        paginate: { cursor: null, limit: 10 },
+        cursor: null,
+        limit: 10,
       } as any)
-    ).rejects.toThrow(/vectorSearch.+paginate|paginate.+vectorSearch/i);
+    ).rejects.toThrow(/vectorSearch.+cursor|cursor.+vectorSearch/i);
 
     await expect(
       db.query.posts.findMany({

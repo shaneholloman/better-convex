@@ -70,7 +70,7 @@ If you're new to cRPC, start with [/docs/server/procedures](/docs/server/procedu
 </Compare>
 
 <Callout icon={<AlertTriangle />}>
-ORM `findMany()` must be explicitly sized: use `limit`, `paginate`, set a schema `defaultLimit`, or opt in with `allowFullScan`.
+ORM `findMany()` must be explicitly sized: use `limit`, use cursor pagination (`cursor` + `limit`), set a schema `defaultLimit`, or opt in with `allowFullScan`.
 </Callout>
 
 <Callout icon={<InfoIcon />}>
@@ -99,7 +99,7 @@ If your API schema uses Zod `.optional()`, normalize with `field: row.field ?? u
   </CompareItem>
 </Compare>
 
-For complex JavaScript predicates, Better-Convex supports predicate `where`, but it requires an explicit `index: { name, range? }` plan and should be bounded with `paginate.maxScan`.
+For complex JavaScript predicates, Better-Convex supports predicate `where`, but it requires an explicit `index: { name, range? }` plan and should be bounded with `maxScan` (cursor pagination only).
 See [/docs/db/orm/queries#filtering-with-where](/docs/db/orm/queries#filtering-with-where).
 
 ### Indexes (`withIndex`) and Ordering
@@ -440,7 +440,7 @@ If you want to stay on native Convex but approximate ORM constraints, the usual 
     });
     ```
   </CompareItem>
-  <CompareItem title="After (`findMany({ paginate })`)">
+  <CompareItem title="After (`findMany({ cursor, limit })`)">
     ```ts title="convex/functions/posts.ts" showLineNumbers {2-4,8-12}
     import { z } from 'zod';
     import { publicQuery } from '../lib/crpc';
@@ -450,7 +450,8 @@ If you want to stay on native Convex but approximate ORM constraints, the usual 
       .query(async ({ ctx, input }) => {
         return ctx.orm.query.posts.findMany({
           orderBy: { _creationTime: 'desc' },
-          paginate: { cursor: input.cursor, limit: 20 },
+          cursor: input.cursor,
+          limit: 20,
         });
       });
     ```
@@ -477,15 +478,16 @@ See [/docs/server/procedures#paginated-queries](/docs/server/procedures#paginate
   </CompareItem>
   <CompareItem title="After (`findMany({ search })`)">
     ```ts showLineNumbers {2-9}
-    const messages = await ctx.orm.query.messages.findMany({
-      search: {
-        index: 'search_body',
-        query: input.query,
-        filters: { channel: '#general' },
-      },
-      paginate: { cursor: null, limit: 10 },
-    });
-    ```
+	    const messages = await ctx.orm.query.messages.findMany({
+	      search: {
+	        index: 'search_body',
+	        query: input.query,
+	        filters: { channel: '#general' },
+	      },
+	      cursor: null,
+	      limit: 10,
+	    });
+	    ```
   </CompareItem>
 </Compare>
 

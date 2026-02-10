@@ -29,6 +29,7 @@
     "db/orm/relations",
     "db/orm/rls",
     "db/orm/queries",
+    "db/orm/pagination",
     "db/orm/operators",
     "db/orm/mutations",
     "db/orm/insert",

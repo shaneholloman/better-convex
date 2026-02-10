@@ -536,7 +536,9 @@ export interface GenericOrderedQuery<T> extends AsyncIterable<T> {
   filter(predicate: any): this;
 }
 
-export class StreamDatabaseReader<Schema extends SchemaDefinition<any, boolean>> {
+export class StreamDatabaseReader<
+  Schema extends SchemaDefinition<any, boolean>,
+> {
   // TODO: support system tables
   system: GenericDatabaseReader<SystemDataModel>['system'];
   db: GenericDatabaseReader<DM<Schema>>;
@@ -592,21 +594,17 @@ export type QueryReflection<
 };
 
 export abstract class StreamableQuery<
-    Schema extends SchemaDefinition<any, boolean>,
-    T extends TableNamesInDataModel<DM<Schema>>,
-    IndexName extends IndexNames<NamedTableInfo<DM<Schema>, T>>,
-  >
-  extends QueryStream<DocumentByInfo<NamedTableInfo<DM<Schema>, T>>>
-{
+  Schema extends SchemaDefinition<any, boolean>,
+  T extends TableNamesInDataModel<DM<Schema>>,
+  IndexName extends IndexNames<NamedTableInfo<DM<Schema>, T>>,
+> extends QueryStream<DocumentByInfo<NamedTableInfo<DM<Schema>, T>>> {
   abstract reflect(): QueryReflection<Schema, T, IndexName>;
 }
 
 export class StreamQueryInitializer<
-    Schema extends SchemaDefinition<any, boolean>,
-    T extends TableNamesInDataModel<DM<Schema>>,
-  >
-  extends StreamableQuery<Schema, T, 'by_creation_time'>
-{
+  Schema extends SchemaDefinition<any, boolean>,
+  T extends TableNamesInDataModel<DM<Schema>>,
+> extends StreamableQuery<Schema, T, 'by_creation_time'> {
   parent: StreamDatabaseReader<Schema>;
   table: T;
 
@@ -671,12 +669,10 @@ export class StreamQueryInitializer<
 
 // Not to be confused with QueryStream or StreamableQuery.
 export class StreamQuery<
-    Schema extends SchemaDefinition<any, boolean>,
-    T extends TableNamesInDataModel<DM<Schema>>,
-    IndexName extends IndexNames<NamedTableInfo<DM<Schema>, T>>,
-  >
-  extends StreamableQuery<Schema, T, IndexName>
-{
+  Schema extends SchemaDefinition<any, boolean>,
+  T extends TableNamesInDataModel<DM<Schema>>,
+  IndexName extends IndexNames<NamedTableInfo<DM<Schema>, T>>,
+> extends StreamableQuery<Schema, T, IndexName> {
   parent: StreamQueryInitializer<Schema, T>;
   index: IndexName;
   q: ReflectIndexRange;
@@ -735,12 +731,10 @@ export class StreamQuery<
 }
 
 export class OrderedStreamQuery<
-    Schema extends SchemaDefinition<any, boolean>,
-    T extends TableNamesInDataModel<DM<Schema>>,
-    IndexName extends IndexNames<NamedTableInfo<DM<Schema>, T>>,
-  >
-  extends StreamableQuery<Schema, T, IndexName>
-{
+  Schema extends SchemaDefinition<any, boolean>,
+  T extends TableNamesInDataModel<DM<Schema>>,
+  IndexName extends IndexNames<NamedTableInfo<DM<Schema>, T>>,
+> extends StreamableQuery<Schema, T, IndexName> {
   parent: StreamQuery<Schema, T, IndexName>;
   order: 'asc' | 'desc';
 
