@@ -1,5 +1,11 @@
-import { createOrm, defineRelations } from 'better-convex/orm';
+import {
+  createOrm,
+  defineRelations,
+  type OrmReader,
+  type OrmWriter,
+} from 'better-convex/orm';
 import type {
+  GenericDatabaseReader,
   GenericDatabaseWriter,
   SchedulableFunctionReference,
 } from 'convex/server';
@@ -11,6 +17,24 @@ const mockDb = {} as GenericDatabaseWriter<any>;
 
 const orm = createOrm({ schema: schemaConfig });
 const db = orm.db(mockDb);
+
+{
+  const _writer: OrmWriter<typeof schemaConfig> = db;
+  _writer.skipRules.query.users.findMany;
+  // @ts-expect-error - skipRules does not itself have skipRules
+  _writer.skipRules.skipRules;
+}
+
+{
+  const mockReader = {} as GenericDatabaseReader<any>;
+  const dbReader = orm.db(mockReader);
+  const _reader: OrmReader<typeof schemaConfig> = dbReader;
+  _reader.skipRules.query.users.findMany;
+  // @ts-expect-error - skipRules does not itself have skipRules
+  _reader.skipRules.skipRules;
+  // @ts-expect-error - insert is not available on a reader db
+  _reader.insert;
+}
 
 // ORM db intentionally does NOT expose raw Convex db methods. It only exposes:
 // - `query.*` builders

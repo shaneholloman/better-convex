@@ -1,8 +1,7 @@
 import {
-  type CreateOrmDbOptions,
+  type CreateOrmOptions,
   createOrm,
-  type DatabaseWithMutations,
-  type DatabaseWithSkipRules,
+  type OrmWriter,
   type TablesRelationalConfig,
 } from 'better-convex/orm';
 import type {
@@ -25,10 +24,10 @@ export const getOrmCtx = <
 >(
   ctx: Ctx,
   schema: Schema,
-  options?: CreateOrmDbOptions
+  options?: CreateOrmOptions
 ) => {
   const ctxWithOrm = { ...ctx } as Ctx & {
-    orm: DatabaseWithSkipRules<DatabaseWithMutations<Schema>>;
+    orm: OrmWriter<Schema>;
   };
   const rls =
     options?.rls && options.rls.ctx
@@ -36,9 +35,7 @@ export const getOrmCtx = <
       : { ...(options?.rls ?? {}), ctx: ctxWithOrm };
   const orm = createOrm({ schema });
   const ormDb = orm.db(ctx, { ...options, rls });
-  ctxWithOrm.orm = ormDb as DatabaseWithSkipRules<
-    DatabaseWithMutations<Schema>
-  >;
+  ctxWithOrm.orm = ormDb as OrmWriter<Schema>;
   return ctxWithOrm;
 };
 
@@ -59,10 +56,10 @@ export async function withOrmCtx<
   schema: Schema,
   relationsConfig: Relations,
   fn: (ctx: {
-    orm: DatabaseWithSkipRules<DatabaseWithMutations<Relations>>;
+    orm: OrmWriter<Relations>;
     db: GenericDatabaseWriter<any>;
   }) => Promise<Result>,
-  options?: CreateOrmDbOptions
+  options?: CreateOrmOptions
 ): Promise<Result> {
   const t = convexTest(schema);
   let result: Result | undefined;

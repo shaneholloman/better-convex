@@ -70,8 +70,6 @@ export type DatabaseWithQuery<TSchema extends TablesRelationalConfig> =
     stream: () => StreamDatabaseReader<SchemaDefOf<TSchema>>;
   };
 
-export type DatabaseWithSkipRules<T> = T & { skipRules: T };
-
 export type DatabaseWithMutations<TSchema extends TablesRelationalConfig> =
   DatabaseWithQuery<TSchema> & {
     insert<TTable extends ConvexTable<any>>(
@@ -83,6 +81,14 @@ export type DatabaseWithMutations<TSchema extends TablesRelationalConfig> =
     delete<TTable extends ConvexTable<any>>(
       table: TTable
     ): ConvexDeleteBuilder<TTable>;
+  };
+
+export type OrmReader<TSchema extends TablesRelationalConfig> =
+  DatabaseWithQuery<TSchema> & { skipRules: DatabaseWithQuery<TSchema> };
+
+export type OrmWriter<TSchema extends TablesRelationalConfig> =
+  DatabaseWithMutations<TSchema> & {
+    skipRules: DatabaseWithMutations<TSchema>;
   };
 
 export type CreateDatabaseOptions = {
@@ -129,19 +135,19 @@ export function createDatabase<TSchema extends TablesRelationalConfig>(
   schema: TSchema,
   edgeMetadata: EdgeMetadata[],
   options?: CreateDatabaseOptions
-): DatabaseWithSkipRules<DatabaseWithMutations<TSchema>>;
+): OrmWriter<TSchema>;
 export function createDatabase<TSchema extends TablesRelationalConfig>(
   db: GenericDatabaseReader<any>,
   schema: TSchema,
   edgeMetadata: EdgeMetadata[],
   options?: CreateDatabaseOptions
-): DatabaseWithSkipRules<DatabaseWithQuery<TSchema>>;
+): OrmReader<TSchema>;
 export function createDatabase<TSchema extends TablesRelationalConfig>(
   db: GenericDatabaseReader<any>,
   schema: TSchema,
   edgeMetadata: EdgeMetadata[],
   options?: CreateDatabaseOptions
-): DatabaseWithSkipRules<DatabaseWithQuery<TSchema>> {
+): OrmReader<TSchema> {
   const schemaOptions = (schema as { [OrmSchemaOptions]?: OrmRuntimeOptions })[
     OrmSchemaOptions
   ];
@@ -279,5 +285,5 @@ export function createDatabase<TSchema extends TablesRelationalConfig>(
   return {
     ...table,
     skipRules: skipRulesTable,
-  } as DatabaseWithSkipRules<DatabaseWithQuery<TSchema>>;
+  } as OrmReader<TSchema>;
 }

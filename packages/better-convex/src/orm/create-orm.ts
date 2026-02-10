@@ -9,9 +9,8 @@ import { v } from 'convex/values';
 import {
   type CreateDatabaseOptions,
   createDatabase,
-  type DatabaseWithMutations,
-  type DatabaseWithQuery,
-  type DatabaseWithSkipRules,
+  type OrmReader,
+  type OrmWriter,
 } from './database';
 import { extractRelationsConfig } from './extractRelationsConfig';
 import type { TablesRelationalConfig } from './relations';
@@ -24,32 +23,32 @@ export type OrmFunctions = {
   scheduledDelete: SchedulableFunctionReference;
 };
 
-export type CreateOrmDbOptions = Omit<CreateDatabaseOptions, never>;
+export type CreateOrmOptions = Omit<CreateDatabaseOptions, never>;
 
-type OrmDbWriterCtx = {
+type OrmWriterCtx = {
   db: GenericDatabaseWriter<any>;
   scheduler?: Scheduler;
   vectorSearch?: VectorSearchProvider;
 };
 
-type OrmDbReaderCtx = {
+type OrmReaderCtx = {
   db: GenericDatabaseReader<any>;
   scheduler?: Scheduler;
   vectorSearch?: VectorSearchProvider;
 };
 
-type OrmDbSource =
+type OrmSource =
   | GenericDatabaseReader<any>
   | GenericDatabaseWriter<any>
-  | OrmDbReaderCtx
-  | OrmDbWriterCtx;
+  | OrmReaderCtx
+  | OrmWriterCtx;
 
-type OrmDbResult<
-  TSource extends OrmDbSource,
+type OrmResult<
+  TSource extends OrmSource,
   TSchema extends TablesRelationalConfig,
-> = TSource extends GenericDatabaseWriter<any> | OrmDbWriterCtx
-  ? DatabaseWithSkipRules<DatabaseWithMutations<TSchema>>
-  : DatabaseWithSkipRules<DatabaseWithQuery<TSchema>>;
+> = TSource extends GenericDatabaseWriter<any> | OrmWriterCtx
+  ? OrmWriter<TSchema>
+  : OrmReader<TSchema>;
 
 type CreateOrmConfigBase<TSchema extends TablesRelationalConfig> = {
   schema: TSchema;
@@ -66,12 +65,12 @@ type CreateOrmConfigWithoutFunctions<TSchema extends TablesRelationalConfig> =
     ormFunctions?: undefined;
   };
 
-type OrmDbFactory<TSchema extends TablesRelationalConfig> = <
-  TSource extends OrmDbSource,
+type OrmFactory<TSchema extends TablesRelationalConfig> = <
+  TSource extends OrmSource,
 >(
   source: TSource,
-  options?: CreateOrmDbOptions
-) => OrmDbResult<TSource, TSchema>;
+  options?: CreateOrmOptions
+) => OrmResult<TSource, TSchema>;
 
 type OrmApiResult = {
   scheduledMutationBatch: ReturnType<typeof internalMutationGeneric>;
@@ -79,7 +78,7 @@ type OrmApiResult = {
 };
 
 type OrmClientBase<TSchema extends TablesRelationalConfig> = {
-  db: OrmDbFactory<TSchema>;
+  db: OrmFactory<TSchema>;
 };
 
 type OrmClientWithApi<TSchema extends TablesRelationalConfig> =
@@ -87,21 +86,19 @@ type OrmClientWithApi<TSchema extends TablesRelationalConfig> =
     api: () => OrmApiResult;
   };
 
-function isOrmCtx(
-  source: OrmDbSource
-): source is OrmDbReaderCtx | OrmDbWriterCtx {
+function isOrmCtx(source: OrmSource): source is OrmReaderCtx | OrmWriterCtx {
   return !!source && typeof source === 'object' && 'db' in source;
 }
 
 function createDbFactory<TSchema extends TablesRelationalConfig>(
   schema: TSchema,
   ormFunctions?: OrmFunctions
-): OrmDbFactory<TSchema> {
+): OrmFactory<TSchema> {
   const edgeMetadata = extractRelationsConfig(schema as TablesRelationalConfig);
-  return (<TSource extends OrmDbSource>(
+  return (<TSource extends OrmSource>(
     source: TSource,
-    options?: CreateOrmDbOptions
-  ): OrmDbResult<TSource, TSchema> => {
+    options?: CreateOrmOptions
+  ): OrmResult<TSource, TSchema> => {
     const ctxSource = isOrmCtx(source) ? source : undefined;
     const rawDb: GenericDatabaseReader<any> | GenericDatabaseWriter<any> =
       ctxSource
@@ -120,8 +117,8 @@ function createDbFactory<TSchema extends TablesRelationalConfig>(
       vectorSearch,
       scheduledDelete,
       scheduledMutationBatch,
-    }) as OrmDbResult<TSource, TSchema>;
-  }) as OrmDbFactory<TSchema>;
+    }) as OrmResult<TSource, TSchema>;
+  }) as OrmFactory<TSchema>;
 }
 
 export function createOrm<TSchema extends TablesRelationalConfig>(
@@ -172,8 +169,8 @@ export type {
   OrmApiResult,
   OrmClientBase,
   OrmClientWithApi,
-  OrmDbReaderCtx,
-  OrmDbWriterCtx,
+  OrmReaderCtx,
+  OrmWriterCtx,
 };
 export type { ScheduledDeleteArgs } from './scheduled-delete';
 export type { ScheduledMutationBatchArgs } from './scheduled-mutation-batch';

@@ -1,5 +1,5 @@
 import {
-  type CreateOrmDbOptions,
+  type CreateOrmOptions,
   convexTable,
   type DatabaseWithMutations,
   defineRelations,
@@ -290,7 +290,7 @@ const withCtx = async <T>(
     orm: DatabaseWithMutations<typeof relations>;
     db: GenericDatabaseWriter<any>;
   }) => Promise<T>,
-  options?: CreateOrmDbOptions
+  options?: CreateOrmOptions
 ) =>
   withOrmCtx(
     schema,
@@ -304,7 +304,7 @@ const withCappedCtx = async <T>(
     orm: DatabaseWithMutations<typeof cappedRelations>;
     db: GenericDatabaseWriter<any>;
   }) => Promise<T>,
-  options?: CreateOrmDbOptions
+  options?: CreateOrmOptions
 ) =>
   withOrmCtx(
     cappedSchema,
@@ -318,7 +318,7 @@ const withRelaxedCapCtx = async <T>(
     orm: DatabaseWithMutations<typeof relaxedCapRelations>;
     db: GenericDatabaseWriter<any>;
   }) => Promise<T>,
-  options?: CreateOrmDbOptions
+  options?: CreateOrmOptions
 ) =>
   withOrmCtx(
     relaxedCapSchema,
@@ -332,7 +332,7 @@ const withAsyncCappedCtx = async <T>(
     orm: DatabaseWithMutations<typeof asyncCappedRelations>;
     db: GenericDatabaseWriter<any>;
   }) => Promise<T>,
-  options?: CreateOrmDbOptions
+  options?: CreateOrmOptions
 ) =>
   withOrmCtx(
     asyncCappedSchema,
@@ -346,7 +346,7 @@ const withRoutedBatchCtx = async <T>(
     orm: DatabaseWithMutations<typeof routedBatchRelations>;
     db: GenericDatabaseWriter<any>;
   }) => Promise<T>,
-  options?: CreateOrmDbOptions
+  options?: CreateOrmOptions
 ) =>
   withOrmCtx(
     routedBatchSchema,
@@ -360,7 +360,7 @@ const withByteBudgetCtx = async <T>(
     orm: DatabaseWithMutations<typeof byteBudgetRelations>;
     db: GenericDatabaseWriter<any>;
   }) => Promise<T>,
-  options?: CreateOrmDbOptions
+  options?: CreateOrmOptions
 ) =>
   withOrmCtx(
     byteBudgetSchema,
@@ -374,7 +374,7 @@ const withScheduleCapCtx = async <T>(
     orm: DatabaseWithMutations<typeof scheduleCapRelations>;
     db: GenericDatabaseWriter<any>;
   }) => Promise<T>,
-  options?: CreateOrmDbOptions
+  options?: CreateOrmOptions
 ) =>
   withOrmCtx(
     scheduleCapSchema,
@@ -397,7 +397,7 @@ const withRlsCtx = async <T>(
     orm: DatabaseWithMutations<typeof rlsRelations>;
     db: GenericDatabaseWriter<any>;
   }) => Promise<T>,
-  options?: CreateOrmDbOptions
+  options?: CreateOrmOptions
 ) =>
   withOrmCtx(
     rlsSchema,

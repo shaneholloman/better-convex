@@ -107,19 +107,20 @@ export {
   unique,
 } from './constraints';
 export type {
-  CreateOrmDbOptions,
+  CreateOrmOptions,
   OrmApiResult,
   OrmClientBase,
   OrmClientWithApi,
-  OrmDbReaderCtx,
-  OrmDbWriterCtx,
   OrmFunctions,
+  OrmReaderCtx,
+  OrmWriterCtx,
 } from './create-orm';
 export { createOrm } from './create-orm';
 export type {
   DatabaseWithMutations,
   DatabaseWithQuery,
-  DatabaseWithSkipRules,
+  OrmReader,
+  OrmWriter,
 } from './database';
 export type { EdgeMetadata } from './extractRelationsConfig';
 // M2: Schema Extraction
