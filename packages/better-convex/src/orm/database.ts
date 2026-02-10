@@ -73,18 +73,17 @@ export type DatabaseWithQuery<TSchema extends TablesRelationalConfig> =
 export type DatabaseWithSkipRules<T> = T & { skipRules: T };
 
 export type DatabaseWithMutations<TSchema extends TablesRelationalConfig> =
-  DatabaseWithQuery<TSchema> &
-    {
-      insert<TTable extends ConvexTable<any>>(
-        table: TTable
-      ): ConvexInsertBuilder<TTable>;
-      update<TTable extends ConvexTable<any>>(
-        table: TTable
-      ): ConvexUpdateBuilder<TTable>;
-      delete<TTable extends ConvexTable<any>>(
-        table: TTable
-      ): ConvexDeleteBuilder<TTable>;
-    };
+  DatabaseWithQuery<TSchema> & {
+    insert<TTable extends ConvexTable<any>>(
+      table: TTable
+    ): ConvexInsertBuilder<TTable>;
+    update<TTable extends ConvexTable<any>>(
+      table: TTable
+    ): ConvexUpdateBuilder<TTable>;
+    delete<TTable extends ConvexTable<any>>(
+      table: TTable
+    ): ConvexDeleteBuilder<TTable>;
+  };
 
 export type CreateDatabaseOptions = {
   scheduler?: Scheduler;

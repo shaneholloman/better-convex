@@ -122,10 +122,7 @@ export class GelRelationalQuery<
 
   private _extractIdOnlyWhere(
     where: unknown
-  ):
-    | { kind: 'eq'; id: unknown }
-    | { kind: 'in'; ids: unknown[] }
-    | null {
+  ): { kind: 'eq'; id: unknown } | { kind: 'in'; ids: unknown[] } | null {
     if (!where || typeof where !== 'object' || Array.isArray(where)) {
       return null;
     }
