@@ -1,0 +1,155 @@
+{
+  "version": 1,
+  "targets": {
+    ".codex/skills": [
+      {
+        "sourceType": "claude",
+        "sourceKind": "command",
+        "sourceRelPath": ".claude/commands/brainstorm.md",
+        "destRelPath": "brainstorm"
+      },
+      {
+        "sourceType": "claude",
+        "sourceKind": "command",
+        "sourceRelPath": ".claude/commands/clone.md",
+        "destRelPath": "clone"
+      },
+      {
+        "sourceType": "claude",
+        "sourceKind": "command",
+        "sourceRelPath": ".claude/commands/convex-setup.md",
+        "destRelPath": "convex-setup"
+      },
+      {
+        "sourceType": "claude",
+        "sourceKind": "command",
+        "sourceRelPath": ".claude/commands/draft.md",
+        "destRelPath": "draft"
+      },
+      {
+        "sourceType": "claude",
+        "sourceKind": "command",
+        "sourceRelPath": ".claude/commands/lfg.md",
+        "destRelPath": "lfg"
+      },
+      {
+        "sourceType": "claude",
+        "sourceKind": "command",
+        "sourceRelPath": ".claude/commands/plan.md",
+        "destRelPath": "plan"
+      },
+      {
+        "sourceType": "claude",
+        "sourceKind": "command",
+        "sourceRelPath": ".claude/commands/resolve.md",
+        "destRelPath": "resolve"
+      },
+      {
+        "sourceType": "claude",
+        "sourceKind": "command",
+        "sourceRelPath": ".claude/commands/review.md",
+        "destRelPath": "review"
+      },
+      {
+        "sourceType": "claude",
+        "sourceKind": "command",
+        "sourceRelPath": ".claude/commands/w.md",
+        "destRelPath": "w"
+      },
+      {
+        "sourceType": "claude",
+        "sourceKind": "command",
+        "sourceRelPath": ".claude/commands/work.md",
+        "destRelPath": "work"
+      },
+      {
+        "sourceType": "plugin",
+        "pluginId": "dotai@dotai",
+        "pluginVersion": "1.0.0",
+        "sourceKind": "command",
+        "sourceRelPath": "commands/create-app-design.md",
+        "destRelPath": "create-app-design"
+      },
+      {
+        "sourceType": "plugin",
+        "pluginId": "dotai@dotai",
+        "pluginVersion": "1.0.0",
+        "sourceKind": "command",
+        "sourceRelPath": "commands/create-tech-stack.md",
+        "destRelPath": "create-tech-stack"
+      },
+      {
+        "sourceType": "plugin",
+        "pluginId": "debug@dotai",
+        "pluginVersion": "0.1.0",
+        "sourceKind": "skill",
+        "sourceRelPath": "skills/debug",
+        "destRelPath": "debug-debug"
+      },
+      {
+        "sourceType": "plugin",
+        "pluginId": "debug@dotai",
+        "pluginVersion": "0.1.0",
+        "sourceKind": "skill",
+        "sourceRelPath": "skills/trace",
+        "destRelPath": "debug-trace"
+      },
+      {
+        "sourceType": "plugin",
+        "pluginId": "dig@dotai",
+        "pluginVersion": "0.1.0",
+        "sourceKind": "skill",
+        "sourceRelPath": "skills/dig",
+        "destRelPath": "dig-dig"
+      },
+      {
+        "sourceType": "plugin",
+        "pluginId": "git@dotai",
+        "pluginVersion": "0.1.0",
+        "sourceKind": "skill",
+        "sourceRelPath": "skills/pr",
+        "destRelPath": "git-pr"
+      },
+      {
+        "sourceType": "plugin",
+        "pluginId": "dotai@dotai",
+        "pluginVersion": "1.0.0",
+        "sourceKind": "command",
+        "sourceRelPath": "commands/install.md",
+        "destRelPath": "install"
+      },
+      {
+        "sourceType": "plugin",
+        "pluginId": "learn@dotai",
+        "pluginVersion": "3.0.0",
+        "sourceKind": "skill",
+        "sourceRelPath": "skills/learn",
+        "destRelPath": "learn"
+      },
+      {
+        "sourceType": "plugin",
+        "pluginId": "test@dotai",
+        "pluginVersion": "0.1.0",
+        "sourceKind": "skill",
+        "sourceRelPath": "skills/tdd",
+        "destRelPath": "test-tdd"
+      },
+      {
+        "sourceType": "plugin",
+        "pluginId": "dotai@dotai",
+        "pluginVersion": "1.0.0",
+        "sourceKind": "command",
+        "sourceRelPath": "commands/update-app-design.md",
+        "destRelPath": "update-app-design"
+      },
+      {
+        "sourceType": "plugin",
+        "pluginId": "dotai@dotai",
+        "pluginVersion": "1.0.0",
+        "sourceKind": "command",
+        "sourceRelPath": "commands/update-tech-stack.md",
+        "destRelPath": "update-tech-stack"
+      }
+    ]
+  }
+}
