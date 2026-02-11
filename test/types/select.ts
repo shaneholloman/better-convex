@@ -11,7 +11,7 @@ import {
   text,
 } from 'better-convex/orm';
 import type { GenericDatabaseReader } from 'convex/server';
-import type { GenericId } from 'convex/values';
+import type { GenericId, Value } from 'convex/values';
 import { UserRow } from './fixtures/types';
 import {
   bookAuthors,
@@ -1155,6 +1155,8 @@ db.query.users.findMany({
     page: UserRow[];
     continueCursor: string | null;
     isDone: boolean;
+    pageStatus?: 'SplitRecommended' | 'SplitRequired';
+    splitCursor?: string;
   };
 
   Expect<Equal<typeof result, Expected>>;
@@ -1178,6 +1180,7 @@ db.query.users.findMany({
   // @ts-expect-error - cursor pagination cannot be combined with offset
   cursor: null,
   limit: 10,
+  // @ts-expect-error - cursor pagination cannot be combined with offset
   offset: 1,
 });
 
@@ -1185,6 +1188,27 @@ db.query.users.findMany({
 db.query.users.findMany({
   // @ts-expect-error - maxScan requires cursor pagination
   maxScan: 100,
+});
+
+db.query.users.findMany({
+  // @ts-expect-error - allowFullScan is not supported with cursor pagination
+  cursor: null,
+  limit: 10,
+  allowFullScan: true,
+});
+
+db.query.users.findMany({
+  // @ts-expect-error - numItems alias is not supported
+  cursor: null,
+  limit: 10,
+  numItems: 10,
+});
+
+db.query.users.findMany({
+  // @ts-expect-error - maximumRowsRead alias is not supported
+  cursor: null,
+  limit: 10,
+  maximumRowsRead: 50,
 });
 
 // ============================================================================
@@ -1271,17 +1295,27 @@ db.query.users.findMany({
   Expect<Not<IsAny<Row>>>;
 }
 
-// stream query row type should not be any
+// db.stream is intentionally not public
 {
-  const result = await db.stream().query('users').take(1);
-  type Row = (typeof result)[number];
-  Expect<Not<IsAny<Row>>>;
+  // @ts-expect-error - db.stream is not exposed on ORM context
+  db.stream();
 }
 
-// stream query should be table-name safe
+// pageByKey mode return shape
 {
-  // @ts-expect-error - invalid table name should not be allowed
-  db.stream().query('nonExistentTable');
+  const page = await db.query.users.findMany({
+    pageByKey: {
+      index: 'by_name',
+      targetMaxRows: 10,
+    },
+  });
+
+  type Expected = {
+    page: UserRow[];
+    indexKeys: (Value | undefined)[][];
+    hasMore: boolean;
+  };
+  Expect<Equal<typeof page, Expected>>;
 }
 
 // predicate where requires explicit index and forbids allowFullScan
@@ -1463,6 +1497,16 @@ db.query.users.findMany({
   await db.query.users.findMany({
     where: { NOT: { name: 'Alice' } },
     allowFullScan: true,
+  });
+}
+
+// cursor mode uses maxScan for scan-fallback operators
+{
+  await db.query.users.findMany({
+    where: { email: { endsWith: '@example.com' } },
+    cursor: null,
+    limit: 10,
+    maxScan: 200,
   });
 }
 
@@ -1723,6 +1767,7 @@ db.query.users.findMany({
       vector: [0.1, 0.2, 0.3],
       limit: 10,
     },
+    // @ts-expect-error - vector search does not allow offset
     offset: 1,
   });
 }

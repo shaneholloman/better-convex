@@ -1903,7 +1903,15 @@ function serializeCursor(key: IndexKey): string {
 }
 
 function deserializeCursor(cursor: string): IndexKey {
-  return (jsonToConvex(JSON.parse(cursor)) as Value[]).map((v) => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(cursor);
+  } catch {
+    throw new Error(
+      'Invalid pagination cursor for stream-backed pagination. Use the continueCursor returned by the same findMany query shape.'
+    );
+  }
+  return (jsonToConvex(parsed as any) as Value[]).map((v) => {
     if (typeof v === 'string') {
       if (v === 'undefined') {
         // This is a special case for the undefined value.

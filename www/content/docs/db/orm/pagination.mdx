@@ -1,18 +1,41 @@
 ---
 title: Pagination
-description: Offset pagination and cursor-based pagination in Better-Convex ORM
+description: Offset, cursor, pipeline, and key-based pagination in Better-Convex ORM
 ---
 
 import { AlertTriangle, InfoIcon } from "lucide-react"
 
-Better-Convex ORM supports two pagination styles:
+In this guide, we'll choose the right pagination mode for your query shape and data size.
+We'll start with a quick comparison, then walk through each mode with practical examples.
 
-- **Offset pagination**: `offset` + `limit` (simple, but gets slower as `offset` grows)
-- **Cursor pagination**: `cursor` + `limit` (efficient and consistent; best for infinite scroll)
+Better-Convex ORM exposes pagination through `findMany` only.
 
-## Offset pagination
+## Quick Recommendation
 
-Offset pagination uses `offset` to skip rows and `limit` to cap the number returned:
+If you just want the default that scales:
+
+1. Start with cursor pagination: `findMany({ cursor, limit })`.
+2. Add `endCursor` when you need boundary pinning during reactive refreshes.
+3. Use `pipeline` for advanced pre-pagination transforms (union/interleave/filter/map/flatMap/distinct).
+4. Use `pageByKey` when you need deterministic key boundaries.
+5. Use `offset` only for shallow page-number UIs.
+
+## Pagination Comparison
+
+| Mode | API | Best for | Supports `endCursor` | Supports `maxScan` | Notes |
+|---|---|---|---|---|---|
+| Offset | `findMany({ offset, limit })` | Page-number UIs, small datasets | No | No | Simple, but slower at large offsets |
+| Cursor | `findMany({ cursor, limit })` | Infinite scroll and large lists | Yes | Yes (cursor mode only) | Efficient and stable when order/index are aligned |
+| Pipeline | `findMany({ cursor, limit, pipeline })` | Advanced stream-like composition before pagination | Yes | Yes | Supports union/interleave/map/filterWith/flatMap/distinct |
+| Key-based | `findMany({ pageByKey })` | Deterministic key boundaries and adjacency control | N/A | N/A | Returns `{ page, indexKeys, hasMore }` |
+
+<Callout icon={<InfoIcon />}>
+There is no public `db.stream()` API anymore. Advanced stream behavior is available through `findMany({ pipeline })`.
+</Callout>
+
+## Offset Pagination
+
+Offset pagination is the most straightforward option:
 
 ```ts showLineNumbers
 const rows = await db.query.users.findMany({
@@ -22,33 +45,14 @@ const rows = await db.query.users.findMany({
 });
 ```
 
-In a typical page-based UI:
+Use this when users need direct jumps like page 8, page 9, page 10.
+Avoid deep offsets on large tables because the query still has to read through earlier rows.
 
-- `limit` is the page size
-- `offset = (pageNumber - 1) * limit`
+## Cursor Pagination
 
-### Pros of offset pagination
+Cursor pagination is the default for scalable list UIs.
 
-- You can jump to any page immediately (compute `offset`).
-- Works with any sort order (including non-unique fields).
-
-### Cons of offset pagination
-
-- Performance degrades as `offset` increases (Better-Convex must fetch `offset + limit` rows then slice).
-- Results can shift if rows are inserted/deleted between requests (duplicates or skips).
-
-### Use cases for offset pagination
-
-- Shallow pagination on small datasets.
-- Admin tables where “jump to page N” matters more than infinite-scroll performance.
-
-## Cursor-based pagination
-
-Cursor pagination uses an **opaque cursor token** from Convex to fetch the next page efficiently.
-
-### How it works
-
-First page: pass `cursor: null` and a required `limit`:
+First page:
 
 ```ts showLineNumbers
 const page1 = await db.query.posts.findMany({
@@ -59,66 +63,48 @@ const page1 = await db.query.posts.findMany({
 });
 ```
 
-Next page: pass `continueCursor` back as `cursor`:
+Next page:
 
 ```ts showLineNumbers
-if (!page1.isDone) {
-  const page2 = await db.query.posts.findMany({
-    where: { published: true },
-    orderBy: { _creationTime: 'desc' },
-    cursor: page1.continueCursor,
-    limit: 20,
-  });
-}
+const page2 = await db.query.posts.findMany({
+  where: { published: true },
+  orderBy: { _creationTime: 'desc' },
+  cursor: page1.continueCursor,
+  limit: 20,
+});
 ```
 
-The return shape matches Convex pagination:
+Return shape:
 
 ```ts
-type PaginationResult<T> = {
+{
   page: T[];
   continueCursor: string | null;
   isDone: boolean;
-};
+  pageStatus?: 'SplitRecommended' | 'SplitRequired';
+  splitCursor?: string;
+}
 ```
 
-### Ordering rules (Convex semantics)
+### Boundary pinning with `endCursor`
 
-- Cursor pagination relies on Convex’s pagination, which is tied to the query’s underlying index order.
-- If you pass `orderBy`, the **first** `orderBy` field is used for cursor ordering.
-- For stable cursor pagination, ensure the primary `orderBy` field is indexed.
-  - In strict mode (default), Better-Convex throws if the primary `orderBy` field has no index.
-  - With `strict: false`, Better-Convex warns and falls back to `_creationTime` ordering for cursor stability.
+When data changes between requests, use `endCursor` to pin a page boundary:
 
-### Pros of cursor pagination
+```ts showLineNumbers
+const refreshed = await db.query.posts.findMany({
+  where: { published: true },
+  orderBy: { _creationTime: 'desc' },
+  cursor: null,
+  endCursor: page1.continueCursor,
+  limit: 20,
+});
+```
 
-- Efficient for large datasets (no growing `offset` scan).
-- More consistent page boundaries under concurrent inserts/deletes than offset pagination.
+This keeps adjacent pages stitched correctly as new rows arrive.
 
-### Cons of cursor pagination
+### Scan budget with `maxScan`
 
-- You can’t jump directly to page 400 without iterating pages.
-- You must keep the cursor from the previous page.
-
-### FAQ
-
-#### Do I need a `skip: 1` like Prisma?
-
-No. Better-Convex cursor pagination is exclusive: the next page begins after the cursor.
-
-#### Can I guess the next cursor?
-
-No. Treat `continueCursor` as opaque; always use the value returned by the previous page.
-
-#### What if the cursor is invalid?
-
-The cursor must come from the previous page of the **same query shape**.
-If you lose it (or your query changes), restart from `cursor: null`.
-
-## Predicate `where(fn)` pagination and `maxScan`
-
-Predicate `where(fn)` runs post-fetch against an index stream, so you should cap scan cost.
-Use `maxScan` together with cursor pagination:
+`maxScan` is available only in cursor mode. It caps scanned rows instead of throwing when a page would scan too much.
 
 ```ts showLineNumbers
 const page = await db.query.users.findMany({
@@ -130,6 +116,146 @@ const page = await db.query.users.findMany({
 });
 ```
 
+When the scan budget is hit, you'll get a partial page plus `pageStatus` and `splitCursor` hints.
+
+`allowFullScan` does not apply in cursor mode.
+If cursor pagination needs a scan-fallback plan and:
+- `strict: true`: missing `maxScan` throws.
+- `strict: false`: missing `maxScan` warns and runs uncapped.
+
+## Pipeline Pagination (Advanced)
+
+Pipeline mode is the public way to do stream-style composition before pagination.
+
+### Union/interleave (merged-stream behavior)
+
+`pipeline.union + interleaveBy` is the `findMany` equivalent of merged streams.
+
+```ts showLineNumbers
+const page = await db.query.messages.findMany({
+  cursor: null,
+  limit: 20,
+  pipeline: {
+    union: [
+      {
+        index: {
+          name: 'by_from_to',
+          range: (q) => q.eq('from', me).eq('to', them),
+        },
+      },
+      {
+        index: {
+          name: 'by_from_to',
+          range: (q) => q.eq('from', them).eq('to', me),
+        },
+      },
+    ],
+    interleaveBy: ['_creationTime', '_id'],
+  },
+});
+```
+
+### Pre-pagination transforms
+
+You can apply transforms in order with `stages`:
+
+```ts showLineNumbers
+const page = await db.query.messages.findMany({
+  cursor: null,
+  limit: 20,
+  maxScan: 500,
+  pipeline: {
+    stages: [
+      { filterWith: async (m) => !m.deletedAt },
+      { map: async (m) => ({ ...m, preview: m.body.slice(0, 120) }) },
+      { distinct: { fields: ['channelId'] } },
+    ],
+  },
+});
+```
+
+### Relation-targeted `flatMap`
+
+```ts showLineNumbers
+const page = await db.query.users.findMany({
+  cursor: null,
+  limit: 20,
+  pipeline: {
+    stages: [
+      {
+        flatMap: {
+          relation: 'posts',
+          includeParent: true,
+        },
+      },
+    ],
+  },
+});
+```
+
+### Pipeline limitations (v1)
+
+| Combination | Status |
+|---|---|
+| `pipeline + search` | Not supported |
+| `pipeline + vectorSearch` | Not supported |
+| `pipeline + offset` | Not supported |
+
+## Key-Based Paging (`pageByKey`)
+
+Use `pageByKey` when you want explicit key boundaries rather than opaque cursors.
+
+```ts showLineNumbers
+const first = await db.query.messages.findMany({
+  pageByKey: {
+    index: 'by_channel',
+    order: 'asc',
+    targetMaxRows: 100,
+  },
+});
+
+const second = await db.query.messages.findMany({
+  pageByKey: {
+    index: 'by_channel',
+    order: 'asc',
+    startKey: first.indexKeys[99],
+    targetMaxRows: 100,
+  },
+});
+```
+
+Return shape:
+
+```ts
+{
+  page: T[];
+  indexKeys: (Value | undefined)[][];
+  hasMore: boolean;
+}
+```
+
+`pageByKey` also supports `endKey`, inclusive/exclusive bounds, and `absoluteMaxRows` for hard page caps.
+
+## Validation Rules
+
+These combinations are rejected:
+
+- `endCursor` without cursor mode (`cursor + limit`).
+- `maxScan` without cursor mode.
+- `pageByKey` with `cursor`, `offset`, `search`, `vectorSearch`, or `pipeline`.
+
+## Migration from `db.stream()`
+
+If you previously used stream helpers directly, map them to `findMany` like this:
+
+| Previous pattern | New pattern |
+|---|---|
+| `db.stream().query(...).filterWith(...).paginate(...)` | `findMany({ cursor, limit, pipeline: { stages: [{ filterWith }] } })` |
+| `mergedStream([...], fields)` | `findMany({ cursor, limit, pipeline: { union: [...], interleaveBy: fields } })` |
+| manual `map`/`flatMap` stream chains | `findMany({ pipeline: { stages: [{ map }, { flatMap }] } })` |
+| `getPage(...)` key-boundary paging | `findMany({ pageByKey: { ... } })` |
+| `paginator(...).query(...).paginate(...)` | `findMany({ cursor, limit, ... })` |
+
 <Callout icon={<AlertTriangle />}>
-`maxScan` is only valid with cursor pagination (`cursor` + `limit`). Without cursor pagination, Better-Convex throws.
+Keep the query shape stable between calls when paginating. Changing indexes/order/filters between page requests invalidates cursor continuity.
 </Callout>

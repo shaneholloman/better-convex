@@ -325,8 +325,8 @@ await db.query.users.findMany({
 - `orderBy`: `{ field: 'asc' | 'desc' }`
 - `limit`, `offset`
 - `cursor`: `string | null` (cursor pagination; first page is `null`)
-- `maxScan`: `number` (only valid with cursor pagination; caps predicate `where(fn)` scan cost)
-- `allowFullScan`: opt‑in for object-filter full scans when no index is available (not used with predicate `where`, `search`, or `vectorSearch`)
+- `maxScan`: `number` (only valid with cursor pagination; caps scan-fallback paths like predicate/object post-filter and index-union pagination)
+- `allowFullScan`: opt‑in for non-cursor object-filter full scans when no index is available (not supported with cursor pagination; not used with predicate `where`, `search`, or `vectorSearch`)
 - `with`: relation loading
 - `columns`: post‑fetch projection
 - `extras`: post‑fetch computed fields
@@ -419,14 +419,52 @@ await db.query.posts.findMany({
 });
 ```
 
-### `db.stream()` (advanced)
+### `findMany({ pipeline })` (advanced)
 
-```ts
-const rows = await db.stream().query('users').take(1);
+```ts showLineNumbers
+const page = await db.query.messages.findMany({
+  cursor: null,
+  limit: 20,
+  pipeline: {
+    union: [
+      { index: { name: 'by_from_to', range: (q) => q.eq('from', me).eq('to', them) } },
+      { index: { name: 'by_from_to', range: (q) => q.eq('from', them).eq('to', me) } },
+    ],
+    interleaveBy: ['_creationTime', '_id'],
+    stages: [
+      { filterWith: async (m) => !m.deletedAt },
+      { map: async (m) => ({ ...m, preview: m.body.slice(0, 120) }) },
+    ],
+  },
+});
 ```
 
-`db.stream()` returns a stream reader bound to your schema. Use it for advanced stream operations.
-Most queries should use `findMany()` / `findFirst()` (or `findFirstOrThrow()`).
+Use pipeline mode when you need pre-pagination transforms (`filterWith`, `map`, `distinct`, relation `flatMap`) or SQL-like unions/interleaving.
+
+### `findMany({ pageByKey })` (advanced)
+
+```ts showLineNumbers
+const page = await db.query.messages.findMany({
+  pageByKey: {
+    index: 'by_channel',
+    order: 'asc',
+    startKey: previousEndKey,
+    targetMaxRows: 100,
+  },
+});
+```
+
+`pageByKey` returns:
+
+```ts
+{
+  page: T[];
+  indexKeys: (Value | undefined)[][];
+  hasMore: boolean;
+}
+```
+
+Use this mode when you need deterministic key boundaries (explicit adjacency control) instead of opaque cursor tokens.
 
 ## Query Filters (object `where`)
 

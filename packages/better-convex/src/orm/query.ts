@@ -54,14 +54,25 @@ import {
   getIndexes,
 } from './index-utils';
 import { asc, desc } from './order-by';
+import { getPage } from './pagination';
 import { QueryPromise } from './query-promise';
 import type { RelationsFieldFilter, RelationsFilter } from './relations';
 import { filterSelectRows } from './rls/evaluator';
 import type { RlsContext } from './rls/types';
-import { stream } from './stream';
+import {
+  EmptyStream,
+  getIndexFields,
+  mergedStream,
+  QueryStream,
+  stream,
+} from './stream';
 import { Columns, OrmSchemaDefinition } from './symbols';
 import type {
   DBQueryConfig,
+  FindManyPipelineConfig,
+  FindManyPipelineFlatMapStage,
+  FindManyUnionSource,
+  IndexKey,
   OrderByClause,
   OrderByValue,
   PredicateWhereIndexConfig,
@@ -76,6 +87,61 @@ import {
 } from './where-clause-compiler';
 
 const DEFAULT_RELATION_FAN_OUT_MAX_KEYS = 1000;
+
+class LimitedQueryStream<
+  T extends NonNullable<unknown>,
+> extends QueryStream<T> {
+  constructor(
+    private readonly inner: QueryStream<T>,
+    private readonly limit: number
+  ) {
+    super();
+  }
+
+  iterWithKeys(): AsyncIterable<[T | null, IndexKey]> {
+    const iterable = this.inner.iterWithKeys();
+    const max = this.limit;
+    return {
+      [Symbol.asyncIterator]() {
+        const iterator = iterable[Symbol.asyncIterator]();
+        let seen = 0;
+        return {
+          async next() {
+            if (seen >= max) {
+              return { done: true as const, value: undefined };
+            }
+            const next = await iterator.next();
+            if (!next.done) {
+              seen += 1;
+            }
+            return next as any;
+          },
+        };
+      },
+    };
+  }
+
+  narrow(indexBounds: {
+    lowerBound: IndexKey;
+    lowerBoundInclusive: boolean;
+    upperBound: IndexKey;
+    upperBoundInclusive: boolean;
+  }): QueryStream<T> {
+    return new LimitedQueryStream(this.inner.narrow(indexBounds), this.limit);
+  }
+
+  getOrder(): 'asc' | 'desc' {
+    return this.inner.getOrder();
+  }
+
+  getIndexFields(): string[] {
+    return this.inner.getIndexFields();
+  }
+
+  getEqualityIndexFilter(): any[] {
+    return this.inner.getEqualityIndexFilter();
+  }
+}
 
 /**
  * Relational query builder with promise-based execution
@@ -1402,6 +1468,270 @@ export class GelRelationalQuery<
     );
   }
 
+  private _getSchemaDefinitionOrThrow() {
+    const schemaDefinition = (this.schema as any)[OrmSchemaDefinition];
+    if (!schemaDefinition) {
+      throw new Error(
+        'Advanced pagination requires defineSchema(). Ensure defineSchema(tables) was used with the same tables object passed to defineRelations.'
+      );
+    }
+    return schemaDefinition;
+  }
+
+  private _applyEqBounds<TQueryBuilder>(
+    q: TQueryBuilder,
+    fields: string[],
+    values: any[]
+  ) {
+    let builder: any = q;
+    for (let i = 0; i < fields.length; i += 1) {
+      builder = builder.eq(fields[i], values[i]);
+    }
+    return builder;
+  }
+
+  private _buildTableFilterPredicate(
+    where: unknown,
+    tableConfig: TableRelationalConfig
+  ): ((row: any) => Promise<boolean>) | null {
+    if (!where) {
+      return null;
+    }
+    if (typeof where === 'function') {
+      return async (row: any) => await (where as any)(row);
+    }
+    return async (row: any) => {
+      const expression = this._buildFilterExpression(
+        where as RelationsFilter<any, any>,
+        tableConfig
+      );
+      if (!expression) {
+        return true;
+      }
+      return this._evaluatePostFetchFilter(row, expression);
+    };
+  }
+
+  private _buildBasePipelineStream(
+    queryConfig: {
+      index?: { name: string; filters: FilterExpression<boolean>[] };
+      postFilters: FilterExpression<boolean>[];
+      order?: { direction: 'asc' | 'desc'; field: string }[];
+    },
+    wherePredicate: ((row: any) => boolean | Promise<boolean>) | undefined
+  ): QueryStream<any> {
+    const schemaDefinition = this._getSchemaDefinitionOrThrow();
+    let streamQuery: any = stream(
+      this.db as GenericDatabaseReader<any>,
+      schemaDefinition
+    ).query(this.tableConfig.name as any);
+
+    const primaryOrder = queryConfig.order?.[0];
+    const primaryOrderDirection = primaryOrder?.direction ?? 'asc';
+
+    if (queryConfig.index) {
+      streamQuery = streamQuery.withIndex(
+        queryConfig.index.name as any,
+        (q: any) => {
+          let indexQuery = q;
+          for (const filter of queryConfig.index!.filters) {
+            indexQuery = this._applyFilterToQuery(indexQuery, filter);
+          }
+          return indexQuery;
+        }
+      );
+    } else if (primaryOrder && primaryOrder.field !== '_creationTime') {
+      const orderIndex = getIndexes(this.tableConfig.table).find(
+        (idx) => idx.fields[0] === primaryOrder.field
+      );
+      if (orderIndex) {
+        streamQuery = streamQuery.withIndex(
+          orderIndex.name as any,
+          (q: any) => q
+        );
+      }
+    }
+
+    streamQuery = streamQuery.order(primaryOrderDirection);
+
+    if (queryConfig.postFilters.length > 0 || wherePredicate) {
+      streamQuery = streamQuery.filterWith(async (row: any) => {
+        for (const filter of queryConfig.postFilters) {
+          if (!this._evaluatePostFetchFilter(row, filter)) {
+            return false;
+          }
+        }
+        if (wherePredicate) {
+          return await wherePredicate(row);
+        }
+        return true;
+      });
+    }
+
+    return streamQuery;
+  }
+
+  private _buildUnionSourceStream(
+    source: FindManyUnionSource<TTableConfig>,
+    fallbackOrder: 'asc' | 'desc'
+  ): QueryStream<any> {
+    const schemaDefinition = this._getSchemaDefinitionOrThrow();
+    let sourceStream: any = stream(
+      this.db as GenericDatabaseReader<any>,
+      schemaDefinition
+    ).query(this.tableConfig.name as any);
+
+    if (source.index?.name) {
+      sourceStream = sourceStream.withIndex(
+        source.index.name as any,
+        source.index.range ? (source.index.range as any) : (q: any) => q
+      );
+    }
+
+    sourceStream = sourceStream.order(fallbackOrder);
+
+    const sourcePredicate = this._buildTableFilterPredicate(
+      source.where,
+      this.tableConfig
+    );
+    if (sourcePredicate) {
+      sourceStream = sourceStream.filterWith(sourcePredicate);
+    }
+
+    return sourceStream;
+  }
+
+  private async _applyFlatMapStage(
+    sourceStream: QueryStream<any>,
+    stage: FindManyPipelineFlatMapStage<TTableConfig>['flatMap']
+  ): Promise<QueryStream<any>> {
+    const relationName = stage.relation as string;
+    const edge = this.edgeMetadata.find((e) => e.edgeName === relationName);
+    if (!edge) {
+      throw new Error(
+        `Pipeline flatMap relation '${relationName}' not found on table '${this.tableConfig.name}'.`
+      );
+    }
+    if (edge.through) {
+      throw new Error(
+        `Pipeline flatMap does not yet support through() relations for '${relationName}'.`
+      );
+    }
+
+    const sourceFields =
+      edge.cardinality === 'one'
+        ? edge.sourceFields.length > 0
+          ? edge.sourceFields
+          : [edge.fieldName]
+        : edge.sourceFields.length > 0
+          ? edge.sourceFields
+          : ['_id'];
+    const targetFields =
+      edge.cardinality === 'one'
+        ? edge.targetFields.length > 0
+          ? edge.targetFields
+          : ['_id']
+        : edge.targetFields.length > 0
+          ? edge.targetFields
+          : [edge.fieldName];
+
+    const targetTableConfig = this._getTableConfigByDbName(edge.targetTable);
+    if (!targetTableConfig) {
+      throw new Error(
+        `Pipeline flatMap target table '${edge.targetTable}' not found.`
+      );
+    }
+
+    const strict = this.tableConfig.strict !== false;
+    const useGetById = targetFields.length === 1 && targetFields[0] === '_id';
+    const indexName = useGetById
+      ? ('by_id' as string)
+      : (findRelationIndex(
+          targetTableConfig.table as any,
+          targetFields,
+          `${this.tableConfig.name}.${relationName}`,
+          edge.targetTable,
+          strict,
+          this.allowFullScan
+        ) as string | null);
+    const outerOrder = sourceStream.getOrder();
+    const schemaDefinition = this._getSchemaDefinitionOrThrow();
+    const innerIndexFields = getIndexFields(
+      edge.targetTable as any,
+      ((indexName ?? 'by_creation_time') as any) ?? 'by_creation_time',
+      schemaDefinition as any
+    );
+    const stageWherePredicate = this._buildTableFilterPredicate(
+      stage.where,
+      targetTableConfig
+    );
+
+    return sourceStream.flatMap(async (parent: any) => {
+      const values = sourceFields.map((field) => parent[field]);
+      if (values.some((value) => value === null || value === undefined)) {
+        return new EmptyStream<any>(outerOrder, innerIndexFields);
+      }
+
+      let inner: any = stream(
+        this.db as GenericDatabaseReader<any>,
+        schemaDefinition
+      ).query(edge.targetTable as any);
+
+      if (indexName) {
+        inner = inner.withIndex(indexName as any, (q: any) =>
+          this._applyEqBounds(q, targetFields, values)
+        );
+      }
+      inner = inner.order(outerOrder);
+
+      if (stageWherePredicate) {
+        inner = inner.filterWith(stageWherePredicate);
+      }
+
+      if (stage.limit !== undefined) {
+        if (!Number.isInteger(stage.limit) || stage.limit < 1) {
+          throw new Error('pipeline.flatMap.limit must be a positive integer');
+        }
+        inner = new LimitedQueryStream(inner, stage.limit);
+      }
+
+      if (stage.includeParent ?? true) {
+        inner = inner.map(async (child: any) => ({ parent, child }));
+      }
+
+      return inner;
+    }, innerIndexFields);
+  }
+
+  private async _applyPipelineStages(
+    baseStream: QueryStream<any>,
+    pipeline: FindManyPipelineConfig<TSchema, TTableConfig>
+  ): Promise<QueryStream<any>> {
+    let streamQuery = baseStream;
+    for (const stage of pipeline.stages ?? []) {
+      if ('filterWith' in stage && typeof stage.filterWith === 'function') {
+        streamQuery = streamQuery.filterWith(
+          async (row: any) => await stage.filterWith(row)
+        );
+        continue;
+      }
+      if ('map' in stage && typeof stage.map === 'function') {
+        streamQuery = streamQuery.map(async (row: any) => await stage.map(row));
+        continue;
+      }
+      if ('distinct' in stage) {
+        streamQuery = streamQuery.distinct(stage.distinct.fields);
+        continue;
+      }
+      if ('flatMap' in stage) {
+        streamQuery = await this._applyFlatMapStage(streamQuery, stage.flatMap);
+        continue;
+      }
+      throw new Error('Unknown pipeline stage in findMany().');
+    }
+    return streamQuery;
+  }
+
   /**
    * Execute the query and return results
    * Phase 4 implementation with WhereClauseCompiler integration
@@ -1410,7 +1740,23 @@ export class GelRelationalQuery<
     const config = this.config as any;
     const cursor = config.cursor as string | null | undefined;
     const isCursorPaginated = cursor !== undefined;
+    const endCursor = config.endCursor as string | null | undefined;
     const maxScan = config.maxScan as number | undefined;
+    const pipeline = config.pipeline as
+      | FindManyPipelineConfig<TSchema, TTableConfig>
+      | undefined;
+    const pageByKey = config.pageByKey as
+      | {
+          index?: string;
+          order?: 'asc' | 'desc';
+          startKey?: IndexKey;
+          startInclusive?: boolean;
+          endKey?: IndexKey;
+          endInclusive?: boolean;
+          targetMaxRows?: number;
+          absoluteMaxRows?: number;
+        }
+      | undefined;
     const searchConfig = config.search as
       | {
           index: string;
@@ -1442,10 +1788,64 @@ export class GelRelationalQuery<
       throw new Error('cursor pagination is only supported on findMany().');
     }
 
+    if (endCursor !== undefined && !isCursorPaginated) {
+      throw new Error(
+        'endCursor requires cursor pagination (cursor + limit) on findMany().'
+      );
+    }
+
     if (maxScan !== undefined && !isCursorPaginated) {
       throw new Error(
         'maxScan can only be used with cursor pagination (cursor + limit).'
       );
+    }
+
+    if (isCursorPaginated && allowFullScan) {
+      throw new Error(
+        'allowFullScan is not supported with cursor pagination; use maxScan.'
+      );
+    }
+
+    if (pipeline) {
+      if (searchConfig) {
+        throw new Error(
+          'pipeline cannot be combined with search in findMany().'
+        );
+      }
+      if (vectorSearchConfig) {
+        throw new Error(
+          'pipeline cannot be combined with vectorSearch in findMany().'
+        );
+      }
+      if (config.offset !== undefined) {
+        throw new Error(
+          'pipeline cannot be combined with offset in findMany().'
+        );
+      }
+    }
+
+    if (pageByKey) {
+      if (this.mode !== 'many') {
+        throw new Error('pageByKey is only supported on findMany().');
+      }
+      if (isCursorPaginated) {
+        throw new Error('pageByKey cannot be combined with cursor pagination.');
+      }
+      if (config.offset !== undefined) {
+        throw new Error('pageByKey cannot be combined with offset.');
+      }
+      if (maxScan !== undefined) {
+        throw new Error('pageByKey cannot be combined with maxScan.');
+      }
+      if (searchConfig) {
+        throw new Error('pageByKey cannot be combined with search.');
+      }
+      if (vectorSearchConfig) {
+        throw new Error('pageByKey cannot be combined with vectorSearch.');
+      }
+      if (pipeline) {
+        throw new Error('pageByKey cannot be combined with pipeline.');
+      }
     }
 
     // Fast path: `_id` lookups use `db.get()` (primary key) instead of an index plan.
@@ -1505,6 +1905,129 @@ export class GelRelationalQuery<
     }
 
     const queryConfig = this._toConvexQuery();
+
+    if (pageByKey) {
+      const schemaDefinition = this._getSchemaDefinitionOrThrow();
+      const page = await getPage(
+        { db: this.db as GenericDatabaseReader<any> },
+        {
+          table: this.tableConfig.name as any,
+          index: (pageByKey.index as any) ?? ('by_creation_time' as any),
+          schema: schemaDefinition as any,
+          startIndexKey: pageByKey.startKey,
+          startInclusive: pageByKey.startInclusive,
+          endIndexKey: pageByKey.endKey,
+          endInclusive: pageByKey.endInclusive,
+          targetMaxRows: pageByKey.targetMaxRows,
+          absoluteMaxRows: pageByKey.absoluteMaxRows,
+          order: pageByKey.order,
+        } as any
+      );
+
+      let rows = this._applyRlsSelectFilter(page.page, this.tableConfig);
+
+      if (whereFilter) {
+        rows = await this._applyRelationsFilterToRows(
+          rows,
+          this.tableConfig,
+          whereFilter,
+          this.edgeMetadata,
+          0,
+          3,
+          this.config.with as Record<string, unknown> | undefined
+        );
+      }
+
+      const selectedRows = await this._finalizeRows(rows);
+      return {
+        page: selectedRows,
+        indexKeys: page.indexKeys,
+        hasMore: page.hasMore,
+      } as TResult;
+    }
+
+    const useAdvancedStreamPath = Boolean(pipeline) || endCursor !== undefined;
+
+    if (endCursor !== undefined && searchConfig) {
+      throw new Error('endCursor is not supported with search in findMany().');
+    }
+
+    if (endCursor !== undefined && vectorSearchConfig) {
+      throw new Error(
+        'endCursor is not supported with vectorSearch in findMany().'
+      );
+    }
+
+    if (useAdvancedStreamPath) {
+      const primaryOrder = queryConfig.order?.[0];
+      const fallbackOrder = primaryOrder?.direction ?? 'asc';
+      let streamQuery: QueryStream<any>;
+
+      const unionSources = pipeline?.union ?? [];
+      if (unionSources.length > 0) {
+        const streams = unionSources.map((source) =>
+          this._buildUnionSourceStream(source, fallbackOrder)
+        );
+        if (streams.length === 1) {
+          streamQuery = streams[0]!;
+        } else {
+          if (!pipeline?.interleaveBy || pipeline.interleaveBy.length === 0) {
+            throw new Error(
+              'pipeline.interleaveBy is required when pipeline.union has multiple sources.'
+            );
+          }
+          streamQuery = mergedStream(streams, pipeline.interleaveBy);
+        }
+      } else {
+        streamQuery = this._buildBasePipelineStream(
+          queryConfig,
+          wherePredicate
+        );
+      }
+
+      if (pipeline) {
+        streamQuery = await this._applyPipelineStages(streamQuery, pipeline);
+      }
+
+      if (isCursorPaginated) {
+        const paginationResult = await streamQuery.paginate({
+          cursor: cursor ?? null,
+          endCursor: endCursor ?? undefined,
+          limit: config.limit,
+          maxScan,
+        });
+
+        const selectedPage = await this._finalizeRows(
+          this._applyRlsSelectFilter(paginationResult.page, this.tableConfig)
+        );
+        return {
+          page: selectedPage,
+          continueCursor: paginationResult.continueCursor,
+          isDone: paginationResult.isDone,
+          pageStatus: (paginationResult as any).pageStatus,
+          splitCursor: (paginationResult as any).splitCursor,
+        } as TResult;
+      }
+
+      const offset = config.offset ?? 0;
+      if (typeof offset !== 'number') {
+        throw new Error(
+          'Only numeric offset is supported in Better Convex ORM.'
+        );
+      }
+      const limit = this._resolveNonPaginatedLimit(config);
+      let rows =
+        limit === undefined
+          ? await streamQuery.collect()
+          : await streamQuery.take(offset > 0 ? offset + limit : limit);
+      if (offset > 0) {
+        rows = rows.slice(offset);
+      }
+
+      rows = this._applyRlsSelectFilter(rows, this.tableConfig);
+      const selectedRows = await this._finalizeRows(rows);
+      return this._returnSelectedRows(selectedRows);
+    }
 
     // Start Convex query
     let query: any = this.db.query(queryConfig.table);
@@ -1799,12 +2322,27 @@ export class GelRelationalQuery<
     usePostFetchSort = needsPostFetchSortForPrimary || hasSecondaryOrders;
 
     if (!queryConfig.index && queryConfig.postFilters.length > 0) {
-      if (!allowFullScan) {
-        throw new Error(
-          'Query requires allowFullScan: true when no index is available.'
+      if (isCursorPaginated) {
+        if (maxScan === undefined) {
+          if (strict) {
+            throw new Error(
+              'Cursor pagination with scan fallback requires maxScan when strict=true. Add maxScan or make the query indexable.'
+            );
+          }
+          console.warn(
+            'Cursor pagination is running with scan fallback and no maxScan because strict: false.'
+          );
+        }
+      } else {
+        if (!allowFullScan) {
+          throw new Error(
+            'Query requires allowFullScan: true when no index is available.'
+          );
+        }
+        console.warn(
+          'Query is running without an index (allowFullScan: true).'
         );
       }
-      console.warn('Query is running without an index (allowFullScan: true).');
     }
 
     if (wherePredicate) {
@@ -1921,6 +2459,8 @@ export class GelRelationalQuery<
           page: selectedPage,
           continueCursor: paginationResult.continueCursor,
           isDone: paginationResult.isDone,
+          pageStatus: (paginationResult as any).pageStatus,
+          splitCursor: (paginationResult as any).splitCursor,
         } as TResult;
       }
 
@@ -2115,14 +2655,226 @@ export class GelRelationalQuery<
     // M6.5 Phase 4: Handle cursor pagination separately
     if (isCursorPaginated) {
       if (queryConfig.strategy === 'multiProbe') {
-        if (!allowFullScan) {
-          throw new Error(
-            'Pagination with multi-probe index-union filters requires allowFullScan: true. Cursor-stable multi-probe pagination is not implemented yet.'
+        if (maxScan === undefined) {
+          if (strict) {
+            throw new Error(
+              'Pagination with multi-probe index-union filters requires maxScan when strict=true. Add maxScan or make the query indexable.'
+            );
+          }
+          console.warn(
+            'Pagination with multi-probe index-union filters is running without maxScan because strict: false.'
           );
+        } else {
+          const schemaDefinition = (this.schema as any)[OrmSchemaDefinition];
+          if (!schemaDefinition) {
+            throw new Error(
+              'Pagination with maxScan requires defineSchema(). Ensure defineSchema(tables) was used with the same tables object passed to defineRelations.'
+            );
+          }
+
+          let streamQuery: any = stream(
+            this.db as GenericDatabaseReader<any>,
+            schemaDefinition
+          ).query(this.tableConfig.name as any);
+
+          if (queryConfig.order && primaryOrder) {
+            if (needsPostFetchSortForPrimary) {
+              if (strict) {
+                throw new Error(
+                  `Pagination: Field '${primaryOrder.field}' has no index. Add an index or disable strict.`
+                );
+              }
+              console.warn(
+                `Pagination: Field '${primaryOrder.field}' has no index. ` +
+                  'Falling back to _creationTime ordering.'
+              );
+            }
+            if (hasSecondaryOrders) {
+              console.warn(
+                'Pagination: Only the first orderBy field is used for cursor ordering. ' +
+                  'Secondary orderBy fields are applied per page and may be unstable across pages.'
+              );
+            }
+            streamQuery = streamQuery.order(primaryOrder.direction);
+          } else {
+            streamQuery = streamQuery.order('desc');
+          }
+
+          if (queryConfig.postFilters.length > 0) {
+            streamQuery = streamQuery.filterWith(async (row: any) =>
+              queryConfig.postFilters.every((filter) =>
+                this._evaluatePostFetchFilter(row, filter)
+              )
+            );
+          }
+
+          const paginationResult = await streamQuery.paginate({
+            cursor: cursor ?? null,
+            limit: config.limit,
+            maxScan,
+          });
+
+          let pageRows = paginationResult.page;
+
+          pageRows = this._applyRlsSelectFilter(pageRows, this.tableConfig);
+
+          if (whereFilter) {
+            pageRows = await this._applyRelationsFilterToRows(
+              pageRows,
+              this.tableConfig,
+              whereFilter,
+              this.edgeMetadata,
+              0,
+              3,
+              this.config.with as Record<string, unknown> | undefined
+            );
+          }
+
+          let pageWithRelations = pageRows;
+          if (this.config.with) {
+            pageWithRelations = await this._loadRelations(
+              pageRows,
+              this.config.with,
+              0,
+              3,
+              this.edgeMetadata,
+              this.tableConfig
+            );
+          }
+
+          if ((this.config as any).extras) {
+            pageWithRelations = this._applyExtras(
+              pageWithRelations,
+              (this.config as any).extras,
+              this._getColumns(this.tableConfig),
+              this.config.with as Record<string, unknown> | undefined,
+              this.tableConfig.name
+            );
+          }
+
+          const selectedPage = this._selectColumns(
+            pageWithRelations,
+            (this.config as any).columns,
+            this._getColumns(this.tableConfig)
+          );
+
+          return {
+            page: selectedPage,
+            continueCursor: paginationResult.continueCursor,
+            isDone: paginationResult.isDone,
+            pageStatus: (paginationResult as any).pageStatus,
+            splitCursor: (paginationResult as any).splitCursor,
+          } as TResult;
         }
-        console.warn(
-          'Pagination with multi-probe index-union filters is falling back to full-scan pagination (allowFullScan: true).'
-        );
+      }
+
+      if (!queryConfig.index && queryConfig.postFilters.length > 0) {
+        if (maxScan === undefined) {
+          if (strict) {
+            throw new Error(
+              'Cursor pagination with scan fallback requires maxScan when strict=true. Add maxScan or make the query indexable.'
+            );
+          }
+        } else {
+          const schemaDefinition = (this.schema as any)[OrmSchemaDefinition];
+          if (!schemaDefinition) {
+            throw new Error(
+              'Pagination with maxScan requires defineSchema(). Ensure defineSchema(tables) was used with the same tables object passed to defineRelations.'
+            );
+          }
+
+          let streamQuery: any = stream(
+            this.db as GenericDatabaseReader<any>,
+            schemaDefinition
+          ).query(this.tableConfig.name as any);
+
+          if (queryConfig.order && primaryOrder) {
+            if (needsPostFetchSortForPrimary) {
+              if (strict) {
+                throw new Error(
+                  `Pagination: Field '${primaryOrder.field}' has no index. Add an index or disable strict.`
+                );
+              }
+              console.warn(
+                `Pagination: Field '${primaryOrder.field}' has no index. ` +
+                  'Falling back to _creationTime ordering.'
+              );
+            }
+            if (hasSecondaryOrders) {
+              console.warn(
+                'Pagination: Only the first orderBy field is used for cursor ordering. ' +
+                  'Secondary orderBy fields are applied per page and may be unstable across pages.'
+              );
+            }
+            streamQuery = streamQuery.order(primaryOrder.direction);
+          } else {
+            streamQuery = streamQuery.order('desc');
+          }
+
+          streamQuery = streamQuery.filterWith(async (row: any) =>
+            queryConfig.postFilters.every((filter) =>
+              this._evaluatePostFetchFilter(row, filter)
+            )
+          );
+
+          const paginationResult = await streamQuery.paginate({
+            cursor: cursor ?? null,
+            limit: config.limit,
+            maxScan,
+          });
+
+          let pageRows = paginationResult.page;
+
+          pageRows = this._applyRlsSelectFilter(pageRows, this.tableConfig);
+
+          if (whereFilter) {
+            pageRows = await this._applyRelationsFilterToRows(
+              pageRows,
+              this.tableConfig,
+              whereFilter,
+              this.edgeMetadata,
+              0,
+              3,
+              this.config.with as Record<string, unknown> | undefined
+            );
+          }
+
+          let pageWithRelations = pageRows;
+          if (this.config.with) {
+            pageWithRelations = await this._loadRelations(
+              pageRows,
+              this.config.with,
+              0,
+              3,
+              this.edgeMetadata,
+              this.tableConfig
+            );
+          }
+
+          if ((this.config as any).extras) {
+            pageWithRelations = this._applyExtras(
+              pageWithRelations,
+              (this.config as any).extras,
+              this._getColumns(this.tableConfig),
+              this.config.with as Record<string, unknown> | undefined,
+              this.tableConfig.name
+            );
+          }
+
+          const selectedPage = this._selectColumns(
+            pageWithRelations,
+            (this.config as any).columns,
+            this._getColumns(this.tableConfig)
+          );
+
+          return {
+            page: selectedPage,
+            continueCursor: paginationResult.continueCursor,
+            isDone: paginationResult.isDone,
+            pageStatus: (paginationResult as any).pageStatus,
+            splitCursor: (paginationResult as any).splitCursor,
+          } as TResult;
+        }
       }
 
       // Apply post-filters

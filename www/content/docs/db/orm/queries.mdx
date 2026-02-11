@@ -244,6 +244,10 @@ return db.query.posts.findMany({
 });
 ```
 
+For cursor queries that need scan fallback paths (for example index-union/multi-probe or post-filter-only plans), use `maxScan`.
+`allowFullScan` is non-cursor only.
+With `strict: true`, missing `maxScan` on these fallback paths throws; with `strict: false`, it warns and runs uncapped.
+
 ## Full-Text Search
 
 Use `search` on `findMany()` / `findFirst()` when your table defines a `searchIndex`:

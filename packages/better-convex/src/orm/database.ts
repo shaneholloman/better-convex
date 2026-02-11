@@ -17,7 +17,6 @@ import type {
   GenericDatabaseWriter,
   SchedulableFunctionReference,
   Scheduler,
-  SchemaDefinition,
 } from 'convex/server';
 import { ConvexDeleteBuilder } from './delete';
 import type { EdgeMetadata } from './extractRelationsConfig';
@@ -26,12 +25,10 @@ import { buildForeignKeyGraph, type OrmContextValue } from './mutation-utils';
 import { RelationalQueryBuilder } from './query-builder';
 import type { TablesRelationalConfig } from './relations';
 import type { RlsContext } from './rls/types';
-import { type StreamDatabaseReader, stream } from './stream';
 import {
   Brand,
   OrmContext,
   type OrmRuntimeOptions,
-  OrmSchemaDefinition,
   OrmSchemaOptions,
 } from './symbols';
 import type { ConvexTable } from './table';
@@ -50,14 +47,6 @@ import { ConvexUpdateBuilder } from './update';
  * Pattern from: drizzle-orm/src/pg-core/db.ts lines 50-54
  * Key insight: TSchema[K] must be captured at mapping time, not evaluated in conditionals later.
  */
-type SchemaDefOf<TSchema extends TablesRelationalConfig> =
-  NonNullable<TSchema[typeof OrmSchemaDefinition]> extends SchemaDefinition<
-    any,
-    boolean
-  >
-    ? NonNullable<TSchema[typeof OrmSchemaDefinition]>
-    : SchemaDefinition<any, boolean>;
-
 export type DatabaseWithQuery<TSchema extends TablesRelationalConfig> =
   // Expose raw system access for _storage and _scheduled_functions only.
   // This is the escape hatch for system tables, not app tables.
@@ -67,7 +56,6 @@ export type DatabaseWithQuery<TSchema extends TablesRelationalConfig> =
       : {
           [K in keyof TSchema]: RelationalQueryBuilder<TSchema, TSchema[K]>;
         };
-    stream: () => StreamDatabaseReader<SchemaDefOf<TSchema>>;
   };
 
 export type DatabaseWithMutations<TSchema extends TablesRelationalConfig> =
@@ -153,9 +141,6 @@ export function createDatabase<TSchema extends TablesRelationalConfig>(
   ];
   const strict = schemaOptions?.strict ?? true;
   const defaults = schemaOptions?.defaults;
-  const schemaDefinition = (schema as { [OrmSchemaDefinition]?: unknown })[
-    OrmSchemaDefinition
-  ];
   const buildDatabase = (rls: RlsContext | undefined) => {
     const query: any = {};
 
@@ -245,25 +230,12 @@ export function createDatabase<TSchema extends TablesRelationalConfig>(
       return new ConvexDeleteBuilder(baseDb, table);
     };
 
-    const streamDb = () => {
-      if (!schemaDefinition) {
-        throw new Error(
-          'db.stream() requires defineSchema(). Ensure defineSchema(tables) was used with the same tables object passed to defineRelations.'
-        );
-      }
-      return stream(
-        baseDb as GenericDatabaseReader<any>,
-        schemaDefinition as any
-      );
-    };
-
     const base = {
       // Internal runtime config for mutation builders, scheduling, and FK actions.
       [OrmContext]: ormContext,
       // System tables escape hatch (raw Convex API).
       system: (db as GenericDatabaseReader<any>).system,
       query,
-      stream: streamDb,
     } as DatabaseWithQuery<TSchema>;
 
     return isWriter

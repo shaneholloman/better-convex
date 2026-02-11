@@ -49,6 +49,7 @@ export function OrganizationSwitcher() {
   const [open, setOpen] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [orgName, setOrgName] = useState('');
+  const [selectedOrgSlug, setSelectedOrgSlug] = useState<string | null>(null);
   const router = useRouter();
   const user = useCurrentUser();
 
@@ -122,11 +123,14 @@ export function OrganizationSwitcher() {
         setOpen(false);
         // Navigate to the organization page after switching
         if (selectedOrgSlug) {
-          router.push(`/org/${selectedOrgSlug}`);
+          router.push(`/org/${encodeURIComponent(selectedOrgSlug)}`);
           setSelectedOrgSlug(null);
         } else {
           router.refresh();
         }
+      },
+      onError: () => {
+        setSelectedOrgSlug(null);
       },
     })
   );
@@ -155,11 +159,15 @@ export function OrganizationSwitcher() {
 
   const pendingInvitationsCount = invitations?.length ?? 0;
 
-  const handleSelectOrganization = (organizationId: Id<'organization'>) => {
+  const handleSelectOrganization = (
+    organizationId: Id<'organization'>,
+    organizationSlug: string
+  ) => {
     if (organizationId === currentOrg.id) {
       setOpen(false);
       return;
     }
+    setSelectedOrgSlug(organizationSlug);
     setActiveOrganization.mutate({ organizationId });
   };
 
@@ -233,7 +241,9 @@ export function OrganizationSwitcher() {
                   {uniqueOrganizations.map((org) => (
                     <CommandItem
                       key={org.id}
-                      onSelect={() => handleSelectOrganization(org.id)}
+                      onSelect={() =>
+                        handleSelectOrganization(org.id, org.slug)
+                      }
                       value={org.slug}
                     >
                       <div className="flex w-full flex-1 items-center gap-2">

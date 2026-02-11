@@ -4,9 +4,10 @@
  * Tests for findMany({ cursor, limit }) with Convex-native cursor pagination (O(1) performance)
  */
 
-import { expect, test } from 'vitest';
-import schema from '../schema';
-import { convexTest, runCtx } from '../setup.testing';
+import { defineRelations, defineSchema } from 'better-convex/orm';
+import { expect, test, vi } from 'vitest';
+import schema, { tables } from '../schema';
+import { convexTest, runCtx, withOrmCtx } from '../setup.testing';
 
 test('basic pagination - null cursor returns first page', async () => {
   const t = convexTest(schema);
@@ -131,6 +132,37 @@ test('predicate pagination honors maxScan', async () => {
   });
 });
 
+test('predicate pagination exposes split metadata when maxScan is hit', async () => {
+  const t = convexTest(schema);
+
+  await t.run(async (baseCtx) => {
+    for (let i = 0; i < 20; i++) {
+      await baseCtx.db.insert('users', {
+        name: `User ${String(i).padStart(2, '0')}`,
+        email: `predicate-split-${i}@example.com`,
+      });
+    }
+  });
+
+  await t.run(async (baseCtx) => {
+    const ctx = await runCtx(baseCtx);
+    const db = ctx.orm;
+
+    const page = await db.query.users.findMany({
+      where: (row) => row.name.endsWith('0'),
+      index: { name: 'by_name' },
+      cursor: null,
+      limit: 5,
+      maxScan: 1,
+    });
+
+    expect(page.isDone).toBe(false);
+    expect(page.page.length).toBeLessThanOrEqual(1);
+    expect(page.pageStatus).toBe('SplitRequired');
+    expect(page.splitCursor).toBeTruthy();
+  });
+});
+
 test('pagination - empty result set', async () => {
   const t = convexTest(schema);
 
@@ -214,7 +246,7 @@ test('pagination with WHERE filter', async () => {
   });
 });
 
-test('pagination with index-union filter requires allowFullScan opt-in', async () => {
+test('pagination with index-union filter requires maxScan when strict=true', async () => {
   const t = convexTest(schema);
 
   await t.run(async (baseCtx) => {
@@ -238,11 +270,11 @@ test('pagination with index-union filter requires allowFullScan opt-in', async (
         cursor: null,
         limit: 5,
       })
-    ).rejects.toThrow(/allowFullScan: true/i);
+    ).rejects.toThrow(/maxScan/i);
   });
 });
 
-test('pagination with index-union filter works with allowFullScan', async () => {
+test('pagination with index-union filter works with maxScan', async () => {
   const t = convexTest(schema);
 
   await t.run(async (baseCtx) => {
@@ -264,7 +296,7 @@ test('pagination with index-union filter works with allowFullScan', async () => 
       where: { status: { in: ['active', 'pending'] } },
       cursor: null,
       limit: 5,
-      allowFullScan: true,
+      maxScan: 20,
     });
 
     expect(page.page.length).toBeGreaterThan(0);
@@ -272,7 +304,78 @@ test('pagination with index-union filter works with allowFullScan', async () => 
   });
 });
 
-test('pagination on non-leading compound field requires allowFullScan opt-in', async () => {
+test('pagination with index-union filter exposes split metadata when maxScan is hit', async () => {
+  const t = convexTest(schema);
+
+  await t.run(async (baseCtx) => {
+    const statuses = ['active', 'pending', 'inactive'] as const;
+    for (let i = 0; i < 60; i++) {
+      await baseCtx.db.insert('users', {
+        name: `User ${i}`,
+        email: `multi-probe-split-${i}@example.com`,
+        status: statuses[i % statuses.length],
+      });
+    }
+  });
+
+  await t.run(async (baseCtx) => {
+    const ctx = await runCtx(baseCtx);
+    const db = ctx.orm;
+
+    const page = await db.query.users.findMany({
+      where: { status: { in: ['active', 'pending'] } },
+      cursor: null,
+      limit: 5,
+      maxScan: 1,
+    });
+
+    expect(page.isDone).toBe(false);
+    expect(page.page.length).toBeLessThanOrEqual(1);
+    expect(page.pageStatus).toBe('SplitRequired');
+    expect(page.splitCursor).toBeTruthy();
+    expect(page.continueCursor).not.toBeNull();
+  });
+});
+
+test('pagination with index-union filter warns and allows without maxScan when strict=false', async () => {
+  const relaxedTables = { ...tables };
+  const relaxedSchema = defineSchema(relaxedTables, {
+    strict: false,
+    defaults: { defaultLimit: 1000, mutationMaxRows: 10000 },
+  });
+  const relaxedRelations = defineRelations(relaxedTables);
+
+  const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    await withOrmCtx(relaxedSchema, relaxedRelations, async (ctx) => {
+      const statuses = ['active', 'pending', 'inactive'] as const;
+      for (let i = 0; i < 15; i++) {
+        await ctx.db.insert('users', {
+          name: `User ${i}`,
+          email: `multi-probe-relaxed-${i}@example.com`,
+          status: statuses[i % statuses.length],
+        });
+      }
+
+      const page = await ctx.orm.query.users.findMany({
+        where: { status: { in: ['active', 'pending'] } },
+        cursor: null,
+        limit: 5,
+      });
+
+      expect(page.page.length).toBeGreaterThan(0);
+      expect(
+        page.page.every(
+          (row: any) => row.status === 'active' || row.status === 'pending'
+        )
+      ).toBe(true);
+    });
+  } finally {
+    warnSpy.mockRestore();
+  }
+});
+
+test('pagination on non-leading compound field requires maxScan when strict=true', async () => {
   const t = convexTest(schema);
 
   await t.run(async (baseCtx) => {
@@ -303,13 +406,13 @@ test('pagination on non-leading compound field requires allowFullScan opt-in', a
         cursor: null,
         limit: 2,
       })
-    ).rejects.toThrow(/allowFullScan: true/i);
+    ).rejects.toThrow(/maxScan/i);
 
     const page = await db.query.posts.findMany({
       where: { numLikes: 10 },
       cursor: null,
       limit: 2,
-      allowFullScan: true,
+      maxScan: 20,
     });
 
     expect(page.page).toHaveLength(2);

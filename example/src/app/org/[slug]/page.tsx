@@ -36,7 +36,10 @@ export default function OrganizationPage() {
       return rawSlug;
     }
   })();
-  const inviteId = searchParams.get('invite') as Id<'invitation'> | null;
+  const inviteIdParam = searchParams.get('invite');
+  const inviteId = inviteIdParam
+    ? (inviteIdParam as Id<'invitation'>)
+    : undefined;
   const [activeTab, setActiveTab] = useState('overview');
   const router = useRouter();
 
@@ -55,7 +58,7 @@ export default function OrganizationPage() {
 
   const organizationQuery = useQuery(
     crpc.organization.getOrganizationOverview.queryOptions(
-      { slug, inviteId: inviteId ?? undefined },
+      { slug, inviteId },
       {
         skipUnauth: true,
         placeholderData: {

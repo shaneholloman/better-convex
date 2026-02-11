@@ -59,6 +59,67 @@ export type Merge<A, B> = {
       : never;
 };
 
+export type IndexKey = (Value | undefined)[];
+
+export type FindManyUnionSource<
+  TTableConfig extends TableRelationalConfig = TableRelationalConfig,
+> = {
+  index?: PredicateWhereIndexConfig<TTableConfig>;
+  where?: RelationsFilter<TTableConfig, any> | WherePredicate<TTableConfig>;
+};
+
+export type FindManyPipelineFlatMapStage<
+  TTableConfig extends TableRelationalConfig = TableRelationalConfig,
+> = {
+  flatMap: {
+    relation: Extract<keyof TTableConfig['relations'], string>;
+    where?: unknown;
+    orderBy?: unknown;
+    limit?: number;
+    includeParent?: boolean;
+  };
+};
+
+export type FindManyPipelineStage<
+  TTableConfig extends TableRelationalConfig = TableRelationalConfig,
+> =
+  | {
+      filterWith: (row: any) => boolean | Promise<boolean>;
+    }
+  | {
+      map: (row: any) => any | null | Promise<any | null>;
+    }
+  | {
+      distinct: { fields: string[] };
+    }
+  | FindManyPipelineFlatMapStage<TTableConfig>;
+
+export type FindManyPipelineConfig<
+  _TSchema extends TablesRelationalConfig = TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig = TableRelationalConfig,
+> = {
+  union?: FindManyUnionSource<TTableConfig>[];
+  interleaveBy?: string[];
+  stages?: FindManyPipelineStage<TTableConfig>[];
+};
+
+export type FindManyPageByKeyConfig = {
+  index?: string;
+  order?: 'asc' | 'desc';
+  startKey?: IndexKey;
+  startInclusive?: boolean;
+  endKey?: IndexKey;
+  endInclusive?: boolean;
+  targetMaxRows?: number;
+  absoluteMaxRows?: number;
+};
+
+export type KeyPageResult<T> = {
+  page: T[];
+  indexKeys: IndexKey[];
+  hasMore: boolean;
+};
+
 /**
  * Extract full document type from a ConvexTable (includes system fields)
  * Uses GetColumnData in 'query' mode to respect notNull brands
@@ -251,6 +312,11 @@ export type DBQueryConfig<
    */
   cursor?: _TIsRoot extends true ? string | null : never;
   /**
+   * Pin the end boundary to a previously returned cursor.
+   * Only valid with cursor pagination.
+   */
+  endCursor?: _TIsRoot extends true ? string | null : never;
+  /**
    * Maximum documents to scan during predicate `where(fn)` pagination.
    * Only valid when `cursor` is provided.
    */
@@ -269,6 +335,16 @@ export type DBQueryConfig<
    * Explicit index for predicate where() path.
    */
   index?: PredicateWhereIndexConfig<TTableConfig> | undefined;
+  /**
+   * Stream-backed advanced query pipeline.
+   */
+  pipeline?: _TIsRoot extends true
+    ? FindManyPipelineConfig<TSchema, TTableConfig>
+    : never;
+  /**
+   * Key-based page boundaries.
+   */
+  pageByKey?: _TIsRoot extends true ? FindManyPageByKeyConfig : never;
 } & (TRelationType extends 'many'
   ? {
       /** Limit number of results */
@@ -500,21 +576,36 @@ type HasStaticFullScanWhere<TWhere, TDepth extends number = 6> = [
 export type EnforceAllowFullScan<
   TConfig,
   _TTableConfig extends TableRelationalConfig,
-> = 'search' extends keyof TConfig
-  ? TConfig extends { search: infer TSearch }
-    ? [TSearch] extends [undefined]
-      ? TConfig extends { where: infer TWhere }
-        ? HasStaticFullScanWhere<TWhere> extends true
-          ? TConfig & { allowFullScan: true }
+> = TConfig extends { cursor: string | null }
+  ? TConfig
+  : 'search' extends keyof TConfig
+    ? TConfig extends { search: infer TSearch }
+      ? [TSearch] extends [undefined]
+        ? TConfig extends { where: infer TWhere }
+          ? HasStaticFullScanWhere<TWhere> extends true
+            ? TConfig & { allowFullScan: true }
+            : TConfig
           : TConfig
         : TConfig
       : TConfig
-    : TConfig
-  : TConfig extends { where: infer TWhere }
+    : TConfig extends { where: infer TWhere }
+      ? HasStaticFullScanWhere<TWhere> extends true
+        ? TConfig & { allowFullScan: true }
+        : TConfig
+      : TConfig;
+
+export type EnforceCursorMaxScan<TConfig> = TConfig extends {
+  cursor: string | null;
+}
+  ? TConfig extends { where: infer TWhere }
     ? HasStaticFullScanWhere<TWhere> extends true
-      ? TConfig & { allowFullScan: true }
+      ? Omit<TConfig, 'allowFullScan'> & {
+          maxScan: number;
+          allowFullScan?: never;
+        }
       : TConfig
-    : TConfig;
+    : TConfig
+  : TConfig;
 
 export type EnforcePredicateIndex<
   TConfig,
@@ -807,6 +898,8 @@ export type PaginatedResult<T> = {
   page: T[];
   continueCursor: string | null;
   isDone: boolean;
+  pageStatus?: 'SplitRecommended' | 'SplitRequired';
+  splitCursor?: string;
 };
 
 export type BuildQueryResult<

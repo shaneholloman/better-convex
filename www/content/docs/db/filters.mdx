@@ -23,9 +23,76 @@ Convex provides powerful querying capabilities beyond basic filtering:
 
 Let's explore each one.
 
+## Filtering + Pagination Compatibility
+
+Pagination and filtering are tightly coupled in Better-Convex.
+We'll start with a decision table, then walk through each mode with examples.
+
+| Query mode | Index requirement | Pagination support | Relation-aware filtering | Ordering |
+|---|---|---|---|---|
+| `findMany({ where: object })` | Optional (index-compiled when possible, otherwise `allowFullScan`) | `limit/offset`, `cursor + limit` | Yes (`where: { relation: ... }`) | `orderBy` supported; first field drives cursor stability |
+| `findMany({ where: (row) => ..., index })` | Required explicit `index: { name, range? }` | `limit/offset`, `cursor + limit`, optional `maxScan` (cursor mode) | No (predicate replaces object relation filter path) | Index/stream-backed; first order field matters for cursor mode |
+| `findMany({ search })` | Required `searchIndex` | `limit/offset`, `cursor + limit` | No relation filters (base-table object `where` only) | Relevance order only (`orderBy` unsupported) |
+| `findMany({ vectorSearch })` | Required `vectorIndex` + configured provider | `vectorSearch.limit` only (no `cursor`, `offset`, top-level `limit`) | No | Similarity order only |
+| `findMany({ pipeline })` | Schema + index/range path per union source (or inferred base path) | `cursor + limit` (+ optional `endCursor`, `maxScan`) or non-cursor | Manual via pipeline stages (`filterWith`, `map`, `flatMap`, `distinct`) | Stream-backed index order |
+
+### How to choose
+
+Use this sequence:
+
+1. Need relevance-ranked text search? Use `search`.
+2. Need vector similarity? Use `vectorSearch`.
+3. Need relation-aware filtering? Use object `where`.
+4. Need custom JS predicate logic? Use predicate `where` with explicit `index`.
+5. Need advanced pre-pagination composition (union/interleave/map/filterWith/flatMap/distinct)? Use `findMany({ pipeline })`.
+
 <Callout icon={<InfoIcon />}>
 **Note:** Better‑Convex ORM supports search via `findMany({ search: { index, query, filters? } })`. Predicate `where` still runs post‑fetch and cannot be combined with search mode.
 </Callout>
+
+## Pipeline Filtering (Advanced)
+
+Most filtering should stay in plain `findMany`. Use pipeline mode when you need stream-style transforms before pagination.
+
+This example uses a union + interleave (internal merged-stream semantics), then applies `filterWith` and `map` before returning the page:
+
+```ts title="convex/functions/messages.ts" showLineNumbers {13-32}
+import { z } from 'zod';
+import { zid } from 'convex-helpers/server/zod4';
+import { publicQuery } from '../lib/crpc';
+
+const MessageSchema = z.object({
+  _id: zid('messages'),
+  from: zid('users'),
+  to: zid('users'),
+  body: z.string(),
+  deletedAt: z.number().nullable(),
+});
+
+export const listConversation = publicQuery
+  .input(z.object({ me: zid('users'), them: zid('users') }))
+  .paginated({ limit: 20, item: MessageSchema })
+  .query(async ({ ctx, input }) => {
+    return await ctx.orm.query.messages.findMany({
+      cursor: input.cursor,
+      limit: input.limit,
+      maxScan: 500,
+      pipeline: {
+        union: [
+          { index: { name: 'by_from_to', range: (q) => q.eq('from', input.me).eq('to', input.them) } },
+          { index: { name: 'by_from_to', range: (q) => q.eq('from', input.them).eq('to', input.me) } },
+        ],
+        interleaveBy: ['_creationTime', '_id'],
+        stages: [
+          { filterWith: async (m) => !m.deletedAt },
+          { map: async (m) => ({ ...m, body: m.body.slice(0, 240) }) },
+        ],
+      },
+    });
+  });
+```
+
+If you need page-boundary pinning in reactive UIs, pass `endCursor` on the follow-up call.
 
 ## Full-Text Search
 

@@ -15,9 +15,12 @@ import type {
   BuildQueryResult,
   DBQueryConfig,
   EnforceAllowFullScan,
+  EnforceCursorMaxScan,
   EnforcePredicateIndex,
   EnforceSearchConstraints,
   EnforceVectorSearchConstraints,
+  FindManyPageByKeyConfig,
+  KeyPageResult,
   PaginatedResult,
   PredicateWhereIndexConfig,
   SearchQueryConfig,
@@ -35,7 +38,7 @@ type EnforcedConfig<
 > = EnforceVectorSearchConstraints<
   EnforceSearchConstraints<
     EnforcePredicateIndex<
-      EnforceAllowFullScan<TConfig, TTableConfig>,
+      EnforceCursorMaxScan<EnforceAllowFullScan<TConfig, TTableConfig>>,
       TTableConfig
     >,
     TTableConfig
@@ -93,6 +96,9 @@ type SearchPaginatedConfig<
   where?: SearchWhereFilter<TTableConfig> | undefined;
   orderBy?: never;
   index?: never;
+  pipeline?: never;
+  pageByKey?: never;
+  endCursor?: never;
 };
 
 type SearchNonPaginatedConfig<
@@ -107,6 +113,9 @@ type SearchNonPaginatedConfig<
   where?: SearchWhereFilter<TTableConfig> | undefined;
   orderBy?: never;
   index?: never;
+  pipeline?: never;
+  pageByKey?: never;
+  endCursor?: never;
 };
 
 type SearchFindFirstConfig<
@@ -156,34 +165,60 @@ type VectorNonPaginatedConfig<
   cursor?: never;
   maxScan?: never;
   allowFullScan?: never;
+  pipeline?: never;
+  pageByKey?: never;
+  endCursor?: never;
 };
 
 type FindManyResult<
   TSchema extends TablesRelationalConfig,
   TTableConfig extends TableRelationalConfig,
   TConfig,
-> = TConfig extends { cursor: string | null }
-  ? PaginatedResult<BuildQueryResult<TSchema, TTableConfig, TConfig>>
-  : BuildQueryResult<TSchema, TTableConfig, TConfig>[];
+> = TConfig extends { pageByKey: FindManyPageByKeyConfig }
+  ? KeyPageResult<BuildQueryResult<TSchema, TTableConfig, TConfig>>
+  : TConfig extends { cursor: string | null }
+    ? PaginatedResult<BuildQueryResult<TSchema, TTableConfig, TConfig>>
+    : BuildQueryResult<TSchema, TTableConfig, TConfig>[];
 
 type CursorPaginatedConfig<
   TSchema extends TablesRelationalConfig,
   TTableConfig extends TableRelationalConfig,
 > = Omit<
   DBQueryConfig<'many', true, TSchema, TTableConfig>,
-  'cursor' | 'limit'
+  'cursor' | 'limit' | 'pageByKey' | 'allowFullScan'
 > & {
   cursor: string | null;
   limit: number;
   offset?: never;
+  pageByKey?: never;
+  allowFullScan?: never;
 };
 
 type NonCursorConfig<
   TSchema extends TablesRelationalConfig,
   TTableConfig extends TableRelationalConfig,
-> = Omit<DBQueryConfig<'many', true, TSchema, TTableConfig>, 'maxScan'> & {
+> = Omit<
+  DBQueryConfig<'many', true, TSchema, TTableConfig>,
+  'maxScan' | 'endCursor'
+> & {
   cursor?: never;
   maxScan?: never;
+  endCursor?: never;
+};
+
+type KeyPageConfig<
+  TSchema extends TablesRelationalConfig,
+  TTableConfig extends TableRelationalConfig,
+> = Omit<
+  NonCursorConfigNoSearch<TSchema, TTableConfig>,
+  'pageByKey' | 'cursor' | 'maxScan' | 'endCursor' | 'offset' | 'pipeline'
+> & {
+  pageByKey: FindManyPageByKeyConfig;
+  cursor?: never;
+  maxScan?: never;
+  endCursor?: never;
+  offset?: never;
+  pipeline?: never;
 };
 
 type CursorPaginatedConfigNoSearch<
@@ -207,10 +242,20 @@ type FindFirstConfigNoSearch<
   TTableConfig extends TableRelationalConfig,
 > = Omit<
   DBQueryConfig<'many', true, TSchema, TTableConfig>,
-  'limit' | 'search' | 'vectorSearch' | 'cursor' | 'maxScan'
+  | 'limit'
+  | 'search'
+  | 'vectorSearch'
+  | 'cursor'
+  | 'maxScan'
+  | 'endCursor'
+  | 'pipeline'
+  | 'pageByKey'
 > & {
   search?: undefined;
   vectorSearch?: undefined;
+  endCursor?: never;
+  pipeline?: never;
+  pageByKey?: never;
 };
 
 /**
@@ -344,6 +389,14 @@ export class RelationalQueryBuilder<
     TSchema,
     TTableConfig,
     FindManyResult<TSchema, TTableConfig, TConfig>
+  >;
+  findMany<TConfig extends KeyPageConfig<TSchema, TTableConfig>>(
+    config: KnownKeysOnly<TConfig, KeyPageConfig<TSchema, TTableConfig>> &
+      EnforcedConfig<TConfig, TTableConfig>
+  ): GelRelationalQuery<
+    TSchema,
+    TTableConfig,
+    KeyPageResult<BuildQueryResult<TSchema, TTableConfig, TConfig>>
   >;
   findMany(config?: any): GelRelationalQuery<TSchema, TTableConfig, any> {
     return new GelRelationalQuery<TSchema, TTableConfig, any>(
