@@ -88,27 +88,41 @@ See [Concepts](/docs/concepts) for detailed folder structure explanation.
 
 ## 1. Define Schema
 
-We'll define an ORM schema and relations config in `convex/functions/schema.ts`:
+We'll start by defining tables and relations in one file.
 
-```ts title="convex/functions/schema.ts" showLineNumbers {1-6,8-13,15-17}
+```ts title="convex/functions/schema.ts" showLineNumbers {3-8,10-15,17-22}
 import {
+  boolean,
   convexTable,
   defineRelations,
   defineSchema,
+  id,
   index,
   text,
 } from 'better-convex/orm';
 
-export const user = convexTable(
-  'user',
-  { name: text().notNull(), email: text().notNull() },
-  (t) => [index('email').on(t.email)]
+export const user = convexTable('user', {
+  name: text().notNull(),
+  email: text().notNull(),
+});
+
+export const posts = convexTable(
+  'posts',
+  {
+    title: text().notNull(),
+    published: boolean(),
+    userId: id('user').notNull(),
+  },
+  (t) => [index('by_user').on(t.userId)]
 );
 
-export const tables = { user };
+const tables = { user, posts };
 export default defineSchema(tables, { strict: false });
 
-export const relations = defineRelations(tables);
+export const relations = defineRelations(tables, (r) => ({
+  user: { posts: r.many.posts() },
+  posts: { author: r.one.user({ from: r.posts.userId, to: r.user._id }) },
+}));
 ```
 
 <Callout icon={<InfoIcon />}>
@@ -214,7 +228,7 @@ export const publicMutation = c.mutation;
 
 ## 4. Define Procedures
 
-```ts title="convex/functions/user.ts" showLineNumbers {1-4,6-17,19-30}
+```ts title="convex/functions/user.ts" showLineNumbers {1-4,6-27,29-40}
 import { z } from 'zod';
 import { zid } from 'convex-helpers/server/zod4';
 import { publicQuery, publicMutation } from '../lib/crpc';
@@ -229,11 +243,33 @@ export const list = publicQuery
         _creationTime: z.number(),
         name: z.string(),
         email: z.string(),
+        posts: z.array(
+          z.object({
+            _id: zid('posts'),
+            _creationTime: z.number(),
+            title: z.string(),
+            published: z.boolean().nullable(),
+          })
+        ),
       })
     )
   )
   .query(async ({ ctx, input }) => {
-    return ctx.orm.query.user.findMany({ limit: input.limit ?? 10 });
+    return ctx.orm.query.user.findMany({
+      limit: input.limit ?? 10,
+      with: {
+        posts: {
+          limit: 5,
+          orderBy: { _creationTime: 'desc' },
+          columns: {
+            _id: true,
+            _creationTime: true,
+            title: true,
+            published: true,
+          },
+        },
+      },
+    });
   });
 
 export const create = publicMutation
@@ -384,7 +420,7 @@ You have a working Better Convex app. Add more features:
 
 <Cards>
   <Card title="Add Auth" href="/docs/auth/server" />
-  <Card title="Add Triggers" href="/docs/db/triggers" />
+  <Card title="Add Triggers" href="/docs/server/components/triggers" />
   <Card title="Add Rate Limiting" href="/docs/server/rate-limiting" />
   <Card title="Full Templates" href="/docs/templates" />
 </Cards>

@@ -1,5 +1,5 @@
 ---
-title: ORM
+title: Overview
 description: Drizzle-style relational queries for Convex with full type safety
 ---
 
@@ -15,7 +15,7 @@ The ORM mirrors Drizzle's relational query builder while adapting to Convex's do
 - Runtime RLS policies (`rlsPolicy`, `convexTable.withRLS`)
 - End-to-end TypeScript inference (`InferSelectModel`, `$inferSelect`)
 
-`ctx.orm` is attached once during setup (see [Quickstart](/docs/db/orm/quickstart)). All examples below assume `ctx.orm` is available.
+`ctx.orm` is attached once during setup (see [Quickstart](/docs/quickstart#orm-setup)). All examples below assume `ctx.orm` is available.
 
 ## Where It Differs From SQL ORMs
 
@@ -56,50 +56,27 @@ export const relations = defineRelations({ users, posts }, (r) => ({
 }));
 ```
 
-Here's how to query published posts with their authors using `ctx.orm`.
-This docs site uses better-convex cRPC going forward, but here are both styles:
+Here's how to query published posts with their authors using `ctx.orm` in cRPC:
 
-<Tabs groupId="orm-procedure-style" items={["Convex", "cRPC"]} persist>
-  <Tab value="Convex">
-    ```ts title="convex/functions/posts.ts" showLineNumbers {4-9}
-    import { query } from './_generated/server';
+```ts title="convex/functions/posts.ts" showLineNumbers {3-7}
+import { publicQuery } from '../lib/crpc';
 
-    export const getRecentPosts = query({
-      handler: async (ctx) => {
-        const db = ctx.orm;
-        return db.query.posts.findMany({
-          where: { published: true },
-          orderBy: { _creationTime: 'desc' },
-          limit: 10,
-          with: { author: true },
-        });
-      },
-    });
-    ```
-  </Tab>
-  <Tab value="cRPC">
-    ```ts title="convex/functions/posts.ts" showLineNumbers {3-7}
-    import { publicQuery } from '../lib/crpc';
-
-    export const getRecentPosts = publicQuery.query(async ({ ctx }) => {
-      const db = ctx.orm;
-      return db.query.posts.findMany({
-        where: { published: true },
-        orderBy: { _creationTime: 'desc' },
-        limit: 10,
-        with: { author: true },
-      });
-    });
-    ```
-  </Tab>
-</Tabs>
+export const getRecentPosts = publicQuery.query(async ({ ctx }) => {
+  return ctx.orm.query.posts.findMany({
+    where: { published: true },
+    orderBy: { _creationTime: 'desc' },
+    limit: 10,
+    with: { author: true },
+  });
+});
+```
 
 You now have a fully typed query with relation loading in just a few lines.
 
 ## Next Steps
 
 <Cards>
-  <Card title="Quickstart" href="/docs/db/orm/quickstart">
+  <Card title="Quickstart" href="/docs/quickstart#orm-setup">
     Get running in 5 minutes
   </Card>
   <Card title="Migrate from native Convex" href="/docs/migrations/db">
@@ -114,13 +91,13 @@ You now have a fully typed query with relation loading in just a few lines.
   <Card title="Querying Data" href="/docs/db/orm/queries">
     Filters, ordering, and pagination
   </Card>
-  <Card title="Pagination" href="/docs/db/orm/pagination">
+  <Card title="Pagination" href="/docs/db/orm/queries/pagination">
     Offset vs cursor pagination reference
   </Card>
   <Card title="Row-Level Security" href="/docs/db/orm/rls">
     rlsPolicy rules and enforcement
   </Card>
-  <Card title="Drizzle Comparison" href="/docs/db/orm/comparison">
+  <Card title="Drizzle Comparison" href="/docs/comparison/drizzle">
     Side-by-side API mapping
   </Card>
 </Cards>

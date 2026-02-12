@@ -155,7 +155,7 @@ const ormDb = orm.db(ctx, {
 
 ## Drizzle Differences
 
-Better-Convex RLS is inspired by Drizzle but runs differently since Convex is not a SQL database. Here are the key distinctions to keep in mind.
+ORM RLS is inspired by Drizzle but runs differently since Convex is not a SQL database. Here are the key distinctions to keep in mind.
 
 Policies are enforced at runtime in your application layer, not inside a database engine. This means `ctx.db` (raw Convex access) always bypasses RLS -- only `ctx.orm` enforces your rules.
 
@@ -178,5 +178,5 @@ Row-level security lets you co-locate access rules with your schema, keeping aut
 <Cards>
   <Card title="Queries" href="/docs/db/orm/queries" />
   <Card title="Mutations" href="/docs/db/orm/mutations" />
-  <Card title="Relations" href="/docs/db/orm/relations" />
+  <Card title="Relations" href="/docs/db/orm/schema/relations" />
 </Cards>

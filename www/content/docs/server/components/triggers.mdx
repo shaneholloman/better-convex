@@ -341,7 +341,7 @@ Many Convex components provide trigger helpers for automatic maintenance. Let's 
 
 ### Aggregates
 
-Use with [Aggregates](/docs/db/aggregates) for efficient counts:
+Use with [Aggregates](/docs/server/components/aggregates) for efficient counts:
 
 ```ts title="convex/lib/triggers.ts" showLineNumbers {1,6-7,9-12}
 import { aggregatePostLikes, aggregateTotalUsers } from '../aggregates';
@@ -524,6 +524,6 @@ triggers.register('user', async (ctx, change) => {
 
 <Cards>
   <Card title="Templates" href="/docs/templates#triggersts" />
-  <Card title="Aggregates" href="/docs/db/aggregates" />
+  <Card title="Aggregates" href="/docs/server/components/aggregates" />
   <Card title="convex-helpers" href="https://github.com/get-convex/convex-helpers" />
 </Cards>

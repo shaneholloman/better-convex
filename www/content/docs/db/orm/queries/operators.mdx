@@ -5,7 +5,7 @@ description: Query `where` operators and mutation filter helpers (Drizzle-style)
 
 import { InfoIcon } from "lucide-react"
 
-In this guide, we'll learn how to filter data using Better-Convex operators. You'll master two filter contexts: **object filters** for relational queries (`where: { ... }`) and **operator helpers** for mutations and RLS (`eq(...)`, `and(...)`, etc.).
+In this guide, we'll learn how to filter data using ORM operators. You'll master two filter contexts: **object filters** for relational queries (`where: { ... }`) and **operator helpers** for mutations and RLS (`eq(...)`, `and(...)`, etc.).
 
 ## Query `where` (Object Filters)
 
@@ -58,7 +58,7 @@ where: {
 
 ### String Operators (post-fetch)
 
-Better-Convex supports Drizzle-style `like`/`ilike` operators and evaluates them **post-fetch**.
+The ORM supports Drizzle-style `like`/`ilike` operators and evaluates them **post-fetch**.
 
 Here's how to search for posts containing "javascript" (case-insensitive):
 
@@ -121,7 +121,7 @@ Here's a reference of all available mutation/RLS operator helpers:
 
 ## Unsupported SQL-only Features
 
-These SQL-specific features are not available in Better-Convex:
+These SQL-specific features are not available in the ORM:
 
 - `RAW` filters and SQL placeholders (`sql.placeholder(...)`)
 - Prepared statements

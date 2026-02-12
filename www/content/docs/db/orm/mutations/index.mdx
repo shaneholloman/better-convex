@@ -12,20 +12,20 @@ In this guide, we'll cover how to write data with the ORM -- inserting rows, upd
 Each mutation type has its own detailed page:
 
 <Cards>
-  <Card title="Insert" href="/docs/db/orm/insert">
+  <Card title="Insert" href="/docs/db/orm/mutations/insert">
     Insert rows, returning, and onConflict upserts
   </Card>
-  <Card title="Update" href="/docs/db/orm/update">
+  <Card title="Update" href="/docs/db/orm/mutations/update">
     Update rows with set/where/returning
   </Card>
-  <Card title="Delete" href="/docs/db/orm/delete">
+  <Card title="Delete" href="/docs/db/orm/mutations/delete">
     Delete rows with where/returning
   </Card>
 </Cards>
 
 ## Setup
 
-All mutation examples assume you attached ORM to `ctx.orm` once in your context (see [Quickstart](/docs/db/orm/quickstart)).
+All mutation examples assume you attached ORM to `ctx.orm` once in your context (see [Quickstart](/docs/quickstart#orm-setup)).
 
 Here's a typical import block for mutation handlers:
 
@@ -192,7 +192,7 @@ You can enable async mode in three ways:
 
 ### Wiring Setup
 
-Async execution requires wiring `ormFunctions` and `scheduledMutationBatch` into your ORM setup. Here's how to extend the module from [Quickstart](/docs/db/orm/quickstart):
+Async execution requires wiring `ormFunctions` and `scheduledMutationBatch` into your ORM setup. Here's how to extend the module from [Quickstart](/docs/quickstart#orm-setup):
 
 ```ts showLineNumbers title="convex/lib/orm.ts" {4,9}
 import { createOrm } from 'better-convex/orm';
@@ -232,13 +232,13 @@ export const renameUsers = publicMutation.mutation(async ({ ctx }) => {
 ## Next Steps
 
 <Cards>
-  <Card title="Insert" href="/docs/db/orm/insert">
+  <Card title="Insert" href="/docs/db/orm/mutations/insert">
     Multi-row inserts, upserts, and conflict handling
   </Card>
-  <Card title="Update" href="/docs/db/orm/update">
+  <Card title="Update" href="/docs/db/orm/mutations/update">
     Paginated updates, async batching, and safety limits
   </Card>
-  <Card title="Delete" href="/docs/db/orm/delete">
+  <Card title="Delete" href="/docs/db/orm/mutations/delete">
     Soft deletes, scheduled deletes, and cascades
   </Card>
   <Card title="Schema Definition" href="/docs/db/orm/schema">

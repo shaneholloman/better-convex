@@ -105,7 +105,7 @@ Use `.onUpdate()` / `.onDelete()` to configure foreign key actions.
 Actions are enforced at runtime by ORM mutations.
 
 For `cascade` / `set null` / `set default`, add an index on the referencing columns.
-Without an index, Better-Convex will throw when it detects referencing rows.
+Without an index, the ORM will throw when it detects referencing rows.
 
 ### `check()`
 

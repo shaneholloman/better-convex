@@ -115,8 +115,8 @@ If you're an AI agent integrating better-convex, **ask the user to select their 
 
 | Stack | Key Docs |
 |-------|----------|
-| Next.js + Better Auth | [Templates](/docs/templates), [Next.js Setup](/docs/nextjs/setup), [Auth Server](/docs/auth/server) |
-| Vite + No Auth | [React Setup](/docs/react/setup), [Server Setup](/docs/server/setup) |
+| Next.js + Better Auth | [Templates](/docs/templates), [Next.js Setup](/docs/nextjs), [Auth Server](/docs/auth/server) |
+| Vite + No Auth | [React Setup](/docs/react), [Server Setup](/docs/server/setup) |
 | Any + Custom Auth | [Server Setup](/docs/server/setup), [Middlewares](/docs/server/middlewares) |
 
 ---
@@ -151,14 +151,14 @@ Complete reference for all documentation pages.
 | Page | When to Use |
 |------|-------------|
 | [ORM](/docs/db/orm) | Drizzle-style schema, queries, mutations, RLS, runtime constraints via `ctx.orm`. |
-| [Triggers](/docs/db/triggers) | Automatic side effects on insert/update/delete. Use `convex-helpers/server/triggers`. |
-| [Aggregates](/docs/db/aggregates) | O(log n) counts and sums with `@convex-dev/aggregate`. Leaderboards, running totals. |
+| [Triggers](/docs/server/components/triggers) | Automatic side effects on insert/update/delete. Use `convex-helpers/server/triggers`. |
+| [Aggregates](/docs/server/components/aggregates) | O(log n) counts and sums with `@convex-dev/aggregate`. Leaderboards, running totals. |
 
 ### React (Client)
 
 | Page | When to Use |
 |------|-------------|
-| [React Setup](/docs/react/setup) | Configure providers: `QueryClientProvider`, `CRPCProvider`. Singleton helpers. |
+| [React Setup](/docs/react) | Configure providers: `QueryClientProvider`, `CRPCProvider`. Singleton helpers. |
 | [Queries](/docs/react/queries) | `useQuery` with `crpc.path.queryOptions()`. Real-time updates, `skipToken` for conditional queries. |
 | [Mutations](/docs/react/mutations) | `useMutation` with `crpc.path.mutationOptions()`. Toast patterns, optimistic updates. |
 | [Infinite Queries](/docs/react/infinite-queries) | `useInfiniteQuery` with `crpc.path.infiniteQueryOptions()`. Cursor-based pagination. |
@@ -169,7 +169,7 @@ Complete reference for all documentation pages.
 
 | Page | When to Use |
 |------|-------------|
-| [Next.js Setup](/docs/nextjs/setup) | Configure `convexBetterAuth` for RSC. Server caller factory, JWT caching. |
+| [Next.js Setup](/docs/nextjs) | Configure `convexBetterAuth` for RSC. Server caller factory, JWT caching. |
 | [RSC](/docs/nextjs/rsc) | Server components with `prefetch`, `preloadQuery`, `HydrateClient`. SSR data fetching. |
 
 ### Auth (Better Auth)
@@ -203,9 +203,9 @@ Complete reference for all documentation pages.
 
 **Add database features:**
 1. [ORM](/docs/db/orm) → schema + queries via `ctx.orm`
-2. [Triggers](/docs/db/triggers) → automatic side effects
-3. [Aggregates](/docs/db/aggregates) → counts and sums
+2. [Triggers](/docs/server/components/triggers) → automatic side effects
+3. [Aggregates](/docs/server/components/aggregates) → counts and sums
 
 **Server components (RSC):**
-1. [Next.js Setup](/docs/nextjs/setup) → configure caller
+1. [Next.js Setup](/docs/nextjs) → configure caller
 2. [RSC](/docs/nextjs/rsc) → prefetch and hydrate

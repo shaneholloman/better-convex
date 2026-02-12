@@ -103,19 +103,19 @@
       "drizzle_to_convex_findMany": {
         "title": "Drizzle findMany → Convex",
         "tags": ["migration", "drizzle", "queries"],
-        "code": "// Drizzle:\nconst users = await db.query.users.findMany();\n\n// Better-Convex (identical!):\nconst users = await db(ctx).query.users.findMany();",
+        "code": "// Drizzle:\nconst users = await db.query.users.findMany();\n\n// ORM (identical!):\nconst users = await db(ctx).query.users.findMany();",
         "docUrl": "/docs/db/orm/from-drizzle#find-operations"
       },
       "drizzle_to_convex_include": {
         "title": "Drizzle include → Convex with",
         "tags": ["migration", "drizzle", "relations"],
-        "code": "// Drizzle:\nconst users = await db.query.users.findMany({\n  include: { posts: true },\n});\n\n// Better-Convex:\nconst users = await db(ctx).query.users.findMany({\n  with: { posts: true },\n});",
+        "code": "// Drizzle:\nconst users = await db.query.users.findMany({\n  include: { posts: true },\n});\n\n// ORM:\nconst users = await db(ctx).query.users.findMany({\n  with: { posts: true },\n});",
         "docUrl": "/docs/db/orm/from-drizzle#relation-loading"
       },
       "prisma_to_convex_create": {
         "title": "Prisma create → Convex insert",
         "tags": ["migration", "prisma", "mutations"],
-        "code": "// Prisma:\nconst user = await prisma.user.create({\n  data: { name: 'Alice', email: 'alice@example.com' },\n});\n\n// Better-Convex:\nconst userId = await db(ctx).insert.users.values({\n  name: 'Alice',\n  email: 'alice@example.com',\n});",
+        "code": "// Prisma:\nconst user = await prisma.user.create({\n  data: { name: 'Alice', email: 'alice@example.com' },\n});\n\n// ORM:\nconst userId = await db(ctx).insert.users.values({\n  name: 'Alice',\n  email: 'alice@example.com',\n});",
         "docUrl": "/docs/db/orm/from-prisma#create"
       }
     }

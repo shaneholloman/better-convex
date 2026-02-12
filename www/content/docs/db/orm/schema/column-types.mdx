@@ -1,6 +1,6 @@
 ---
 title: Columns
-description: Better-Convex column builders (Drizzle-style) and their TypeScript types
+description: ORM column builders (Drizzle-style) and their TypeScript types
 ---
 
 import { InfoIcon, AlertTriangle } from "lucide-react"
@@ -8,12 +8,12 @@ import { InfoIcon, AlertTriangle } from "lucide-react"
 In this guide, we'll learn how to define document fields using Drizzle-style column builders. You'll master string, number, boolean, and reference fields, column hooks like `$defaultFn`, and advanced types like `custom()` and `json<T>()`.
 
 <Callout icon={<AlertTriangle />}>
-Better-Convex documents a **Convex subset** of Drizzle's PostgreSQL column types. SQL-specific types (timestamps, decimals, database enums, etc.) are not available. For Convex-native arbitrary values, use `custom()` / `json()` and validate shape with `convex/values` validators.
+The ORM documents a **Convex subset** of Drizzle's PostgreSQL column types. SQL-specific types (timestamps, decimals, database enums, etc.) are not available. For Convex-native arbitrary values, use `custom()` / `json()` and validate shape with `convex/values` validators.
 </Callout>
 
 ## Column Names
 
-In Drizzle, you can optionally provide a database column name (`text('email')`) that can differ from the TypeScript key. In Better-Convex, the **TypeScript key is the document field name**.
+In Drizzle, you can optionally provide a database column name (`text('email')`) that can differ from the TypeScript key. In the ORM, the **TypeScript key is the document field name**.
 
 Here's how to define a simple table with a required email field:
 
@@ -31,7 +31,7 @@ export const users = convexTable('users', {
 
 ## Type Rules (Select vs Insert)
 
-Better-Convex mirrors Drizzle's core inference rules:
+The ORM mirrors Drizzle's core inference rules:
 
 - **Select** (`$inferSelect`, `InferSelectModel`): fields are `T | null` unless `.notNull()` is set
 - **Insert** (`$inferInsert`, `InferInsertModel`): required if `.notNull()` and **no** `.default()`, `$defaultFn()`, or `$onUpdateFn()`, otherwise optional
@@ -60,7 +60,7 @@ type NewPost = InferInsertModel<typeof posts>;
 
 ## Column Hooks (Defaults and Type Overrides)
 
-Better-Convex supports Drizzle-style column hooks for common patterns like timestamps and JSON blobs.
+The ORM supports Drizzle-style column hooks for common patterns like timestamps and JSON blobs.
 
 Here's how to use `$defaultFn`, `$onUpdateFn`, and `json<T>()` together:
 
@@ -235,12 +235,12 @@ These Drizzle (SQL) column type categories don't map to Convex documents and are
 - SQL arrays (beyond `vector(...)` embeddings)
 - Custom SQL types
 
-You now know every column builder available in Better-Convex. From basic primitives to typed references and custom validators, these builders give you full control over your document shape with end-to-end TypeScript inference.
+You now know every column builder available in the ORM. From basic primitives to typed references and custom validators, these builders give you full control over your document shape with end-to-end TypeScript inference.
 
 ## Next Steps
 
 <Cards>
-  <Card title="Indexes & Constraints" href="/docs/db/orm/indexes-constraints" />
-  <Card title="Operators (Filters)" href="/docs/db/orm/operators" />
+  <Card title="Indexes & Constraints" href="/docs/db/orm/schema/indexes-constraints" />
+  <Card title="Operators (Filters)" href="/docs/db/orm/queries/operators" />
   <Card title="Schema" href="/docs/db/orm/schema" />
 </Cards>

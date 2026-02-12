@@ -25,7 +25,7 @@ Let's explore each one.
 
 ## Filtering + Pagination Compatibility
 
-Pagination and filtering are tightly coupled in Better-Convex.
+Pagination and filtering are tightly coupled.
 We'll start with a decision table, then walk through each mode with examples.
 
 | Query mode | Index requirement | Pagination support | Relation-aware filtering | Ordering |
@@ -322,10 +322,9 @@ export const searchOrFilter = publicQuery
   }))
   .paginated({ limit: 20, item: ArticleSchema })
   .query(async ({ ctx, input }) => {
-    const db = ctx.orm;
     if (input.query) {
       // Text search path - limited filtering
-      return await db.query.articles.findMany({
+      return await ctx.orm.query.articles.findMany({
         search: {
           index: 'search_content',
           query: input.query!,
@@ -337,7 +336,7 @@ export const searchOrFilter = publicQuery
     }
 
     // Predicate where path - full filtering power with explicit index
-    return await db.query.articles.findMany({
+    return await ctx.orm.query.articles.findMany({
       where: (article) => {
         if (input.category && article.category !== input.category) return false;
         if (input.startDate && article.publishedAt < input.startDate) return false;
@@ -429,7 +428,7 @@ Here are key practices to follow when using filters and search.
 
 <Cards>
   <Card title="ORM" href="/docs/db/orm" />
-  <Card title="Triggers" href="/docs/db/triggers" />
-  <Card title="Aggregates" href="/docs/db/aggregates" />
+  <Card title="Triggers" href="/docs/server/components/triggers" />
+  <Card title="Aggregates" href="/docs/server/components/aggregates" />
   <Card title="convex-helpers" href="https://github.com/get-convex/convex-helpers" />
 </Cards>

@@ -409,7 +409,7 @@
     },
     "resources": {
       "docs": "/docs/db/orm",
-      "quickstart": "/docs/db/orm/quickstart",
+      "quickstart": "/docs/quickstart#orm-setup",
       "migration": {
         "fromDrizzle": "/docs/db/orm/from-drizzle",
         "fromPrisma": "/docs/db/orm/from-prisma",

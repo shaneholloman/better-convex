@@ -9,10 +9,10 @@ In this guide, we'll learn how to query your Convex database with the ORM. You'l
 
 ## Setup
 
-These examples assume you attached ORM to `ctx.orm` once in your context (see Quickstart):
+These examples assume you attached ORM to `ctx.orm` once in your context (see [/docs/quickstart#orm-setup](/docs/quickstart#orm-setup)):
 
 ```ts title="convex/queries.ts"
-const db = ctx.orm;
+await ctx.orm.query.users.findMany({ limit: 10 });
 ```
 
 ## Basic Queries
@@ -105,7 +105,7 @@ Here's the full set of comparison and logical operators you can use in `where`:
 
 ### String Operators
 
-Better-Convex supports familiar string matching operators. Most run post-fetch, but a few can leverage indexes:
+The ORM supports familiar string matching operators. Most run post-fetch, but a few can leverage indexes:
 
 | Operator | Example | Notes |
 |---|---|---|
@@ -127,7 +127,7 @@ Compound indexes follow Convex prefix rules. For an index on `[type, numLikes]`,
 
 ### SQL Subquery Operators (`exists`, `notExists`)
 
-Drizzle exposes `exists(query)` and `notExists(query)` as SQL subquery operators. Better-Convex does not support SQL subqueries at runtime, so these operators are unavailable.
+Drizzle exposes `exists(query)` and `notExists(query)` as SQL subquery operators. The ORM does not support SQL subqueries at runtime, so these operators are unavailable.
 
 Use relation filters to model existence checks instead:
 
@@ -146,7 +146,7 @@ const withoutPosts = await db.query.users.findMany({
 ### Aggregations (`count`, `sum`, `avg`, `max`, `min`)
 
 For query-builder aggregations, use Convex aggregates via `@convex-dev/aggregate`.
-See [/docs/db/aggregates](/docs/db/aggregates).
+See [/docs/server/components/aggregates](/docs/server/components/aggregates).
 
 ### Full-Scan Operators and Workarounds
 
@@ -215,7 +215,7 @@ const posts2 = await db.query.posts.findMany({
 **Notes:**
 - The first `orderBy` field should have an index for stable ordering
 - Secondary sort fields are applied post-fetch
-- When post-fetch sorting is required (multi-field or non-indexable sort), Better-Convex sorts before applying `offset`/`limit`, which requires reading the full filtered candidate set first
+- When post-fetch sorting is required (multi-field or non-indexable sort), the ORM sorts before applying `offset`/`limit`, which requires reading the full filtered candidate set first
 - `findMany({ cursor, limit })` uses only the first `orderBy` field for cursor ordering
 
 ## Pagination
@@ -413,13 +413,13 @@ You now know how to query, filter, paginate, search, and eager-load relations wi
   <Card title="Writing Data" href="/docs/db/orm/mutations">
     Learn insert, update, and delete operations
   </Card>
-  <Card title="Relations" href="/docs/db/orm/relations">
+  <Card title="Relations" href="/docs/db/orm/schema/relations">
     Define and load relationships between tables
   </Card>
   <Card title="Schema Definition" href="/docs/db/orm/schema">
     Deep dive into table definitions and type inference
   </Card>
-  <Card title="Limitations" href="/docs/db/orm/limitations">
+  <Card title="Limitations" href="/docs/comparison/drizzle#not-available-in-convex">
     Understand current limitations
   </Card>
 </Cards>

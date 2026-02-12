@@ -11,25 +11,25 @@ This file provides a structured index of the ORM documentation for AI assistants
 
 **Getting Started:**
 - `/docs/db/orm` - Overview, installation, and value proposition
-- `/docs/db/orm/quickstart` - 5‑minute tutorial with backend queries
+- `/docs/quickstart#orm-setup` - ORM setup section in the main quickstart
 
 **Schema Definition:**
 - `/docs/db/orm/schema` - Table definitions, field types, indexes, and type inference
-- `/docs/db/orm/column-types` - Column builders and TypeScript type mapping
-- `/docs/db/orm/indexes-constraints` - Indexes, unique constraints, and foreign keys
+- `/docs/db/orm/schema/column-types` - Column builders and TypeScript type mapping
+- `/docs/db/orm/schema/indexes-constraints` - Indexes, unique constraints, and foreign keys
 
 **Relations:**
-- `/docs/db/orm/relations` - One‑to‑one, one‑to‑many, many‑to‑many relations
+- `/docs/db/orm/schema/relations` - One‑to‑one, one‑to‑many, many‑to‑many relations
 
 **Querying Data:**
 - `/docs/db/orm/queries` - findMany(), findFirst(), cursor pagination (`cursor` + `limit`), filters, orderBy
-- `/docs/db/orm/operators` - All supported `where` operators (query + mutation)
+- `/docs/db/orm/queries/operators` - All supported `where` operators (query + mutation)
 
 **Mutations:**
 - `/docs/db/orm/mutations` - insert(), update(), delete(), returning(), onConflictDoUpdate()
-- `/docs/db/orm/insert` - insert() builder details
-- `/docs/db/orm/update` - update() builder details
-- `/docs/db/orm/delete` - delete() builder details
+- `/docs/db/orm/mutations/insert` - insert() builder details
+- `/docs/db/orm/mutations/update` - update() builder details
+- `/docs/db/orm/mutations/delete` - delete() builder details
 
 **Row-Level Security:**
 - `/docs/db/orm/rls` - rlsPolicy, rlsRole, and runtime enforcement
@@ -38,12 +38,12 @@ This file provides a structured index of the ORM documentation for AI assistants
 
 - `/docs/db/orm/migrate-from-convex` - Native Convex (`ctx.db`) → ORM migration guide
 - `/docs/db/orm/migrate-from-ents` - Convex Ents → ORM migration guide
-- `/docs/db/orm/comparison` - Drizzle v1 mapping and migration guidance
+- `/docs/comparison/drizzle` - Drizzle v1 mapping and migration guidance
 
 ## Reference
 
 - `/docs/db/orm/api-reference` - Full API surface and TypeScript helpers
-- `/docs/db/orm/limitations` - Differences and performance guidance
+- `/docs/comparison/drizzle` - Differences, limitations, and performance guidance
 
 ## Quick Reference
 
@@ -59,26 +59,24 @@ extractRelationsConfig(schema)
 
 **Queries:**
 ```ts
-const db = ctx.orm
-
-await db.query.table.findMany({
+await ctx.orm.query.table.findMany({
   where: { field: value },
   orderBy: { _creationTime: 'desc' },
   limit: 10,
   offset: 0,
 })
 
-await db.query.table.findFirst({
+await ctx.orm.query.table.findFirst({
   where: { field: value },
 })
 
-await db.query.table.findMany({
+await ctx.orm.query.table.findMany({
   where: { active: true },
   cursor: null,
   limit: 20,
 })
 
-await db.query.table.findMany({
+await ctx.orm.query.table.findMany({
   // Predicate where requires an explicit index plan (no allowFullScan fallback)
   where: (row) => row.status === 'active',
   index: { name: 'by_status' },
@@ -90,19 +88,18 @@ await db.query.table.findMany({
 
 **Mutations:**
 ```ts
-await db.insert(table).values(data)
-await db.update(table).set(data).where(eq(table._id, id))
-await db.delete(table).where(eq(table._id, id))
+await ctx.orm.insert(table).values(data)
+await ctx.orm.update(table).set(data).where(eq(table._id, id))
+await ctx.orm.delete(table).where(eq(table._id, id))
 // Full-scan opt-in (only if no index on email)
-await db.update(table).set(data).where(eq(table.email, email)) // indexed
-await db.update(table).set(data).where(eq(table.email, email)).allowFullScan()
-await db.delete(table).where(eq(table.email, email)) // indexed
-await db.delete(table).where(eq(table.email, email)).allowFullScan()
+await ctx.orm.update(table).set(data).where(eq(table.email, email)) // indexed
+await ctx.orm.update(table).set(data).where(eq(table.email, email)).allowFullScan()
+await ctx.orm.delete(table).where(eq(table.email, email)) // indexed
+await ctx.orm.delete(table).where(eq(table.email, email)).allowFullScan()
 ```
 
 **RLS:**
 ```ts
-const db = ctx.orm
 const secret = convexTable.withRLS('secrets', { /* ... */ }, (t) => [
   rlsPolicy('read_own', { for: 'select', using: (ctx) => eq(t.ownerId, ctx.viewerId) }),
 ])
@@ -159,7 +156,7 @@ isNotNull(field)
 - Column selection (post‑fetch)
 - String operators (post‑fetch)
 - Mutations (insert, update, delete, returning)
-- Aggregation workaround via `/docs/db/aggregates` (`@convex-dev/aggregate`)
+- Aggregation workaround via `/docs/server/components/aggregates` (`@convex-dev/aggregate`)
 
 **Unavailable in Convex:**
 - Raw SQL queries
@@ -173,7 +170,7 @@ isNotNull(field)
 - `Property 'query' does not exist` → Ensure ORM is attached as `ctx.orm`
 - `Type error: missing required field` → Check `.notNull()` in schema
 - `findUnique is not a function` → Use `findFirst` with `where`
-- `count/sum/avg/max/min is not on db.query.*` → Use `/docs/db/aggregates` (`@convex-dev/aggregate`)
+- `count/sum/avg/max/min is not on db.query.*` → Use `/docs/server/components/aggregates` (`@convex-dev/aggregate`)
 - `'include' does not exist` → Use `with` instead of `include`
 - `findMany() requires explicit sizing` → Add `limit`, use cursor pagination (`cursor` + `limit`), set schema `defaultLimit`, or opt in with `allowFullScan`
 - `allowFullScan required` → Predicate `where`, missing relation index, or unbounded update/delete requires `allowFullScan`

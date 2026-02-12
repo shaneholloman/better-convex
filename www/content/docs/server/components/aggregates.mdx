@@ -258,7 +258,7 @@ This also fixes the TypeScript "Type instantiation is excessively deep" error.
 
 ## Trigger Integration
 
-Register aggregates with [triggers](/docs/db/triggers) for automatic maintenance:
+Register aggregates with [triggers](/docs/server/components/triggers) for automatic maintenance:
 
 ```ts title="convex/lib/triggers.ts" showLineNumbers {1-6,10-11,13-16}
 import { Triggers } from 'convex-helpers/server/triggers';
@@ -872,7 +872,7 @@ export const deleteScore = authMutation
 ## Next Steps
 
 <Cards>
-  <Card title="Triggers" href="/docs/db/triggers" />
+  <Card title="Triggers" href="/docs/server/components/triggers" />
   <Card title="Rate Limiting" href="/docs/server/rate-limiting" />
   <Card title="@convex-dev/aggregate" href="https://www.convex.dev/components/aggregate" />
 </Cards>

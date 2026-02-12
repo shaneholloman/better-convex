@@ -25,7 +25,7 @@ See Schema Options for strict policy details.
 
 ## Relation Config Options
 
-Better-Convex mirrors Drizzle's `defineRelations()` config shape. Let's look at the two building blocks.
+The ORM mirrors Drizzle's `defineRelations()` config shape. Let's look at the two building blocks.
 
 ### `one()`
 
@@ -65,7 +65,7 @@ r.many.posts({
 
 ## Disambiguating Relations With `alias`
 
-If you have **multiple relations between the same two tables**, you must use `alias` to tell Better-Convex which relation is which.
+If you have **multiple relations between the same two tables**, you must use `alias` to tell the ORM which relation is which.
 
 Classic example: a post has both an `author` and a `reviewer`, pointing at the same `users` table.
 
@@ -182,7 +182,7 @@ const relations = defineRelations({ users, posts }, (r) => ({
 
 ### Many-to-Many Relations (Join Table)
 
-Better-Convex does not auto-create join tables. You model many-to-many with an explicit join table:
+The ORM does not auto-create join tables. You model many-to-many with an explicit join table:
 
 ```ts title="convex/schema.ts" showLineNumbers {15-24}
 import { convexTable, defineRelations, text, id } from 'better-convex/orm';
@@ -470,12 +470,12 @@ const relations = defineRelations({ users, posts }, (r) => ({
 ```
 
 <Callout icon={<InfoIcon />}>
-`where` in a relation definition can only reference **columns on the target (to) table**. In Better-Convex, it's applied after fetching candidate rows, so keep `many()` relations intentionally sized.
+`where` in a relation definition can only reference **columns on the target (to) table**. In the ORM, it's applied after fetching candidate rows, so keep `many()` relations intentionally sized.
 </Callout>
 
 ## Indexing For Relation Loading
 
-Better-Convex will use indexes when loading relations and will throw (unless `allowFullScan`) if the needed index is missing.
+The ORM will use indexes when loading relations and will throw (unless `allowFullScan`) if the needed index is missing.
 
 - For compound relations, your index must start with the same columns in the same order as `to` / `.through(...)`.
 - `many()` (one-to-many): index the child foreign key (example: `posts.userId`)
@@ -513,9 +513,7 @@ export const usersToGroups = convexTable(
 The ORM supports Drizzle-style relation loading. Here's how to eagerly load posts for each user:
 
 ```ts showLineNumbers {3-7}
-const db = ctx.orm;
-
-const usersWithPosts = await db.query.users.findMany({
+const usersWithPosts = await ctx.orm.query.users.findMany({
   with: {
     posts: {
       limit: 5,
@@ -577,10 +575,10 @@ You now know how to define every kind of relation and load them eagerly with `wi
   <Card title="Schema Definition" href="/docs/db/orm/schema">
     Deep dive into table definitions and type inference
   </Card>
-  <Card title="Limitations" href="/docs/db/orm/limitations">
+  <Card title="Limitations" href="/docs/comparison/drizzle#not-available-in-convex">
     Understand current limitations
   </Card>
-  <Card title="Drizzle Comparison" href="/docs/db/orm/comparison">
-    See how Better-Convex maps to Drizzle's API
+  <Card title="Drizzle Comparison" href="/docs/comparison/drizzle">
+    See how the ORM maps to Drizzle's API
   </Card>
 </Cards>

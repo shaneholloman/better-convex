@@ -67,7 +67,7 @@
         "pattern": "ctx is undefined",
         "message": "QueryCtx or MutationCtx not provided to db()",
         "solution": "Pass ctx from query/mutation handler: db(ctx)",
-        "doc_url": "/docs/db/orm/quickstart#step-3-use-in-queries",
+        "doc_url": "/docs/quickstart#orm-setup",
         "severity": "error"
       },
       "relation_not_loaded": {

@@ -1,13 +1,13 @@
 ---
 title: Indexes
-description: Drizzle-style indexes and constraints, enforced at runtime in Better-Convex
+description: Drizzle-style indexes and constraints, enforced at runtime in the ORM
 ---
 
 import { InfoIcon, AlertTriangle } from "lucide-react"
 
 In this guide, we'll learn how to define indexes and constraints for your tables. You'll master default values, not-null and unique constraints, foreign keys with cascading actions, check constraints, and all three index types -- standard, search, and vector.
 
-Better-Convex mirrors Drizzle's schema API where it makes sense, but enforces constraints **at runtime** (in ORM mutations), not inside a SQL database.
+The ORM mirrors Drizzle's schema API where it makes sense, but enforces constraints **at runtime** (in ORM mutations), not inside a SQL database.
 
 <Callout icon={<AlertTriangle />}>
 **Important:** Constraints are enforced **only** by ORM mutations (`insert/update/delete`). Direct `ctx.db` writes bypass them.
@@ -143,7 +143,7 @@ export const memberships = convexTable(
 
 #### Actions (`onDelete` / `onUpdate`)
 
-Better-Convex supports Drizzle-style foreign key actions, enforced at runtime by ORM mutations.
+The ORM supports Drizzle-style foreign key actions, enforced at runtime by ORM mutations.
 
 Here's how to cascade deletes when a user is removed:
 
@@ -161,7 +161,7 @@ export const posts = convexTable(
 ```
 
 <Callout icon={<InfoIcon />}>
-**Tip:** For non-`_id` foreign keys, add an index on the referenced columns (parent table) so inserts/updates can validate quickly. For `cascade` / `set null` / `set default`, add an index on the referencing columns (child table). Without an index, Better-Convex will throw if it detects referencing rows.
+**Tip:** For non-`_id` foreign keys, add an index on the referenced columns (parent table) so inserts/updates can validate quickly. For `cascade` / `set null` / `set default`, add an index on the referencing columns (child table). Without an index, the ORM will throw if it detects referencing rows.
 </Callout>
 
 ### Check Constraints
@@ -264,12 +264,12 @@ A few things work differently from SQL-based Drizzle:
 - Check constraints are enforced at runtime (ORM mutations only)
 - SQL-only features (database-side cascades, triggers, raw SQL) are not applicable
 
-You now know how to keep your data consistent with constraints and make queries fast with indexes. From unique fields to cascading deletes and vector search, Better-Convex gives you Drizzle's ergonomic API backed by Convex's runtime.
+You now know how to keep your data consistent with constraints and make queries fast with indexes. From unique fields to cascading deletes and vector search, the ORM gives you Drizzle's ergonomic API backed by Convex's runtime.
 
 ## Next Steps
 
 <Cards>
-  <Card title="Operators (Filters)" href="/docs/db/orm/operators" />
+  <Card title="Operators (Filters)" href="/docs/db/orm/queries/operators" />
   <Card title="Queries" href="/docs/db/orm/queries" />
-  <Card title="Relations" href="/docs/db/orm/relations" />
+  <Card title="Relations" href="/docs/db/orm/schema/relations" />
 </Cards>
