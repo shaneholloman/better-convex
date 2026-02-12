@@ -4,11 +4,18 @@
  *
  * Core library - no project-specific dependencies
  */
-import type {
-  GenericActionCtx,
-  GenericDataModel,
-  GenericMutationCtx,
-  GenericQueryCtx,
+import {
+  actionGeneric,
+  type GenericActionCtx,
+  type GenericDataModel,
+  type GenericMutationCtx,
+  type GenericQueryCtx,
+  httpActionGeneric,
+  internalActionGeneric,
+  internalMutationGeneric,
+  internalQueryGeneric,
+  mutationGeneric,
+  queryGeneric,
 } from 'convex/server';
 import { customCtx } from 'convex-helpers/server/customFunctions';
 import {
@@ -119,9 +126,9 @@ type InferActionCtx<T, DataModel extends GenericDataModel> = T extends {
 
 /** Function builders for each function type */
 type FunctionsConfig = {
-  query: unknown;
+  query?: unknown;
   internalQuery?: unknown;
-  mutation: unknown;
+  mutation?: unknown;
   internalMutation?: unknown;
   action?: unknown;
   internalAction?: unknown;
@@ -129,8 +136,17 @@ type FunctionsConfig = {
 };
 
 /** Config for create() including optional defaultMeta */
-type CreateConfig<TMeta extends object> = FunctionsConfig & {
+type CreateConfig<
+  TMeta extends object,
+  DataModel extends GenericDataModel = GenericDataModel,
+> = FunctionsConfig & {
   defaultMeta?: TMeta;
+  /** Optional DB trigger wrapper applied to mutation/internalMutation contexts */
+  triggers?: {
+    wrapDB: (
+      ctx: GenericMutationCtx<DataModel>
+    ) => GenericMutationCtx<DataModel>;
+  };
 };
 
 // =============================================================================
@@ -874,13 +890,13 @@ export class ActionProcedureBuilder<
 // Factory - tRPC-style Builder Chain
 // =============================================================================
 
-/** Return type for create() - action/httpAction only present when configured */
+/** Return type for create() */
 type CRPCInstance<
   _DataModel extends GenericDataModel,
   TQueryCtx,
   TMutationCtx,
   TActionCtx,
-  THttpActionCtx = never,
+  THttpActionCtx,
   TMeta extends object = object,
 > = {
   query: QueryProcedureBuilder<
@@ -899,6 +915,24 @@ type CRPCInstance<
     UnsetMarker,
     TMeta
   >;
+  action: ActionProcedureBuilder<
+    TActionCtx,
+    TActionCtx,
+    UnsetMarker,
+    UnsetMarker,
+    UnsetMarker,
+    TMeta
+  >;
+  httpAction: HttpProcedureBuilder<
+    THttpActionCtx,
+    THttpActionCtx,
+    UnsetMarker,
+    UnsetMarker,
+    UnsetMarker,
+    UnsetMarker,
+    TMeta,
+    HttpMethod
+  >;
   /** Create reusable middleware - defaults to query context, override with generic */
   middleware: <TContext = TQueryCtx, $ContextOverridesOut = object>(
     fn: MiddlewareFunction<TContext, TMeta, object, $ContextOverridesOut>
@@ -907,32 +941,7 @@ type CRPCInstance<
   router: <TRecord extends HttpRouterRecord>(
     record: TRecord
   ) => CRPCHttpRouter<TRecord>;
-} & ([TActionCtx] extends [never]
-  ? object
-  : {
-      action: ActionProcedureBuilder<
-        TActionCtx,
-        TActionCtx,
-        UnsetMarker,
-        UnsetMarker,
-        UnsetMarker,
-        TMeta
-      >;
-    }) &
-  ([THttpActionCtx] extends [never]
-    ? object
-    : {
-        httpAction: HttpProcedureBuilder<
-          THttpActionCtx,
-          THttpActionCtx,
-          UnsetMarker,
-          UnsetMarker,
-          UnsetMarker,
-          UnsetMarker,
-          TMeta,
-          HttpMethod
-        >;
-      });
+};
 
 /**
  * Builder with context configured, ready to create instance
@@ -941,8 +950,8 @@ class CRPCBuilderWithContext<
   DataModel extends GenericDataModel,
   TQueryCtx,
   TMutationCtx,
-  TActionCtx = never,
-  THttpActionCtx = never,
+  TActionCtx = GenericActionCtx<DataModel>,
+  THttpActionCtx = GenericActionCtx<DataModel>,
   TMeta extends object = object,
 > {
   private readonly contextConfig: ContextConfig<DataModel>;
@@ -976,7 +985,7 @@ class CRPCBuilderWithContext<
    * Create the CRPC instance with function builders
    */
   create(
-    config: CreateConfig<TMeta>
+    config?: CreateConfig<TMeta, DataModel>
   ): CRPCInstance<
     DataModel,
     TQueryCtx,
@@ -985,7 +994,22 @@ class CRPCBuilderWithContext<
     THttpActionCtx,
     TMeta
   > {
-    const { defaultMeta = {} as TMeta, ...functionsConfig } = config;
+    const {
+      defaultMeta = {} as TMeta,
+      query = queryGeneric,
+      internalQuery = internalQueryGeneric,
+      mutation = mutationGeneric,
+      internalMutation = internalMutationGeneric,
+      action = actionGeneric,
+      internalAction = internalActionGeneric,
+      httpAction = httpActionGeneric,
+      triggers,
+    } = config ?? {};
+    const mutationCreateContext = this.contextConfig.mutation ?? ((ctx) => ctx);
+    const createMutationContext = (ctx: GenericMutationCtx<DataModel>) => {
+      const wrappedCtx = triggers?.wrapDB(ctx) ?? ctx;
+      return mutationCreateContext(wrappedCtx);
+    };
 
     const result = {
       query: new QueryProcedureBuilder<
@@ -1000,8 +1024,8 @@ class CRPCBuilderWithContext<
         inputSchemas: [],
         meta: defaultMeta,
         functionConfig: {
-          base: functionsConfig.query,
-          internal: functionsConfig.internalQuery,
+          base: query,
+          internal: internalQuery,
           createContext: this.contextConfig.query ?? ((ctx) => ctx),
         },
       }),
@@ -1017,35 +1041,12 @@ class CRPCBuilderWithContext<
         inputSchemas: [],
         meta: defaultMeta,
         functionConfig: {
-          base: functionsConfig.mutation,
-          internal: functionsConfig.internalMutation,
-          createContext: this.contextConfig.mutation ?? ((ctx) => ctx),
+          base: mutation,
+          internal: internalMutation,
+          createContext: createMutationContext,
         },
       }),
-      middleware: createMiddlewareFactory<TQueryCtx, TMeta>(),
-      router: createHttpRouterFactory(),
-    } as CRPCInstance<
-      DataModel,
-      TQueryCtx,
-      TMutationCtx,
-      TActionCtx,
-      THttpActionCtx,
-      TMeta
-    >;
-
-    if (functionsConfig.action) {
-      (
-        result as {
-          action: ActionProcedureBuilder<
-            TActionCtx,
-            TActionCtx,
-            UnsetMarker,
-            UnsetMarker,
-            UnsetMarker,
-            TMeta
-          >;
-        }
-      ).action = new ActionProcedureBuilder<
+      action: new ActionProcedureBuilder<
         TActionCtx,
         TActionCtx,
         UnsetMarker,
@@ -1057,37 +1058,30 @@ class CRPCBuilderWithContext<
         inputSchemas: [],
         meta: defaultMeta,
         functionConfig: {
-          base: functionsConfig.action,
-          internal: functionsConfig.internalAction,
+          base: action,
+          internal: internalAction,
           // Use custom action context or default to identity
           createContext: this.contextConfig.action ?? ((ctx) => ctx),
         },
-      });
-    }
-
-    if (functionsConfig.httpAction) {
-      (
-        result as {
-          httpAction: HttpProcedureBuilder<
-            THttpActionCtx,
-            THttpActionCtx,
-            UnsetMarker,
-            UnsetMarker,
-            UnsetMarker,
-            UnsetMarker,
-            TMeta,
-            HttpMethod
-          >;
-        }
-      ).httpAction = createHttpProcedureBuilder({
-        base: functionsConfig.httpAction as HttpActionConstructor,
+      }),
+      httpAction: createHttpProcedureBuilder({
+        base: httpAction as HttpActionConstructor,
         // httpAction uses action context or default to identity
         createContext: (this.contextConfig.action ?? ((ctx) => ctx)) as (
           ctx: GenericActionCtx<GenericDataModel>
         ) => THttpActionCtx,
         meta: defaultMeta,
-      });
-    }
+      }),
+      middleware: createMiddlewareFactory<TQueryCtx, TMeta>(),
+      router: createHttpRouterFactory(),
+    } as CRPCInstance<
+      DataModel,
+      TQueryCtx,
+      TMutationCtx,
+      TActionCtx,
+      THttpActionCtx,
+      TMeta
+    >;
 
     return result;
   }
@@ -1119,7 +1113,7 @@ class CRPCBuilderWithMeta<
   /**
    * Create the CRPC instance directly (uses default passthrough context)
    */
-  create(config: CreateConfig<TMeta>): CRPCInstance<
+  create(config?: CreateConfig<TMeta, DataModel>): CRPCInstance<
     DataModel,
     GenericQueryCtx<DataModel>,
     GenericMutationCtx<DataModel>,
@@ -1167,7 +1161,7 @@ class CRPCBuilder<DataModel extends GenericDataModel> {
   /**
    * Create the CRPC instance directly (uses default passthrough context)
    */
-  create(config: CreateConfig<object>): CRPCInstance<
+  create(config?: CreateConfig<object, DataModel>): CRPCInstance<
     DataModel,
     GenericQueryCtx<DataModel>,
     GenericMutationCtx<DataModel>,
@@ -1194,12 +1188,12 @@ class CRPCBuilder<DataModel extends GenericDataModel> {
  * const c = initCRPC
  *   .dataModel<DataModel>()
  *   .context({...})
- *   .create({...});
+ *   .create();
  *
  * // Without DataModel (uses GenericDataModel)
  * const c = initCRPC
  *   .context({...})
- *   .create({...});
+ *   .create();
  * ```
  */
 export const initCRPC = {
@@ -1235,7 +1229,7 @@ export const initCRPC = {
   /**
    * Create the CRPC instance directly (uses GenericDataModel and default passthrough context)
    */
-  create(config: CreateConfig<object>): CRPCInstance<
+  create(config?: CreateConfig<object, GenericDataModel>): CRPCInstance<
     GenericDataModel,
     GenericQueryCtx<GenericDataModel>,
     GenericMutationCtx<GenericDataModel>,

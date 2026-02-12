@@ -62,7 +62,7 @@ import { zid } from 'convex-helpers/server/zod4';
 import { publicQuery } from '../lib/crpc';
 
 const MessageSchema = z.object({
-  _id: zid('messages'),
+  id: zid('messages'),
   from: zid('users'),
   to: zid('users'),
   body: z.string(),
@@ -82,7 +82,7 @@ export const listConversation = publicQuery
           { index: { name: 'by_from_to', range: (q) => q.eq('from', input.me).eq('to', input.them) } },
           { index: { name: 'by_from_to', range: (q) => q.eq('from', input.them).eq('to', input.me) } },
         ],
-        interleaveBy: ['_creationTime', '_id'],
+        interleaveBy: ['_creationTime', 'id'],
         stages: [
           { filterWith: async (m) => !m.deletedAt },
           { map: async (m) => ({ ...m, body: m.body.slice(0, 240) }) },
@@ -144,7 +144,7 @@ export const search = publicQuery
     limit: z.number().min(1).max(100).default(10),
   }))
   .output(z.array(z.object({
-    _id: zid('articles'),
+    id: zid('articles'),
     title: z.string(),
     content: z.string(),
   })))
@@ -175,7 +175,7 @@ export const searchByCategory = publicQuery
     author: z.string().optional(),
   }))
   .output(z.array(z.object({
-    _id: zid('articles'),
+    id: zid('articles'),
     title: z.string(),
     content: z.string(),
     category: z.string(),
@@ -201,7 +201,7 @@ Use `.paginated({ limit, item })` ([paginated builder](/docs/server/procedures#p
 
 ```ts title="convex/functions/articles.ts" showLineNumbers {3,9-17}
 const ArticleSchema = z.object({
-  _id: zid('articles'),
+  id: zid('articles'),
   title: z.string(),
   content: z.string(),
   category: z.string(),
@@ -236,7 +236,7 @@ Use a predicate `where` for complex JS logic. You must provide an explicit index
 
 ```ts title="convex/functions/characters.ts" showLineNumbers {6-8,13-18,21-24}
 const CharacterSchema = z.object({
-  _id: zid('characters'),
+  id: zid('characters'),
   name: z.string(),
   categories: z.array(z.string()).nullable(),
   score: z.number(),

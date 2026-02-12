@@ -100,7 +100,7 @@ const c = initCRPC
     query: (ctx) => withOrm(ctx),
     mutation: (ctx) => withOrm(ctx),
   })
-  .create({ ... });
+  .create();
 ```
 
 Done once, every handler can read through `ctx.orm`.
@@ -114,7 +114,7 @@ Now we'll migrate the read paths you use every day: single-row lookups, lists, a
 <Compare>
   <CompareItem title="Before (native Convex `db.get`)">
     ```ts title="convex/functions/users.ts" showLineNumbers
-    import { query } from './_generated/server';
+    import { query } from 'convex/server';
     import { v } from 'convex/values';
 
     export const getById = query({
@@ -357,7 +357,7 @@ Next we'll migrate pagination. The mapping is straightforward: native `paginate`
 <Compare>
   <CompareItem title="Before (`paginate(paginationOpts)`)">
     ```ts title="convex/functions/posts.ts" showLineNumbers {3-7,11}
-    import { query } from './_generated/server';
+    import { query } from 'convex/server';
     import { paginationOptsValidator } from 'convex/server';
 
     export const list = query({
@@ -434,7 +434,7 @@ Vector search in native Convex is action-only. The migration keeps that shape: r
   <CompareItem title="Before (native Convex)">
     ```ts title="convex/functions/posts.ts" showLineNumbers {2-4,14-19}
     import { v } from 'convex/values';
-    import { action, internalQuery } from './_generated/server';
+    import { action, internalQuery } from 'convex/server';
     import { internal } from './_generated/api';
 
     export const fetchByIds = internalQuery({
@@ -514,7 +514,7 @@ Now we'll map writes carefully, because semantics differ most here.
 <Compare>
   <CompareItem title="Before (native Convex)">
     ```ts title="convex/functions/users.ts" showLineNumbers
-    import { mutation } from './_generated/server';
+    import { mutation } from 'convex/server';
     import { v } from 'convex/values';
 
     export const createUser = mutation({

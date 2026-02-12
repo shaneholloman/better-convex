@@ -48,7 +48,7 @@ const posts = convexTable('posts', {
 });
 
 type Post = InferSelectModel<typeof posts>;
-//   ^? { _id, _creationTime, title: string, status: string, viewCount: number | null }
+//   ^? { id, _creationTime, title: string, status: string, viewCount: number | null }
 
 type NewPost = InferInsertModel<typeof posts>;
 //   ^? { title: string; status?: string | undefined; viewCount?: number | undefined }

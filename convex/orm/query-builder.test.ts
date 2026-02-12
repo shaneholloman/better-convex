@@ -158,7 +158,7 @@ describe('M3 Query Builder', () => {
       });
     });
 
-    it('should fetch by _id in list without allowFullScan (db.get fast path)', async () => {
+    it('should fetch by id in list without allowFullScan (db.get fast path)', async () => {
       const localUsers = convexTable('localUsers', {
         name: text().notNull(),
       });
@@ -171,12 +171,31 @@ describe('M3 Query Builder', () => {
         const id2 = await ctx.db.insert('localUsers', { name: 'Bob' });
 
         const rows = await ctx.orm.query.localUsers.findMany({
-          where: { _id: { in: [id2, id1, id2] } },
+          where: { id: { in: [id2, id1, id2] } },
         });
 
         expect(rows).toHaveLength(2);
-        expect(rows.map((r) => r._id)).toEqual([id2, id1]);
+        expect(rows.map((r) => r.id)).toEqual([id2, id1]);
       });
+    });
+
+    it('throws migration error when object where uses _id', async ({ ctx }) => {
+      await expect(
+        ctx.orm.query.users.findMany({
+          where: { _id: 'bad' } as any,
+        })
+      ).rejects.toThrow('Use `id`');
+    });
+
+    it('throws migration error when object orderBy uses _id', async ({
+      ctx,
+    }) => {
+      await expect(
+        ctx.orm.query.users.findMany({
+          orderBy: { _id: 'asc' } as any,
+          limit: 1,
+        })
+      ).rejects.toThrow('Use `id`');
     });
 
     it('should require relation limit on nested many when no defaults and no allowFullScan', async () => {
@@ -196,14 +215,14 @@ describe('M3 Query Builder', () => {
       const localRelations = defineRelations(localTables, (r) => ({
         localUsers: {
           posts: r.many.localPosts({
-            from: r.localUsers._id,
+            from: r.localUsers.id,
             to: r.localPosts.userId,
           }),
         },
         localPosts: {
           user: r.one.localUsers({
             from: r.localPosts.userId,
-            to: r.localUsers._id,
+            to: r.localUsers.id,
           }),
         },
       }));
@@ -241,7 +260,7 @@ describe('M3 Query Builder', () => {
       expect(result?.name).toBe('Alice');
     });
 
-    it('should fetch by _id without allowFullScan (db.get fast path)', async ({
+    it('should fetch by id without allowFullScan (db.get fast path)', async ({
       ctx,
     }) => {
       const userId = await ctx.db.insert('users', {
@@ -251,10 +270,10 @@ describe('M3 Query Builder', () => {
 
       const db = ctx.orm;
       const result = await db.query.users.findFirst({
-        where: { _id: userId },
+        where: { id: userId },
       });
 
-      expect(result?._id).toBe(userId);
+      expect(result?.id).toBe(userId);
     });
 
     it('should return undefined for empty results', async ({ ctx }) => {

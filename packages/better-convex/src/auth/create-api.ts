@@ -9,8 +9,12 @@ import {
 } from 'convex/server';
 import { type GenericId, v } from 'convex/values';
 import { asyncMap } from 'convex-helpers';
+import {
+  customCtx,
+  customMutation,
+} from 'convex-helpers/server/customFunctions';
 import { partial } from 'convex-helpers/validators';
-
+import { eq, unsetToken } from '../orm';
 import {
   adapterWhereValidator,
   checkUniqueFields,
@@ -57,6 +61,91 @@ const whereValidator = (schema: Schema, tableName: keyof Schema['tables']) =>
     ),
   });
 
+const resolveSchemaTableName = (
+  schema: Schema,
+  betterAuthSchema: any,
+  model: string
+): string | undefined => {
+  if (schema.tables[model as keyof Schema['tables']]) {
+    return model;
+  }
+
+  const modelConfig = betterAuthSchema?.[model];
+  if (modelConfig?.modelName && schema.tables[modelConfig.modelName]) {
+    return modelConfig.modelName;
+  }
+
+  for (const [key, value] of Object.entries<any>(betterAuthSchema ?? {})) {
+    if (value?.modelName !== model) {
+      continue;
+    }
+    if (schema.tables[key as keyof Schema['tables']]) {
+      return key;
+    }
+    if (schema.tables[value.modelName as keyof Schema['tables']]) {
+      return value.modelName;
+    }
+  }
+
+  return;
+};
+
+const resolveOrmTable = (
+  ctx: any,
+  schema: Schema,
+  betterAuthSchema: any,
+  model: string
+) => {
+  if (
+    !ctx?.orm ||
+    typeof ctx.orm.insert !== 'function' ||
+    typeof ctx.orm.update !== 'function' ||
+    typeof ctx.orm.delete !== 'function'
+  ) {
+    return;
+  }
+
+  const tableName = resolveSchemaTableName(schema, betterAuthSchema, model);
+  if (!tableName) {
+    return;
+  }
+
+  const table = schema.tables[tableName as keyof Schema['tables']] as any;
+  if (!table || !table._id) {
+    return;
+  }
+
+  return { table, tableName };
+};
+
+const normalizeUpdateForOrm = (update: Record<string, unknown>) =>
+  Object.fromEntries(
+    Object.entries(update).map(([key, value]) => [
+      key,
+      value === undefined ? unsetToken : value,
+    ])
+  );
+
+const ormInsert = async (ctx: any, table: any, data: Record<string, unknown>) =>
+  (await ctx.orm.insert(table).values(data).returning())[0];
+
+const ormUpdate = async (
+  ctx: any,
+  table: any,
+  id: GenericId<string>,
+  update: Record<string, unknown>
+) =>
+  (
+    await ctx.orm
+      .update(table)
+      .set(normalizeUpdateForOrm(update))
+      .where(eq(table._id, id))
+  )[0];
+
+const ormDelete = async (ctx: any, table: any, id: GenericId<string>) => {
+  await ctx.orm.delete(table).where(eq(table._id, id));
+};
+
 // Extracted handler functions
 export const createHandler = async (
   ctx: any,
@@ -96,8 +185,18 @@ export const createHandler = async (
     args.input.model,
     data
   );
-  const id = await ctx.db.insert(args.input.model as any, data);
-  const doc = await ctx.db.get(id);
+  const ormTable = resolveOrmTable(
+    ctx,
+    schema,
+    betterAuthSchema,
+    args.input.model
+  );
+  const doc = ormTable
+    ? await ormInsert(ctx, ormTable.table, data)
+    : await (async () => {
+        const id = await ctx.db.insert(args.input.model as any, data);
+        return ctx.db.get(id);
+      })();
 
   if (!doc) {
     throw new Error(`Failed to create ${args.input.model}`);
@@ -188,8 +287,23 @@ export const updateOneHandler = async (
     update,
     doc
   );
-  await ctx.db.patch(doc._id as GenericId<string>, update as any);
-  const updatedDoc = await ctx.db.get(doc._id as GenericId<string>);
+  const ormTable = resolveOrmTable(
+    ctx,
+    schema,
+    betterAuthSchema,
+    args.input.model
+  );
+  const updatedDoc = ormTable
+    ? await ormUpdate(
+        ctx,
+        ormTable.table,
+        doc._id as GenericId<string>,
+        update as Record<string, unknown>
+      )
+    : await (async () => {
+        await ctx.db.patch(doc._id as GenericId<string>, update as any);
+        return ctx.db.get(doc._id as GenericId<string>);
+      })();
 
   if (!updatedDoc) {
     throw new Error(`Failed to update ${args.input.model}`);
@@ -224,6 +338,12 @@ export const updateManyHandler = async (
     ...args.input,
     paginationOpts: args.paginationOpts,
   });
+  const ormTable = resolveOrmTable(
+    ctx,
+    schema,
+    betterAuthSchema,
+    args.input.model
+  );
 
   if (args.input.update) {
     if (
@@ -265,10 +385,19 @@ export const updateManyHandler = async (
         update ?? {},
         doc
       );
-      await ctx.db.patch(doc._id as GenericId<string>, update as any);
+      const newDoc = ormTable
+        ? await ormUpdate(
+            ctx,
+            ormTable.table,
+            doc._id as GenericId<string>,
+            (update ?? {}) as Record<string, unknown>
+          )
+        : await (async () => {
+            await ctx.db.patch(doc._id as GenericId<string>, update as any);
+            return ctx.db.get(doc._id as GenericId<string>);
+          })();
 
       if (args.onUpdateHandle) {
-        const newDoc = await ctx.db.get(doc._id as GenericId<string>);
         await ctx.runMutation(
           args.onUpdateHandle as FunctionHandle<'mutation'>,
           {
@@ -324,7 +453,17 @@ export const deleteOneHandler = async (
     }
   }
 
-  await ctx.db.delete(doc._id as GenericId<string>);
+  const ormTable = resolveOrmTable(
+    ctx,
+    schema,
+    betterAuthSchema,
+    args.input.model
+  );
+  if (ormTable) {
+    await ormDelete(ctx, ormTable.table, doc._id as GenericId<string>);
+  } else {
+    await ctx.db.delete(doc._id as GenericId<string>);
+  }
 
   if (args.onDeleteHandle) {
     await ctx.runMutation(args.onDeleteHandle as FunctionHandle<'mutation'>, {
@@ -355,6 +494,12 @@ export const deleteManyHandler = async (
     ...args.input,
     paginationOpts: args.paginationOpts,
   });
+  const ormTable = resolveOrmTable(
+    ctx,
+    schema,
+    betterAuthSchema,
+    args.input.model
+  );
   await asyncMap(page, async (doc: any) => {
     let hookDoc = doc;
 
@@ -372,7 +517,11 @@ export const deleteManyHandler = async (
       }
     }
 
-    await ctx.db.delete(doc._id as GenericId<string>);
+    if (ormTable) {
+      await ormDelete(ctx, ormTable.table, doc._id as GenericId<string>);
+    } else {
+      await ctx.db.delete(doc._id as GenericId<string>);
+    }
 
     if (args.onDeleteHandle) {
       await ctx.runMutation(args.onDeleteHandle as FunctionHandle<'mutation'>, {
@@ -394,13 +543,28 @@ export const createApi = <Schema extends SchemaDefinition<any, any>>(
   createAuth: CreateAuth,
   options?: {
     internalMutation?: typeof internalMutationGeneric;
+    dbTriggers?: {
+      wrapDB: (ctx: any) => any;
+    };
+    context?: (ctx: any) => any | Promise<any>;
     /** Skip input validation for smaller generated types. Since these are internal functions, validation is optional. */
     skipValidation?: boolean;
   }
 ) => {
   const betterAuthSchema = getAuthTables(createAuth({} as any).options);
-  const { internalMutation, skipValidation } = options ?? {};
-  const mutationBuilder = internalMutation ?? internalMutationGeneric;
+  const { internalMutation, skipValidation, dbTriggers, context } =
+    options ?? {};
+  const mutationBuilderBase = internalMutation ?? internalMutationGeneric;
+  const mutationBuilder =
+    dbTriggers || context
+      ? customMutation(
+          mutationBuilderBase,
+          customCtx(async (ctx) => {
+            const wrappedCtx = dbTriggers?.wrapDB(ctx) ?? ctx;
+            return (await context?.(wrappedCtx)) ?? wrappedCtx;
+          })
+        )
+      : mutationBuilderBase;
 
   // Generic validators for skipValidation mode (much smaller generated types)
   const anyInput = v.object({

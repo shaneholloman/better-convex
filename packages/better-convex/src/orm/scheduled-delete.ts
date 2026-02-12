@@ -59,7 +59,7 @@ export function scheduledDeleteFactory<TSchema extends TablesRelationalConfig>(
     await db
       .delete(table)
       .cascade({ mode: args.cascadeMode ?? 'hard' })
-      .where(eq(table._id, args.id as any))
+      .where(eq(table.id, args.id as any))
       .execute({ mode: 'async' });
   };
 }

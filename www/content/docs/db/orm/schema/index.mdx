@@ -36,7 +36,7 @@ export const users = convexTable('users', {
 ```
 
 Convex auto-generates two fields on every document:
-- `_id: Id<'table'>`
+- `id: Id<'table'>`
 - `_creationTime: number`
 
 ### Nullability
@@ -94,7 +94,7 @@ See [Column Types](/docs/db/orm/column-types) for the full ORM builder reference
 
 ## Relations
 
-Use Drizzle-style `defineRelations()` to wire up relationships between tables. Relations reference `_id` fields:
+Use Drizzle-style `defineRelations()` to wire up relationships between tables. Relations reference `id` fields:
 
 ```ts title="convex/schema.ts" showLineNumbers {5-10}
 import { defineRelations } from 'better-convex/orm';
@@ -107,7 +107,7 @@ export const posts = convexTable('posts', {
 export const relations = defineRelations({ users, posts }, (r) => ({
   users: { posts: r.many.posts() },
   posts: {
-    author: r.one.users({ from: r.posts.userId, to: r.users._id }),
+    author: r.one.users({ from: r.posts.userId, to: r.users.id }),
   },
 }));
 ```
@@ -261,7 +261,7 @@ Here's a quick reference for common schema issues:
 
 | Issue | Fix |
 |---|---|
-| Defining `_id` manually | Convex creates `_id` automatically |
+| Defining `id` manually | Convex creates `id` automatically |
 | Fields unexpectedly nullable | Use `.notNull()` |
 | Relations not loading | Define both sides or use explicit `from`/`to` |
 | Slow ordering | Add `index('...').on(t.field)` for the primary `orderBy` field |

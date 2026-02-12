@@ -1,6 +1,5 @@
 import {
   actionGeneric,
-  httpActionGeneric,
   internalActionGeneric,
   internalMutationGeneric,
   internalQueryGeneric,
@@ -11,53 +10,21 @@ import { z } from 'zod';
 
 import { initCRPC } from './builder';
 
-const INTERNAL_QUERY_NOT_CONFIGURED_RE =
-  /internalQuery base function not configured/i;
-const INTERNAL_MUTATION_NOT_CONFIGURED_RE =
-  /internalMutation base function not configured/i;
-const INTERNAL_ACTION_NOT_CONFIGURED_RE =
-  /internalAction base function not configured/i;
-
 describe('server/builder', () => {
-  test('create() only adds action/httpAction when configured', () => {
-    const base = initCRPC.create({
-      query: queryGeneric,
-      mutation: mutationGeneric,
-    } as any);
+  test('create() with no args exposes full procedure surface', () => {
+    const c = initCRPC.create();
 
-    expect('action' in base).toBe(false);
-    expect('httpAction' in base).toBe(false);
-
-    const full = initCRPC.create({
-      query: queryGeneric,
-      internalQuery: internalQueryGeneric,
-      mutation: mutationGeneric,
-      internalMutation: internalMutationGeneric,
-      action: actionGeneric,
-      internalAction: internalActionGeneric,
-      httpAction: httpActionGeneric,
-    } as any);
-
-    expect('action' in full).toBe(true);
-    expect('httpAction' in full).toBe(true);
-  });
-
-  test('query.internal() throws when internalQuery is not configured', () => {
-    const c = initCRPC.create({
-      query: queryGeneric,
-      mutation: mutationGeneric,
-    } as any);
-
-    expect(() => c.query.internal()).toThrow(INTERNAL_QUERY_NOT_CONFIGURED_RE);
+    expect('query' in c).toBe(true);
+    expect('mutation' in c).toBe(true);
+    expect('action' in c).toBe(true);
+    expect('httpAction' in c).toBe(true);
+    expect(() => c.query.internal()).not.toThrow();
+    expect(() => c.mutation.internal()).not.toThrow();
+    expect(() => c.action.internal()).not.toThrow();
   });
 
   test('internal queries set _crpcMeta.internal=true', () => {
-    const c = initCRPC.create({
-      query: queryGeneric,
-      internalQuery: internalQueryGeneric,
-      mutation: mutationGeneric,
-      internalMutation: internalMutationGeneric,
-    } as any);
+    const c = initCRPC.create();
 
     const fn = c.query
       .internal()
@@ -244,15 +211,14 @@ describe('server/builder', () => {
     });
   });
 
-  test('mutation.internal() throws when internalMutation is not configured', () => {
-    const c = initCRPC.create({
-      query: queryGeneric,
-      mutation: mutationGeneric,
-    } as any);
+  test('mutation.internal() is available by default', async () => {
+    const c = initCRPC.create();
+    const fn = c.mutation
+      .internal()
+      .input(z.object({ x: z.number() }))
+      .mutation(async ({ input }) => input.x);
 
-    expect(() => c.mutation.internal()).toThrow(
-      INTERNAL_MUTATION_NOT_CONFIGURED_RE
-    );
+    await expect((fn as any)._handler({}, { x: 42 })).resolves.toBe(42);
   });
 
   test('mutation builder supports use(), output(), and internal() meta', async () => {
@@ -292,16 +258,81 @@ describe('server/builder', () => {
     await expect((bad as any)._handler({}, {})).rejects.toBeTruthy();
   });
 
-  test('action.internal() throws when internalAction is not configured', () => {
-    const c = initCRPC.create({
-      query: queryGeneric,
-      mutation: mutationGeneric,
-      action: actionGeneric,
-    } as any);
+  test('create({ triggers }) applies wrapDB to mutation/internalMutation only', async () => {
+    const wrapDB = mock((ctx: any) => ({ ...ctx, wrapped: true }));
+    const c = initCRPC
+      .context({
+        query: (ctx) => ({ wrapped: (ctx as any).wrapped === true }),
+        mutation: (ctx) => ({ wrapped: (ctx as any).wrapped === true }),
+      })
+      .create({
+        query: queryGeneric,
+        internalQuery: internalQueryGeneric,
+        mutation: mutationGeneric,
+        internalMutation: internalMutationGeneric,
+        triggers: { wrapDB },
+      } as any);
 
-    expect(() => (c as any).action.internal()).toThrow(
-      INTERNAL_ACTION_NOT_CONFIGURED_RE
+    const queryFn = c.query.query(async ({ ctx }) => (ctx as any).wrapped);
+    const mutationFn = c.mutation.mutation(
+      async ({ ctx }) => (ctx as any).wrapped
     );
+    const internalMutationFn = c.mutation
+      .internal()
+      .mutation(async ({ ctx }) => (ctx as any).wrapped);
+
+    await expect((queryFn as any)._handler({}, {})).resolves.toBe(false);
+    await expect((mutationFn as any)._handler({}, {})).resolves.toBe(true);
+    await expect((internalMutationFn as any)._handler({}, {})).resolves.toBe(
+      true
+    );
+    expect(wrapDB).toHaveBeenCalledTimes(2);
+  });
+
+  test('create({ triggers }) wraps DB before mutation context enrichment', async () => {
+    const c = initCRPC
+      .context({
+        mutation: (ctx) => ({ stage: (ctx as any).stage }),
+        query: (ctx) => ctx,
+      })
+      .create({
+        query: queryGeneric,
+        mutation: mutationGeneric,
+        triggers: {
+          wrapDB: (ctx: any) => ({ ...ctx, stage: 'wrapped' }),
+        },
+      } as any);
+
+    const fn = c.mutation.mutation(async ({ ctx }) => (ctx as any).stage);
+    await expect((fn as any)._handler({}, {})).resolves.toBe('wrapped');
+  });
+
+  test('action.internal() is available by default', async () => {
+    const c = initCRPC.create();
+    const fn = c.action
+      .internal()
+      .input(z.object({ x: z.number() }))
+      .action(async ({ input }) => input.x);
+
+    await expect((fn as any)._handler({}, { x: 7 })).resolves.toBe(7);
+  });
+
+  test('explicit mutation/internalMutation overrides default builders', () => {
+    const mutationOverride = mock((cfg: any) => mutationGeneric(cfg));
+    const internalMutationOverride = mock((cfg: any) =>
+      internalMutationGeneric(cfg)
+    );
+
+    const c = initCRPC.create({
+      mutation: mutationOverride as any,
+      internalMutation: internalMutationOverride as any,
+    });
+
+    c.mutation.mutation(async () => null);
+    c.mutation.internal().mutation(async () => null);
+
+    expect(mutationOverride).toHaveBeenCalledTimes(1);
+    expect(internalMutationOverride).toHaveBeenCalledTimes(1);
   });
 
   test('action builder supports use(), output(), and internal() meta', async () => {

@@ -1,7 +1,7 @@
 /**
  * System Fields - Convex-provided fields available on all documents
  *
- * _id: Document ID (string)
+ * id: Document ID (string, backed by internal Convex _id)
  * _creationTime: Creation timestamp (number, milliseconds since epoch)
  *
  * These are automatically added to every Convex table.
@@ -17,7 +17,7 @@ import {
 } from './column-builder';
 
 /**
- * System ID field builder (_id)
+ * System ID field builder (public id, internal _id)
  * Always present, always non-null
  */
 type ConvexSystemIdConfig<TTableName extends string> = ColumnBuilderBaseConfig<
@@ -105,7 +105,7 @@ export class ConvexSystemCreationTimeBuilder extends ColumnBuilder<
  * These are automatically added to every ConvexTable
  */
 export type SystemFields<TName extends string> = {
-  _id: ColumnBuilderWithTableName<ConvexSystemIdBuilder<TName>, TName>;
+  id: ColumnBuilderWithTableName<ConvexSystemIdBuilder<TName>, TName>;
   _creationTime: ColumnBuilderWithTableName<
     ConvexSystemCreationTimeBuilder,
     TName
@@ -123,7 +123,7 @@ export function createSystemFields<TName extends string>(
   (creationTime as any).config.tableName = tableName;
 
   return {
-    _id: id as ColumnBuilderWithTableName<ConvexSystemIdBuilder<TName>, TName>,
+    id: id as ColumnBuilderWithTableName<ConvexSystemIdBuilder<TName>, TName>,
     _creationTime: creationTime as ColumnBuilderWithTableName<
       ConvexSystemCreationTimeBuilder,
       TName

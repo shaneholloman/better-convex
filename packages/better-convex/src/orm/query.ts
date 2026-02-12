@@ -87,6 +87,10 @@ import {
 } from './where-clause-compiler';
 
 const DEFAULT_RELATION_FAN_OUT_MAX_KEYS = 1000;
+const PUBLIC_ID_FIELD = 'id';
+const INTERNAL_ID_FIELD = '_id';
+const ID_MIGRATION_MESSAGE =
+  "`_id` is no longer public. Use `id` instead.";
 
 class LimitedQueryStream<
   T extends NonNullable<unknown>,
@@ -186,6 +190,28 @@ export class GelRelationalQuery<
     this.allowFullScan = (config as any).allowFullScan === true;
   }
 
+  private _normalizePublicFieldName(fieldName: string): string {
+    if (fieldName === INTERNAL_ID_FIELD) {
+      throw new Error(ID_MIGRATION_MESSAGE);
+    }
+    return fieldName === PUBLIC_ID_FIELD ? INTERNAL_ID_FIELD : fieldName;
+  }
+
+  private _toPublicRow<T>(row: T): T {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      return row;
+    }
+    if (!Object.prototype.hasOwnProperty.call(row, INTERNAL_ID_FIELD)) {
+      return row;
+    }
+    const obj = row as Record<string, unknown>;
+    const { _id, ...rest } = obj;
+    return {
+      ...rest,
+      id: _id,
+    } as T;
+  }
+
   private _extractIdOnlyWhere(
     where: unknown
   ): { kind: 'eq'; id: unknown } | { kind: 'in'; ids: unknown[] } | null {
@@ -193,16 +219,19 @@ export class GelRelationalQuery<
       return null;
     }
     const keys = Object.keys(where as Record<string, unknown>);
-    if (keys.length !== 1 || keys[0] !== '_id') {
+    if (keys.includes(INTERNAL_ID_FIELD)) {
+      throw new Error(ID_MIGRATION_MESSAGE);
+    }
+    if (keys.length !== 1 || keys[0] !== PUBLIC_ID_FIELD) {
       return null;
     }
 
-    const value = (where as any)._id as unknown;
+    const value = (where as any).id as unknown;
     if (value === null || value === undefined) {
       return { kind: 'eq', id: value };
     }
 
-    // Support operator-style filters: { _id: { eq: id } } and { _id: { in: ids } }.
+    // Support operator-style filters: { id: { eq: id } } and { id: { in: ids } }.
     if (typeof value === 'object' && !Array.isArray(value)) {
       const opKeys = Object.keys(value as Record<string, unknown>);
       if (opKeys.length !== 1) {
@@ -222,7 +251,7 @@ export class GelRelationalQuery<
       return null;
     }
 
-    // Direct equality: { _id: id }.
+    // Direct equality: { id }.
     if (Array.isArray(value)) {
       return null;
     }
@@ -309,10 +338,21 @@ export class GelRelationalQuery<
       !this._isColumnBuilder(orderBy)
     ) {
       return Object.entries(orderBy)
-        .filter(([, direction]) => direction === 'asc' || direction === 'desc')
         .map(([field, direction]) => ({
-          field,
-          direction: direction as 'asc' | 'desc',
+          field: this._normalizePublicFieldName(field),
+          direction,
+        }))
+        .filter(
+          (
+            entry
+          ): entry is {
+            field: string;
+            direction: 'asc' | 'desc';
+          } => entry.direction === 'asc' || entry.direction === 'desc'
+        )
+        .map((entry) => ({
+          field: entry.field,
+          direction: entry.direction,
         }));
     }
 
@@ -802,10 +842,18 @@ export class GelRelationalQuery<
           );
           continue;
         default:
+          if (key === INTERNAL_ID_FIELD) {
+            throw new Error(ID_MIGRATION_MESSAGE);
+          }
           if (!(key in columns)) {
             throw new Error(`Unknown filter column: "${key}"`);
           }
-          results.push(this._evaluateFieldFilter(row[key], value as any));
+          results.push(
+            this._evaluateFieldFilter(
+              row[this._normalizePublicFieldName(key)],
+              value as any
+            )
+          );
       }
     }
 
@@ -861,8 +909,16 @@ export class GelRelationalQuery<
           );
           continue;
         default: {
+          if (key === INTERNAL_ID_FIELD) {
+            throw new Error(ID_MIGRATION_MESSAGE);
+          }
           if (key in columns) {
-            results.push(this._evaluateFieldFilter(row[key], value as any));
+            results.push(
+              this._evaluateFieldFilter(
+                row[this._normalizePublicFieldName(key)],
+                value as any
+              )
+            );
             continue;
           }
 
@@ -940,6 +996,9 @@ export class GelRelationalQuery<
     if (this._isPlaceholder(filter) || this._isSQLWrapper(filter)) {
       throw new Error('SQL placeholders are not supported in Convex filters.');
     }
+    if (fieldName === INTERNAL_ID_FIELD) {
+      throw new Error(ID_MIGRATION_MESSAGE);
+    }
 
     const columns = this._getColumns(tableConfig);
     const columnBuilder = columns[fieldName];
@@ -947,7 +1006,10 @@ export class GelRelationalQuery<
       throw new Error(`Unknown filter column: "${fieldName}"`);
     }
 
-    const columnRef = column(columnBuilder, fieldName);
+    const columnRef = column(
+      columnBuilder,
+      this._normalizePublicFieldName(fieldName)
+    );
 
     if (
       filter === null ||
@@ -1126,6 +1188,9 @@ export class GelRelationalQuery<
           continue;
         }
         default: {
+          if (key === INTERNAL_ID_FIELD) {
+            throw new Error(ID_MIGRATION_MESSAGE);
+          }
           if (!(key in columns)) {
             // Relation filter - skip in expression compilation
             continue;
@@ -1207,6 +1272,9 @@ export class GelRelationalQuery<
         );
         this._mergeWithConfig(result, nested);
         continue;
+      }
+      if (key === INTERNAL_ID_FIELD) {
+        throw new Error(ID_MIGRATION_MESSAGE);
       }
 
       const relation = tableConfig.relations[key];
@@ -1300,6 +1368,9 @@ export class GelRelationalQuery<
       if (key === 'RAW') {
         continue;
       }
+      if (key === INTERNAL_ID_FIELD) {
+        throw new Error(ID_MIGRATION_MESSAGE);
+      }
 
       if (key in columns) {
         continue;
@@ -1358,9 +1429,19 @@ export class GelRelationalQuery<
     tableConfig: TableRelationalConfig,
     allowedFilterFields: Set<string>
   ): Record<string, unknown> {
-    const merged: Record<string, unknown> = {
-      ...(searchFilters ?? {}),
-    };
+    const merged: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(searchFilters ?? {})) {
+      const normalizedKey = this._normalizePublicFieldName(key);
+      if (
+        normalizedKey in merged &&
+        !this._searchFilterValuesEqual(merged[normalizedKey], value)
+      ) {
+        throw new Error(
+          `Conflict between search.filters.${normalizedKey} entries.`
+        );
+      }
+      merged[normalizedKey] = value;
+    }
 
     if (!this._isRecord(whereFilter)) {
       return merged;
@@ -1374,10 +1455,11 @@ export class GelRelationalQuery<
       if (key === 'OR' || key === 'AND' || key === 'NOT' || key === 'RAW') {
         continue;
       }
+      const normalizedKey = this._normalizePublicFieldName(key);
       if (!(key in columns)) {
         continue;
       }
-      if (!allowedFilterFields.has(key)) {
+      if (!allowedFilterFields.has(normalizedKey)) {
         continue;
       }
 
@@ -1387,15 +1469,15 @@ export class GelRelationalQuery<
       }
 
       if (
-        key in merged &&
-        !this._searchFilterValuesEqual(merged[key], eqValue)
+        normalizedKey in merged &&
+        !this._searchFilterValuesEqual(merged[normalizedKey], eqValue)
       ) {
         throw new Error(
-          `Conflict between search.filters.${key} and where.${key}.`
+          `Conflict between search.filters.${normalizedKey} and where.${key}.`
         );
       }
 
-      merged[key] = eqValue;
+      merged[normalizedKey] = eqValue;
     }
 
     return merged;
@@ -1870,8 +1952,8 @@ export class GelRelationalQuery<
       }
     }
 
-    // Fast path: `_id` lookups use `db.get()` (primary key) instead of an index plan.
-    // This keeps `where: { _id: ... }` and `where: { _id: { in: [...] } }` ergonomic
+    // Fast path: `id` lookups use `db.get()` (primary key) instead of an index plan.
+    // This keeps `where: { id: ... }` and `where: { id: { in: [...] } }` ergonomic
     // without requiring allowFullScan, and avoids full collection scans.
     const idLookup = this._extractIdOnlyWhere(whereFilter);
     if (
@@ -1998,7 +2080,12 @@ export class GelRelationalQuery<
               'pipeline.interleaveBy is required when pipeline.union has multiple sources.'
             );
           }
-          streamQuery = mergedStream(streams, pipeline.interleaveBy);
+          streamQuery = mergedStream(
+            streams,
+            pipeline.interleaveBy.map((field) =>
+              this._normalizePublicFieldName(field)
+            )
+          );
         }
       } else {
         streamQuery = this._buildBasePipelineStream(
@@ -3248,8 +3335,8 @@ export class GelRelationalQuery<
     >;
     const system: Record<string, ColumnBuilder<any, any, any>> = {};
 
-    if ((tableConfig.table as any)._id) {
-      system._id = (tableConfig.table as any)._id as ColumnBuilder<
+    if ((tableConfig.table as any).id) {
+      system.id = (tableConfig.table as any).id as ColumnBuilder<
         any,
         any,
         any
@@ -3621,7 +3708,7 @@ export class GelRelationalQuery<
 
   /**
    * Load one() relation (many-to-one or one-to-one)
-   * Example: posts.author where posts.authorId → users._id
+   * Example: posts.author where posts.authorId → users.id
    * M6.5 Phase 2: Added support for nested relations
    */
   private async _loadOneRelation(
@@ -3779,18 +3866,15 @@ export class GelRelationalQuery<
       );
     }
 
-    let selectedTargets = targets;
-    if (
+    const selectedTargets = this._selectColumns(
+      targets,
       relationConfig &&
-      typeof relationConfig === 'object' &&
-      'columns' in relationConfig
-    ) {
-      selectedTargets = this._selectColumns(
-        targets,
-        (relationConfig as any).columns,
-        this._getColumns(targetTableConfig)
-      );
-    }
+        typeof relationConfig === 'object' &&
+        'columns' in relationConfig
+        ? (relationConfig as any).columns
+        : undefined,
+      this._getColumns(targetTableConfig)
+    );
 
     const selectedTargetsByKey = new Map<string, any>();
     for (let i = 0; i < targets.length; i += 1) {
@@ -3810,7 +3894,7 @@ export class GelRelationalQuery<
 
   /**
    * Load many() relation (one-to-many)
-   * Example: users.posts where posts.authorId → users._id
+   * Example: users.posts where posts.authorId → users.id
    *
    * For many() relations, use the configured from/to fields to match rows.
    * Supports .through() for many-to-many relations via a junction table.
@@ -4127,25 +4211,20 @@ export class GelRelationalQuery<
       );
     }
 
-    let selectedTargets: any[] | undefined;
-    let selectedTargetsByKey: Map<string, any> | undefined;
-    if (
+    const selectedTargets = this._selectColumns(
+      targets,
       relationConfig &&
-      typeof relationConfig === 'object' &&
-      'columns' in relationConfig &&
-      targetTableConfig
-    ) {
-      selectedTargets = this._selectColumns(
-        targets,
-        (relationConfig as any).columns,
-        this._getColumns(targetTableConfig)
-      );
-      selectedTargetsByKey = new Map<string, any>();
-      for (let i = 0; i < targets.length; i += 1) {
-        const key = this._buildRelationKey(targets[i], targetFields);
-        if (key) {
-          selectedTargetsByKey.set(key, selectedTargets[i]);
-        }
+        typeof relationConfig === 'object' &&
+        'columns' in relationConfig
+        ? (relationConfig as any).columns
+        : undefined,
+      this._getColumns(targetTableConfig)
+    );
+    const selectedTargetsByKey = new Map<string, any>();
+    for (let i = 0; i < targets.length; i += 1) {
+      const key = this._buildRelationKey(targets[i], targetFields);
+      if (key) {
+        selectedTargetsByKey.set(key, selectedTargets[i]);
       }
     }
 
@@ -4156,13 +4235,7 @@ export class GelRelationalQuery<
         if (key) targetOrder.set(key, index);
       });
 
-      const targetsByKey = selectedTargetsByKey ?? new Map<string, any>();
-      if (!selectedTargetsByKey) {
-        for (const target of targets) {
-          const key = this._buildRelationKey(target, targetFields);
-          if (key) targetsByKey.set(key, target);
-        }
-      }
+      const targetsByKey = selectedTargetsByKey;
 
       for (const row of rows) {
         const sourceKey = this._buildRelationKey(row, sourceFields);
@@ -4279,11 +4352,15 @@ export class GelRelationalQuery<
   ): any[] {
     if (!columnsConfig) {
       // No column selection - return all columns
-      return rows;
+      return rows.map((row) => this._toPublicRow(row));
     }
 
     const columnKeys = tableColumns
-      ? new Set(Object.keys(tableColumns))
+      ? new Set(
+          Object.keys(tableColumns).map((key) =>
+            key === PUBLIC_ID_FIELD ? INTERNAL_ID_FIELD : key
+          )
+        )
       : undefined;
     const entries = Object.entries(columnsConfig).filter(
       ([, value]) => value !== undefined
@@ -4299,14 +4376,19 @@ export class GelRelationalQuery<
             selected[key] = row[key];
           }
         }
-        return selected;
+        return this._toPublicRow(selected);
       });
     }
 
     if (hasTrue) {
       const includeKeys = entries
         .filter(([, value]) => value === true)
-        .map(([key]) => key);
+        .map(([key]) => {
+          if (key === INTERNAL_ID_FIELD) {
+            throw new Error(ID_MIGRATION_MESSAGE);
+          }
+          return key === PUBLIC_ID_FIELD ? INTERNAL_ID_FIELD : key;
+        });
       return rows.map((row) => {
         const selected: any = {};
         for (const key of includeKeys) {
@@ -4321,13 +4403,18 @@ export class GelRelationalQuery<
             }
           }
         }
-        return selected;
+        return this._toPublicRow(selected);
       });
     }
 
     const excludeKeys = entries
       .filter(([, value]) => value === false)
-      .map(([key]) => key);
+      .map(([key]) => {
+        if (key === INTERNAL_ID_FIELD) {
+          throw new Error(ID_MIGRATION_MESSAGE);
+        }
+        return key === PUBLIC_ID_FIELD ? INTERNAL_ID_FIELD : key;
+      });
     return rows.map((row) => {
       const selected = { ...row };
       for (const key of excludeKeys) {
@@ -4335,7 +4422,7 @@ export class GelRelationalQuery<
           delete selected[key];
         }
       }
-      return selected;
+      return this._toPublicRow(selected);
     });
   }
 }

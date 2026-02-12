@@ -148,7 +148,7 @@ const page = await db.query.messages
       },
     },
   ])
-  .interleaveBy(['_creationTime', '_id'])
+  .interleaveBy(['_creationTime', 'id'])
   .paginate({ cursor: null, limit: 20 });
 ```
 

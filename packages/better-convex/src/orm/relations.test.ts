@@ -27,7 +27,7 @@ describe('M2 Relations Layer (v1)', () => {
         users: {
           profile: r.one.profiles({
             from: r.users.profileId,
-            to: r.profiles._id,
+            to: r.profiles.id,
           }),
         },
       }));
@@ -50,7 +50,7 @@ describe('M2 Relations Layer (v1)', () => {
       const relations = defineRelations({ users, posts }, (r) => ({
         users: {
           posts: r.many.posts({
-            from: r.users._id,
+            from: r.users.id,
             to: r.posts.authorId,
           }),
         },
@@ -78,7 +78,7 @@ describe('M2 Relations Layer (v1)', () => {
         posts: {
           author: r.one.users({
             from: r.posts.authorId,
-            to: r.users._id,
+            to: r.users.id,
           }),
         },
       }));
@@ -102,14 +102,14 @@ describe('M2 Relations Layer (v1)', () => {
       const relations = defineRelations({ users, posts }, (r) => ({
         users: {
           posts: r.many.posts({
-            from: r.users._id,
+            from: r.users.id,
             to: r.posts.authorId,
           }),
         },
         posts: {
           author: r.one.users({
             from: r.posts.authorId,
-            to: r.users._id,
+            to: r.users.id,
           }),
         },
       }));
@@ -156,7 +156,7 @@ describe('M2 Relations Layer (v1)', () => {
         posts: {
           author: r.one.users({
             from: r.posts.authorId,
-            to: r.users._id,
+            to: r.users.id,
           }),
         },
       }));
@@ -205,7 +205,7 @@ describe('M2 Relations Layer (v1)', () => {
         posts: {
           author: r.one.users({
             from: r.posts.authorId,
-            to: r.users._id,
+            to: r.users.id,
           }),
         },
       }));
@@ -232,9 +232,9 @@ describe('M2 Relations Layer (v1)', () => {
         defineRelations({ users, profiles }, (r) => ({
           users: {
             profile: r.one.profiles({
-              // Wrong table: using profiles._id as source
-              from: r.profiles._id,
-              to: r.profiles._id,
+              // Wrong table: using profiles.id as source
+              from: r.profiles.id,
+              to: r.profiles.id,
             }),
           },
         }));
@@ -251,7 +251,7 @@ describe('M2 Relations Layer (v1)', () => {
         users: {
           manager: r.one.users({
             from: r.users.managerId,
-            to: r.users._id,
+            to: r.users.id,
           }),
         },
       }));
@@ -278,23 +278,23 @@ describe('M2 Relations Layer (v1)', () => {
         posts: {
           author: r.one.users({
             from: r.posts.authorId,
-            to: r.users._id,
+            to: r.users.id,
             alias: 'authored',
           }),
           editor: r.one.users({
             from: r.posts.editorId,
-            to: r.users._id,
+            to: r.users.id,
             alias: 'edited',
           }),
         },
         users: {
           authoredPosts: r.many.posts({
-            from: r.users._id,
+            from: r.users.id,
             to: r.posts.authorId,
             alias: 'authored',
           }),
           editedPosts: r.many.posts({
-            from: r.users._id,
+            from: r.users.id,
             to: r.posts.editorId,
             alias: 'edited',
           }),
@@ -333,15 +333,15 @@ describe('M2 Relations Layer (v1)', () => {
         (r) => ({
           users: {
             groups: r.many.groups({
-              from: r.users._id.through(r.usersToGroups.userId),
-              to: r.groups._id.through(r.usersToGroups.groupId),
+              from: r.users.id.through(r.usersToGroups.userId),
+              to: r.groups.id.through(r.usersToGroups.groupId),
               alias: 'users-groups-direct',
             }),
           },
           groups: {
             users: r.many.users({
-              from: r.groups._id.through(r.usersToGroups.groupId),
-              to: r.users._id.through(r.usersToGroups.userId),
+              from: r.groups.id.through(r.usersToGroups.groupId),
+              to: r.users.id.through(r.usersToGroups.userId),
               alias: 'users-groups-direct',
             }),
           },
@@ -379,24 +379,24 @@ describe('M2 Relations Layer (v1)', () => {
           projects: {
             owner: r.one.users({
               from: r.projects.ownerId,
-              to: r.users._id,
+              to: r.users.id,
               alias: 'ProjectOwner',
             }),
             members: r.many.users({
-              from: r.projects._id.through(r.projectMembers.projectId),
-              to: r.users._id.through(r.projectMembers.userId),
+              from: r.projects.id.through(r.projectMembers.projectId),
+              to: r.users.id.through(r.projectMembers.userId),
               alias: 'ProjectMembers',
             }),
           },
           users: {
             ownedProjects: r.many.projects({
-              from: r.users._id,
+              from: r.users.id,
               to: r.projects.ownerId,
               alias: 'ProjectOwner',
             }),
             memberProjects: r.many.projects({
-              from: r.users._id.through(r.projectMembers.userId),
-              to: r.projects._id.through(r.projectMembers.projectId),
+              from: r.users.id.through(r.projectMembers.userId),
+              to: r.projects.id.through(r.projectMembers.projectId),
               alias: 'ProjectMembers',
             }),
           },
@@ -434,11 +434,11 @@ describe('M2 Relations Layer (v1)', () => {
         users: {
           manager: r.one.users({
             from: r.users.managerId,
-            to: r.users._id,
+            to: r.users.id,
             alias: 'manager',
           }),
           reports: r.many.users({
-            from: r.users._id,
+            from: r.users.id,
             to: r.users.managerId,
             alias: 'manager',
           }),

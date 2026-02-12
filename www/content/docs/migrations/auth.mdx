@@ -5,7 +5,7 @@ links:
   doc: https://github.com/get-convex/better-auth
 ---
 
-import { InfoIcon } from "lucide-react"
+import { AlertTriangle, InfoIcon } from "lucide-react"
 
 In this guide, we'll migrate from `@convex-dev/better-auth` (the component-based auth package) to `better-convex`. You'll remove the component pattern, update imports, and configure the new trigger system.
 
@@ -39,6 +39,55 @@ Next, we'll remove the Convex component configuration. This is the biggest archi
 <Callout icon={<InfoIcon />}>
 **Already in production?** Use the [migration component](https://www.convex.dev/components/migrations) to copy data from component tables to your app tables before deleting the `betterAuth` folder.
 </Callout>
+
+### Migrate component data to app namespace
+
+<Callout icon={<AlertTriangle />}>
+**Warning:** This ID remap flow is validated for the latest Convex document ID format (`id_v6`, footer version `0`). Older historical ID formats may exist and are not guaranteed by this script.
+</Callout>
+
+<Callout icon={<AlertTriangle />}>
+**IMPORTANT:** Importing with `--replace` is destructive and replaces all data in the target deployment.
+</Callout>
+
+**Prerequisite**
+- Push/deploy your new app schema first so destination auth tables exist in app namespace.
+- If those tables do not exist yet, migration/import fails with missing table ID errors.
+
+**1) Export a backup zip**
+
+```bash
+npx convex export --path ./snapshot.zip
+```
+
+**2) Install migration zip dependencies**
+
+```bash
+npm i -D yazl yauzl
+```
+
+**3) Run the migration utility (creates a new `migration.zip`)**
+
+```bash
+node --experimental-strip-types ./tooling/migrations/better-auth-component/cli.ts \
+  --snapshotZip ./snapshot.zip \
+  --outputZip ./migration.zip
+```
+
+Optional: migrate only specific tables:
+
+```bash
+node --experimental-strip-types ./tooling/migrations/better-auth-component/cli.ts \
+  --snapshotZip ./snapshot.zip \
+  --outputZip ./migration.zip \
+  --filters=user,jwks
+```
+
+**4) Import manually**
+
+```bash
+npx convex import ./migration.zip --replace -y
+```
 
 **Files to delete:**
 - `convex/betterAuth/` folder (entire directory)
@@ -148,6 +197,8 @@ This is the main migration. We'll replace the component-based client with direct
     import { internal } from "./_generated/api";
     import type { DataModel } from "./_generated/dataModel";
     import type { ActionCtx, MutationCtx, QueryCtx } from "./_generated/server";
+    import { getOrmCtx } from "../lib/orm";
+    import { registerTriggers } from "../lib/triggers";
     import authConfig from "./auth.config";
     import schema from "./schema";
 
@@ -155,12 +206,14 @@ This is the main migration. We'll replace the component-based client with direct
 
     // Reference internal auth functions (generated after first `npx convex dev`)
     const authFunctions: AuthFunctions = internal.auth;
+    const triggers = registerTriggers();
 
     // Create the auth client with triggers
     export const authClient = createClient<DataModel, typeof schema>({
       authFunctions,
       schema,
-      internalMutation, // Optional: custom mutation wrapper for triggers
+      dbTriggers: triggers, // Optional: trigger-wrapped db writes
+      context: getOrmCtx, // Optional: enrich auth mutation + trigger ctx once
       triggers: {
         user: {
           beforeCreate: async (_ctx, data) => {
@@ -223,7 +276,8 @@ This is the main migration. We'll replace the component-based client with direct
       getLatestJwks,
       rotateKeys,
     } = createApi(schema, createAuth, {
-      internalMutation, // Optional: same wrapper as createClient
+      dbTriggers: triggers, // Optional: same db trigger wrapper
+      context: getOrmCtx, // Optional: same context enrichment
     });
 
     // Generate trigger handlers
@@ -248,6 +302,7 @@ This is the main migration. We'll replace the component-based client with direct
 | Before | After |
 |--------|-------|
 | `createClient(components.betterAuth, {...})` | `createClient({ authFunctions, schema, triggers })` |
+| Trigger + ORM context setup | `dbTriggers` + `context` |
 | `authComponent.adapter(ctx)` | Two adapters: `httpAdapter()` and `adapter()` |
 | `authComponent.clientApi()` | `createApi()` generates internal functions |
 | No triggers | Built-in `triggers: { user, session }` |
@@ -257,7 +312,7 @@ This is the main migration. We'll replace the component-based client with direct
 </Callout>
 
 <Callout icon={<InfoIcon />}>
-**Custom mutation wrapper:** The optional `internalMutation` option wraps auth mutations to support custom logic like Convex Triggers.
+**Trigger wiring:** Use `dbTriggers` to run auth CRUD through `wrapDB`, then `context` for context enrichment.
 </Callout>
 
 ## Step 5: Add Polyfills
@@ -302,7 +357,8 @@ Import this at the top of your HTTP file (before other imports).
 
 ## Step 6: Update http.ts
 
-Update the Convex HTTP router to use Hono with the auth middleware.
+If you're not using cRPC, keep Convex's built-in `httpRouter` and use `registerRoutes`.
+Use Hono only when you need cRPC or Hono middleware.
 
 <Compare>
   <CompareItem title="Before (convex/http.ts)">
@@ -320,8 +376,26 @@ Update the Convex HTTP router to use Hono with the auth middleware.
   <CompareItem title="After (convex/functions/http.ts)">
     Update the HTTP router:
 
-    <Tabs groupId="router" items={["With cRPC", "Without cRPC"]} persist>
-      <Tab value="Without cRPC">
+    <Tabs groupId="router" items={["Convex", "Hono", "cRPC"]} persist>
+      <Tab value="Convex">
+        ```ts title="convex/functions/http.ts" showLineNumbers {1-4,6-13}
+        import '../lib/http-polyfills';
+        import { registerRoutes } from 'better-convex/auth';
+        import { httpRouter } from 'convex/server';
+        import { createAuth } from './auth';
+
+        const http = httpRouter();
+
+        registerRoutes(http, createAuth, {
+          cors: {
+            allowedOrigins: [process.env.SITE_URL!],
+          },
+        });
+
+        export default http;
+        ```
+      </Tab>
+      <Tab value="Hono">
         ```ts title="convex/functions/http.ts" showLineNumbers {1-5,9-18,21}
         import '../lib/http-polyfills';
         import { authMiddleware } from 'better-convex/auth';
@@ -349,7 +423,7 @@ Update the Convex HTTP router to use Hono with the auth middleware.
         export default new HttpRouterWithHono(app);
         ```
       </Tab>
-      <Tab value="With cRPC">
+      <Tab value="cRPC">
         ```ts title="convex/functions/http.ts" showLineNumbers {1-6,10-19,22}
         import '../lib/http-polyfills';
         import { authMiddleware } from 'better-convex/auth';
@@ -659,6 +733,7 @@ The component pattern provided several helper methods on `authComponent`. These 
 
 - [ ] **Dependencies:** Remove `@convex-dev/better-auth`, install `better-convex`
 - [ ] **convex.config.ts:** Remove `app.use(betterAuth)` line
+- [ ] **Component data:** Migrate `betterAuth` component data to app namespace before deletion
 - [ ] **betterAuth folder:** Delete the entire `convex/betterAuth/` directory
 - [ ] **auth.config.ts:** Add `jwks: process.env.JWKS` option
 - [ ] **auth.ts:** Rewrite using new `createClient` and `createApi` patterns

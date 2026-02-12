@@ -21,7 +21,7 @@ This guide compares Drizzle and the ORM side-by-side. It focuses on API mapping 
 - `findFirstOrThrow()` (Prisma-style sugar when a row must exist)
 
 **Different behavior:**
-- `_id` is auto-created (no manual `id` column)
+- `id` is auto-created (no manual `id` column)
 - Fields are nullable by default (`text()` yields `string | null`)
 - `columns` projection and string operators run post-fetch
 - Relation filters and ordering for `many()` run post-fetch
@@ -56,7 +56,7 @@ See [Migrate from native Convex](/docs/migrations/db) (for `ctx.db`) or [Migrate
 
 - [ ] Install `better-convex`
 - [ ] Convert table definitions to `convexTable()` with column builders (`text`, `integer`, `boolean`, `id`)
-- [ ] Replace manual `id` fields with Convex `_id`
+- [ ] Replace manual `id` fields with Convex `id`
 - [ ] Define relations using `defineRelations()` and `with`
 - [ ] Attach ORM to `ctx.orm` in context (create once)
 - [ ] Keep `where`, `orderBy`, `limit`, `offset` shapes the same
@@ -91,7 +91,7 @@ See [Migrate from native Convex](/docs/migrations/db) (for `ctx.db`) or [Migrate
     import { convexTable, text, integer, boolean, id } from 'better-convex/orm';
 
     const users = convexTable('users', {
-      // _id is auto-created as Id<'users'>
+      // id is auto-created as Id<'users'>
       name: text().notNull(),
       email: text().notNull(),
       age: integer(),
@@ -99,7 +99,7 @@ See [Migrate from native Convex](/docs/migrations/db) (for `ctx.db`) or [Migrate
     });
 
     const posts = convexTable('posts', {
-      // _id is auto-created as Id<'posts'>
+      // id is auto-created as Id<'posts'>
       title: text().notNull(),
       content: text().notNull(),
       published: boolean(),
@@ -110,7 +110,7 @@ See [Migrate from native Convex](/docs/migrations/db) (for `ctx.db`) or [Migrate
 </Compare>
 
 **Key changes:**
-- IDs are auto-created as `_id`
+- IDs are auto-created as `id`
 - Nullable by default unless `.notNull()` is used
 - Foreign keys are `id('table')`
 
@@ -145,7 +145,7 @@ See [Migrate from native Convex](/docs/migrations/db) (for `ctx.db`) or [Migrate
       posts: {
         author: r.one.users({
           from: r.posts.userId,
-          to: r.users._id,
+          to: r.users.id,
         }),
       },
     }));
@@ -176,11 +176,11 @@ See [Migrate from native Convex](/docs/migrations/db) (for `ctx.db`) or [Migrate
     const users = await ctx.orm.query.users.findMany({ limit: 50 });
 
     const user = await ctx.orm.query.users.findFirst({
-      where: { _id: userId },
+      where: { id: userId },
     });
 
     const requiredUser = await ctx.orm.query.users.findFirstOrThrow({
-      where: { _id: userId },
+      where: { id: userId },
     });
 
     // Schema: index('by_role').on(t.role) on users table
@@ -370,7 +370,7 @@ Recommended patterns:
 | Issue | Cause | Fix |
 |---|---|---|
 | **`ctx.orm` is missing** | ORM not attached to context | Attach ORM once (`createOrm({ schema }).db(ctx)`) |
-| **`id` vs `_id`** | SQL uses `id`, Convex uses `_id` | Use `_id` for primary keys |
+| **`id` vs `id`** | SQL uses `id`, Convex uses `id` | Use `id` for primary keys |
 | **Nullable fields** | Nullable by default | Add `.notNull()` |
 | **No SQL joins** | Convex is document-based | Use `with` relation loading |
 | **Custom SQL types** | Not available | Use app-level encoding |
@@ -391,7 +391,7 @@ The ORM exposes Drizzle-style helpers for runtime schema metadata:
 ```ts showLineNumbers
 import { getTableColumns, getTableConfig } from 'better-convex/orm';
 
-const columns = getTableColumns(users); // includes _id/_creationTime
+const columns = getTableColumns(users); // includes id/_creationTime
 const config = getTableConfig(users);   // indexes/unique/fks/rls/checks
 ```
 

@@ -180,7 +180,7 @@ describe('column hooks', () => {
       const [updated] = await orm
         .update(hookUsers)
         .set({ updatedAt: 'manual' })
-        .where(eq(hookUsers._id, user._id))
+        .where(eq(hookUsers.id, user.id))
         .returning();
 
       expect(hookUpdatedAtCalls).toBe(0);
@@ -199,14 +199,14 @@ describe('column hooks', () => {
       const updated = await orm
         .update(hookUsers)
         .set({})
-        .where(eq(hookUsers._id, user._id))
+        .where(eq(hookUsers.id, user.id))
         .returning();
 
       expect(updated).toHaveLength(0);
       expect(hookUpdatedAtCalls).toBe(0);
 
       const still = await orm.query.hook_users.findFirst({
-        where: { _id: user._id },
+        where: { id: user.id },
       });
       expect((still as any)?.updatedAt).toBe('initial');
     }));
@@ -223,14 +223,14 @@ describe('column hooks', () => {
       const updated = await orm
         .update(hookUsers)
         .set({ name: undefined })
-        .where(eq(hookUsers._id, user._id))
+        .where(eq(hookUsers.id, user.id))
         .returning();
 
       expect(updated).toHaveLength(0);
       expect(hookUpdatedAtCalls).toBe(0);
 
       const still = await orm.query.hook_users.findFirst({
-        where: { _id: user._id },
+        where: { id: user.id },
       });
       expect((still as any)?.name).toBe('Ada');
       expect((still as any)?.updatedAt).toBe('initial');
@@ -248,7 +248,7 @@ describe('column hooks', () => {
       const [updated] = await orm
         .update(hookUsers)
         .set({ nickname: unsetToken })
-        .where(eq(hookUsers._id, user._id))
+        .where(eq(hookUsers.id, user.id))
         .returning();
 
       expect(hookUpdatedAtCalls).toBe(1);
@@ -257,7 +257,7 @@ describe('column hooks', () => {
       expect('nickname' in (updated as any)).toBe(false);
 
       const still = await orm.query.hook_users.findFirst({
-        where: { _id: user._id },
+        where: { id: user.id },
       });
       expect('nickname' in (still as any)).toBe(false);
     }));
@@ -274,7 +274,7 @@ describe('column hooks', () => {
           .update(hookUsers)
           // Bypass type safety to assert the runtime guard.
           .set({ touchedAt: unsetToken } as any)
-          .where(eq(hookUsers._id, user._id))
+          .where(eq(hookUsers.id, user.id))
           .returning()
       ).toThrow(/not null|not nullable/i);
     }));
@@ -305,7 +305,7 @@ describe('check constraints enforcement', () => {
         orm
           .update(checkUsers)
           .set({ age: 18 })
-          .where(eq(checkUsers._id, user._id))
+          .where(eq(checkUsers.id, user.id))
           .returning()
       ).rejects.toThrow(/check/i);
     }));

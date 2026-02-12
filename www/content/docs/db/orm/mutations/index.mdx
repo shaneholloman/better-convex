@@ -58,7 +58,7 @@ const [user] = await ctx.orm
 const [partial] = await ctx.orm
   .insert(users)
   .values({ name: 'Ada', email: 'ada@example.com' })
-  .returning({ id: users._id, email: users.email });
+  .returning({ id: users.id, email: users.email });
 ```
 
 <Callout icon={<InfoIcon />}>
@@ -71,7 +71,7 @@ const [partial] = await ctx.orm
 
 ```ts showLineNumbers
 // Target specific rows with where
-await ctx.orm.update(users).set({ name: 'Updated' }).where(eq(users._id, userId));
+await ctx.orm.update(users).set({ name: 'Updated' }).where(eq(users.id, userId));
 
 // Operate on ALL rows (use with care)
 await ctx.orm.delete(users).allowFullScan();
@@ -128,7 +128,7 @@ For more options including `onConflictDoNothing` and multi-row inserts, see [Ins
 
 ## Update
 
-Here's a basic update that renames a user by `_id`:
+Here's a basic update that renames a user by `id`:
 
 ```ts showLineNumbers title="convex/functions/users.ts"
 export const updateUserName = publicMutation
@@ -137,7 +137,7 @@ export const updateUserName = publicMutation
     await ctx.orm
       .update(users)
       .set({ name: input.newName })
-      .where(eq(users._id, input.userId));
+      .where(eq(users.id, input.userId));
   });
 ```
 
@@ -145,13 +145,13 @@ For paginated updates, async batching, and more, see [Update](/docs/db/orm/updat
 
 ## Delete
 
-Here's a basic delete that removes a user by `_id`:
+Here's a basic delete that removes a user by `id`:
 
 ```ts showLineNumbers title="convex/functions/users.ts"
 export const deleteUser = publicMutation
   .input(z.object({ userId: zid('users') }))
   .mutation(async ({ ctx, input }) => {
-    await ctx.orm.delete(users).where(eq(users._id, input.userId));
+    await ctx.orm.delete(users).where(eq(users.id, input.userId));
   });
 ```
 

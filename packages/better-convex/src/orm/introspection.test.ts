@@ -22,7 +22,7 @@ test('getTableColumns includes system fields', () => {
 
   expect(columns).toHaveProperty('name');
   expect(columns).toHaveProperty('email');
-  expect(columns).toHaveProperty('_id');
+  expect(columns).toHaveProperty('id');
   expect(columns).toHaveProperty('_creationTime');
 });
 
@@ -70,9 +70,9 @@ test('getTableColumns synthesizes system fields when table metadata is partial',
 
   const columns = getTableColumns(table);
   expect(columns).toHaveProperty('name');
-  expect(columns).toHaveProperty('_id');
+  expect(columns).toHaveProperty('id');
   expect(columns).toHaveProperty('_creationTime');
 
-  expect((columns._id as any).config.table).toBe(table);
+  expect((columns.id as any).config.table).toBe(table);
   expect((columns._creationTime as any).config.table).toBe(table);
 });

@@ -93,7 +93,7 @@ describe('uniqueIndex enforcement', () => {
         orm
           .update(uniqueUsers)
           .set({ email: first.email })
-          .where(eq(uniqueUsers._id, second._id))
+          .where(eq(uniqueUsers.id, second.id))
           .returning()
       ).rejects.toThrow(/unique/i);
     }));

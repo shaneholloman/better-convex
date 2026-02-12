@@ -16,19 +16,19 @@
       "one_to_many_relation": {
         "title": "User has many posts (one-to-many)",
         "tags": ["schema", "relations", "one-to-many"],
-        "code": "const usersRelations = relations(users, ({ many }) => ({\n  posts: many(posts),\n}));\n\nconst postsRelations = relations(posts, ({ one }) => ({\n  author: one(users, {\n    fields: [posts.userId],\n    references: [users._id],\n  }),\n}));",
+        "code": "const usersRelations = relations(users, ({ many }) => ({\n  posts: many(posts),\n}));\n\nconst postsRelations = relations(posts, ({ one }) => ({\n  author: one(users, {\n    fields: [posts.userId],\n    references: [users.id],\n  }),\n}));",
         "docUrl": "/docs/db/orm/relations-deep-dive#one-to-many-relations"
       },
       "one_to_one_relation": {
         "title": "User has one profile (one-to-one)",
         "tags": ["schema", "relations", "one-to-one"],
-        "code": "const usersRelations = relations(users, ({ one }) => ({\n  profile: one(profiles),\n}));\n\nconst profilesRelations = relations(profiles, ({ one }) => ({\n  user: one(users, {\n    fields: [profiles.userId],\n    references: [users._id],\n  }),\n}));",
+        "code": "const usersRelations = relations(users, ({ one }) => ({\n  profile: one(profiles),\n}));\n\nconst profilesRelations = relations(profiles, ({ one }) => ({\n  user: one(users, {\n    fields: [profiles.userId],\n    references: [users.id],\n  }),\n}));",
         "docUrl": "/docs/db/orm/relations-deep-dive#one-to-one-relations"
       },
       "self_referencing_relation": {
         "title": "Self-referencing relation (categories with parent)",
         "tags": ["schema", "relations", "self-referencing"],
-        "code": "const categoriesRelations = relations(categories, ({ one, many }) => ({\n  parent: one(categories, {\n    fields: [categories.parentId],\n    references: [categories._id],\n  }),\n  children: many(categories),\n}));",
+        "code": "const categoriesRelations = relations(categories, ({ one, many }) => ({\n  parent: one(categories, {\n    fields: [categories.parentId],\n    references: [categories.id],\n  }),\n  children: many(categories),\n}));",
         "docUrl": "/docs/db/orm/relations-deep-dive#self-referencing-relations"
       },
       "many_to_many_junction": {
@@ -82,7 +82,7 @@
       "infer_select_type": {
         "title": "Infer select type from table",
         "tags": ["types", "inference", "$inferSelect"],
-        "code": "type User = typeof users.$inferSelect;\n// { _id: Id<'users'>, name: string, email: string, _creationTime: number }",
+        "code": "type User = typeof users.$inferSelect;\n// { id: Id<'users'>, name: string, email: string, _creationTime: number }",
         "docUrl": "/docs/db/orm/type-safety#type-extraction"
       },
       "infer_insert_type": {

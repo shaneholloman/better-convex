@@ -38,7 +38,7 @@ const membershipsCascade = convexTable(
   },
   (t) => [
     index('by_user').on(t.userId),
-    foreignKey({ columns: [t.userId], foreignColumns: [users._id] }).onDelete(
+    foreignKey({ columns: [t.userId], foreignColumns: [users.id] }).onDelete(
       'cascade'
     ),
   ]
@@ -51,7 +51,7 @@ const membershipsRestrict = convexTable(
   },
   (t) => [
     index('by_user').on(t.userId),
-    foreignKey({ columns: [t.userId], foreignColumns: [users._id] }).onDelete(
+    foreignKey({ columns: [t.userId], foreignColumns: [users.id] }).onDelete(
       'restrict'
     ),
   ]
@@ -64,7 +64,7 @@ const membershipsSetNull = convexTable(
   },
   (t) => [
     index('by_user').on(t.userId),
-    foreignKey({ columns: [t.userId], foreignColumns: [users._id] }).onDelete(
+    foreignKey({ columns: [t.userId], foreignColumns: [users.id] }).onDelete(
       'set null'
     ),
   ]
@@ -78,7 +78,7 @@ const membershipsSetNullLarge = convexTable(
   },
   (t) => [
     index('by_user').on(t.userId),
-    foreignKey({ columns: [t.userId], foreignColumns: [users._id] }).onDelete(
+    foreignKey({ columns: [t.userId], foreignColumns: [users.id] }).onDelete(
       'set null'
     ),
   ]
@@ -132,7 +132,7 @@ const membershipsNoIndex = convexTable(
     userId: id('fk_action_users').notNull(),
   },
   (t) => [
-    foreignKey({ columns: [t.userId], foreignColumns: [users._id] }).onDelete(
+    foreignKey({ columns: [t.userId], foreignColumns: [users.id] }).onDelete(
       'cascade'
     ),
   ]
@@ -416,12 +416,12 @@ describe('foreign key actions', () => {
 
       const [member] = await orm
         .insert(membershipsCascade)
-        .values({ userId: user._id })
+        .values({ userId: user.id })
         .returning();
 
-      await orm.delete(users).where(eq(users._id, user._id)).execute();
+      await orm.delete(users).where(eq(users.id, user.id)).execute();
 
-      expect(await db.get(member._id)).toBeNull();
+      expect(await db.get(member.id)).toBeNull();
     }));
 
   it('restricts deletes', async () =>
@@ -433,11 +433,11 @@ describe('foreign key actions', () => {
 
       await orm
         .insert(membershipsRestrict)
-        .values({ userId: user._id })
+        .values({ userId: user.id })
         .returning();
 
       await expect(
-        orm.delete(users).where(eq(users._id, user._id)).execute()
+        orm.delete(users).where(eq(users.id, user.id)).execute()
       ).rejects.toThrow(/restrict/i);
     }));
 
@@ -450,12 +450,12 @@ describe('foreign key actions', () => {
 
       const [member] = await orm
         .insert(membershipsSetNull)
-        .values({ userId: user._id })
+        .values({ userId: user.id })
         .returning();
 
-      await orm.delete(users).where(eq(users._id, user._id)).execute();
+      await orm.delete(users).where(eq(users.id, user.id)).execute();
 
-      const updated = await db.get(member._id);
+      const updated = await db.get(member.id);
       expect(updated?.userId ?? null).toBeNull();
     }));
 
@@ -471,9 +471,9 @@ describe('foreign key actions', () => {
         .values({ userSlug: 'ada' })
         .returning();
 
-      await orm.delete(users).where(eq(users._id, user._id)).execute();
+      await orm.delete(users).where(eq(users.id, user.id)).execute();
 
-      const updated = await db.get(member._id);
+      const updated = await db.get(member.id);
       expect(updated?.userSlug).toBe('unknown');
     }));
 
@@ -492,10 +492,10 @@ describe('foreign key actions', () => {
       await orm
         .update(users)
         .set({ slug: 'ada-lovelace' })
-        .where(eq(users._id, user._id))
+        .where(eq(users.id, user.id))
         .execute();
 
-      const updated = await db.get(member._id);
+      const updated = await db.get(member.id);
       expect(updated?.userSlug).toBe('ada-lovelace');
     }));
 
@@ -513,7 +513,7 @@ describe('foreign key actions', () => {
 
         await orm
           .delete(rlsParents)
-          .where(eq(rlsParents._id, parentId))
+          .where(eq(rlsParents.id, parentId))
           .execute();
 
         const parent = await db.get(parentId);
@@ -538,7 +538,7 @@ describe('foreign key actions', () => {
 
         await orm
           .delete(rlsParents)
-          .where(eq(rlsParents._id, parentId))
+          .where(eq(rlsParents.id, parentId))
           .execute();
 
         const child = await db.get(childId);
@@ -562,7 +562,7 @@ describe('foreign key actions', () => {
         await orm
           .update(rlsParents)
           .set({ slug: 'root-b' })
-          .where(eq(rlsParents._id, parentId))
+          .where(eq(rlsParents.id, parentId))
           .execute();
 
         const child = await db.get(childId);
@@ -587,7 +587,7 @@ describe('foreign key actions', () => {
         orm
           .update(users)
           .set({ slug: 'ada-lovelace' })
-          .where(eq(users._id, user._id))
+          .where(eq(users.id, user.id))
           .execute()
       ).rejects.toThrow(/restrict/i);
     }));
@@ -614,11 +614,11 @@ describe('foreign key actions', () => {
 
         await orm
           .insert(membershipsNoIndex)
-          .values({ userId: user._id })
+          .values({ userId: user.id })
           .returning();
 
         await expect(
-          orm.delete(users).where(eq(users._id, user._id)).execute()
+          orm.delete(users).where(eq(users.id, user.id)).execute()
         ).rejects.toThrow(/index/i);
       }
     );
@@ -634,13 +634,13 @@ describe('foreign key actions', () => {
       await orm
         .insert(membershipsCascade)
         .values([
-          { userId: user._id },
-          { userId: user._id },
-          { userId: user._id },
+          { userId: user.id },
+          { userId: user.id },
+          { userId: user.id },
         ]);
 
       await expect(
-        orm.delete(users).where(eq(users._id, user._id)).execute()
+        orm.delete(users).where(eq(users.id, user.id)).execute()
       ).rejects.toThrow(/mutationMaxRows|matched more than|exceed/i);
     }));
 
@@ -663,7 +663,7 @@ describe('foreign key actions', () => {
         orm
           .update(users)
           .set({ slug: 'ada-lovelace' })
-          .where(eq(users._id, user._id))
+          .where(eq(users.id, user.id))
           .execute()
       ).rejects.toThrow(/mutationMaxRows|matched more than|exceed/i);
     }));
@@ -678,16 +678,16 @@ describe('foreign key actions', () => {
       await orm
         .insert(membershipsCascade)
         .values([
-          { userId: user._id },
-          { userId: user._id },
-          { userId: user._id },
+          { userId: user.id },
+          { userId: user.id },
+          { userId: user.id },
         ]);
 
-      await orm.delete(users).where(eq(users._id, user._id)).execute();
+      await orm.delete(users).where(eq(users.id, user.id)).execute();
 
       const remaining = await db
         .query('fk_action_memberships_cascade')
-        .withIndex('by_user', (q) => q.eq('userId', user._id))
+        .withIndex('by_user', (q) => q.eq('userId', user.id))
         .collect();
       expect(remaining).toHaveLength(0);
     }));
@@ -719,22 +719,22 @@ describe('foreign key actions', () => {
         await orm
           .insert(membershipsCascade)
           .values([
-            { userId: user._id },
-            { userId: user._id },
-            { userId: user._id },
+            { userId: user.id },
+            { userId: user.id },
+            { userId: user.id },
           ]);
 
-        await orm.delete(users).where(eq(users._id, user._id)).execute();
+        await orm.delete(users).where(eq(users.id, user.id)).execute();
 
         while (queue.length > 0) {
           const args = queue.shift();
           await worker({ db, scheduler: scheduler as any }, args);
         }
 
-        expect(await db.get(user._id)).toBeNull();
+        expect(await db.get(user.id)).toBeNull();
         const remaining = await db
           .query('fk_action_memberships_cascade')
-          .withIndex('by_user', (q) => q.eq('userId', user._id))
+          .withIndex('by_user', (q) => q.eq('userId', user.id))
           .collect();
         expect(remaining).toHaveLength(0);
       },
@@ -777,7 +777,7 @@ describe('foreign key actions', () => {
         await orm
           .update(users)
           .set({ slug: 'ada-lovelace' })
-          .where(eq(users._id, user._id))
+          .where(eq(users.id, user.id))
           .execute();
 
         while (queue.length > 0) {
@@ -822,14 +822,14 @@ describe('foreign key actions', () => {
         await orm
           .insert(membershipsSetNull)
           .values([
-            { userId: user._id },
-            { userId: user._id },
-            { userId: user._id },
-            { userId: user._id },
-            { userId: user._id },
+            { userId: user.id },
+            { userId: user.id },
+            { userId: user.id },
+            { userId: user.id },
+            { userId: user.id },
           ]);
 
-        await orm.delete(users).where(eq(users._id, user._id)).execute();
+        await orm.delete(users).where(eq(users.id, user.id)).execute();
 
         const firstContinuation = queue.shift();
         expect(firstContinuation).toBeDefined();
@@ -870,13 +870,13 @@ describe('foreign key actions', () => {
         await orm
           .insert(membershipsCascade)
           .values([
-            { userId: user._id },
-            { userId: user._id },
-            { userId: user._id },
-            { userId: user._id },
+            { userId: user.id },
+            { userId: user.id },
+            { userId: user.id },
+            { userId: user.id },
           ]);
 
-        await orm.delete(users).where(eq(users._id, user._id)).execute();
+        await orm.delete(users).where(eq(users.id, user.id)).execute();
 
         const firstContinuation = queue.shift();
         expect(firstContinuation).toBeDefined();
@@ -914,17 +914,17 @@ describe('foreign key actions', () => {
         await orm
           .insert(membershipsSetNull)
           .values([
-            { userId: user._id },
-            { userId: user._id },
-            { userId: user._id },
-            { userId: user._id },
+            { userId: user.id },
+            { userId: user.id },
+            { userId: user.id },
+            { userId: user.id },
           ]);
 
-        await orm.delete(users).where(eq(users._id, user._id)).execute();
+        await orm.delete(users).where(eq(users.id, user.id)).execute();
 
         const remainingWithUserId = await db
           .query('fk_action_memberships_null')
-          .withIndex('by_user', (q) => q.eq('userId', user._id))
+          .withIndex('by_user', (q) => q.eq('userId', user.id))
           .collect();
         expect(remainingWithUserId).toHaveLength(1);
         expect(queue.length).toBeGreaterThan(0);
@@ -954,16 +954,16 @@ describe('foreign key actions', () => {
 
         const payload = 'x'.repeat(3000);
         await orm.insert(membershipsSetNullLarge).values([
-          { userId: user._id, payload },
-          { userId: user._id, payload },
-          { userId: user._id, payload },
+          { userId: user.id, payload },
+          { userId: user.id, payload },
+          { userId: user.id, payload },
         ]);
 
-        await orm.delete(users).where(eq(users._id, user._id)).execute();
+        await orm.delete(users).where(eq(users.id, user.id)).execute();
 
         const remainingWithUserId = await db
           .query('fk_action_memberships_null_large')
-          .withIndex('by_user', (q) => q.eq('userId', user._id))
+          .withIndex('by_user', (q) => q.eq('userId', user.id))
           .collect();
 
         expect(remainingWithUserId).toHaveLength(2);
@@ -991,13 +991,13 @@ describe('foreign key actions', () => {
 
           await orm
             .insert(membershipsSetNull)
-            .values([{ userId: user._id }, { userId: user._id }]);
+            .values([{ userId: user.id }, { userId: user.id }]);
           await orm.insert(membershipsSetNullLarge).values([
-            { userId: user._id, payload: 'a' },
-            { userId: user._id, payload: 'b' },
+            { userId: user.id, payload: 'a' },
+            { userId: user.id, payload: 'b' },
           ]);
 
-          await orm.delete(users).where(eq(users._id, user._id)).execute();
+          await orm.delete(users).where(eq(users.id, user.id)).execute();
         },
         { scheduler: scheduler as any, scheduledMutationBatch }
       )
@@ -1013,9 +1013,9 @@ describe('soft and scheduled deletes', () => {
         .values({ slug: 'ada' })
         .returning();
 
-      await orm.delete(users).where(eq(users._id, user._id)).soft().execute();
+      await orm.delete(users).where(eq(users.id, user.id)).soft().execute();
 
-      const updated = await db.get(user._id);
+      const updated = await db.get(user.id);
       expect(updated?.deletionTime).toBeTypeOf('number');
     }));
 
@@ -1036,15 +1036,15 @@ describe('soft and scheduled deletes', () => {
 
         await orm
           .delete(users)
-          .where(eq(users._id, user._id))
+          .where(eq(users.id, user.id))
           .scheduled({ delayMs: 500 })
           .execute();
 
-        const updated = await db.get(user._id);
+        const updated = await db.get(user.id);
         expect(updated?.deletionTime).toBeTypeOf('number');
         expect(scheduler.runAfter).toHaveBeenCalledWith(500, scheduledDelete, {
           table: 'fk_action_users',
-          id: user._id,
+          id: user.id,
           cascadeMode: 'hard',
           deletionTime: updated?.deletionTime,
         });
@@ -1076,7 +1076,7 @@ describe('soft and scheduled deletes', () => {
 
         await orm
           .delete(users)
-          .where(eq(users._id, user._id))
+          .where(eq(users.id, user.id))
           .scheduled({ delayMs: 500 })
           .execute();
 
@@ -1084,7 +1084,7 @@ describe('soft and scheduled deletes', () => {
         expect(scheduledArgs).toBeDefined();
         expect(scheduledArgs.deletionTime).toBeTypeOf('number');
 
-        await db.patch('fk_action_users', user._id, {
+        await db.patch('fk_action_users', user.id, {
           deletionTime: undefined,
         });
         await scheduledDeleteWorker(
@@ -1092,7 +1092,7 @@ describe('soft and scheduled deletes', () => {
           scheduledArgs
         );
 
-        expect(await db.get(user._id)).not.toBeNull();
+        expect(await db.get(user.id)).not.toBeNull();
       },
       { scheduler, scheduledDelete, scheduledMutationBatch }
     );
@@ -1130,16 +1130,16 @@ describe('soft and scheduled deletes', () => {
         await orm
           .insert(membershipsCascade)
           .values([
-            { userId: user._id },
-            { userId: user._id },
-            { userId: user._id },
+            { userId: user.id },
+            { userId: user.id },
+            { userId: user.id },
           ]);
 
         await scheduledDeleteWorker(
           { db, scheduler: scheduler as any } as any,
           {
             table: 'fk_action_users',
-            id: user._id,
+            id: user.id,
             cascadeMode: 'hard',
           }
         );
@@ -1149,10 +1149,10 @@ describe('soft and scheduled deletes', () => {
           await scheduledWorker({ db, scheduler: scheduler as any }, args);
         }
 
-        expect(await db.get(user._id)).toBeNull();
+        expect(await db.get(user.id)).toBeNull();
         const remaining = await db
           .query('fk_action_memberships_cascade')
-          .withIndex('by_user', (q) => q.eq('userId', user._id))
+          .withIndex('by_user', (q) => q.eq('userId', user.id))
           .collect();
         expect(remaining).toHaveLength(0);
       },

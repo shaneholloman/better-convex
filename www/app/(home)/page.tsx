@@ -124,8 +124,10 @@ function SchemaCode() {
         lsp: 'const users: ConvexTable<"users">',
       })}{' '}
       {op('=')} {fn('convexTable')}({str("'users'")}, {'{\n'}
-      {'  '}{pr('name')}: {fn('text')}().{fn('notNull')}(),{'\n'}
-      {'  '}{pr('email')}: {fn('text')}().{fn('notNull')}(),{'\n'}
+      {'  '}
+      {pr('name')}: {fn('text')}().{fn('notNull')}(),{'\n'}
+      {'  '}
+      {pr('email')}: {fn('text')}().{fn('notNull')}(),{'\n'}
       {'}'});
       {'\n'}
       {'\n'}
@@ -135,10 +137,14 @@ function SchemaCode() {
         lsp: 'const posts: ConvexTable<"posts">',
       })}{' '}
       {op('=')} {fn('convexTable')}({str("'posts'")}, {'{\n'}
-      {'  '}{pr('title')}: {fn('text')}().{fn('notNull')}(),{'\n'}
-      {'  '}{pr('published')}: {fn('boolean')}(),{'\n'}
-      {'  '}{pr('userId')}: {fn('id')}({str("'users'")}).{fn('notNull')}(),{'\n'}
-      {'}'}, ({pr('t')}) {op('=>')} [{fn('index')}({str("'by_user'")}).{fn('on')}({pr('t')}.{pr('userId')})]);
+      {'  '}
+      {pr('title')}: {fn('text')}().{fn('notNull')}(),{'\n'}
+      {'  '}
+      {pr('published')}: {fn('boolean')}(),{'\n'}
+      {'  '}
+      {pr('userId')}: {fn('id')}({str("'users'")}).{fn('notNull')}(),{'\n'}
+      {'}'}, ({pr('t')}) {op('=>')} [{fn('index')}({str("'by_user'")}).
+      {fn('on')}({pr('t')}.{pr('userId')})]);
       {'\n'}
       {'\n'}
       {kw('export const ')}
@@ -146,12 +152,15 @@ function SchemaCode() {
       {pr('users')}, {pr('posts')}
       {' }'}, ({pr('r')}) {op('=>')} ({'{'}
       {'\n'}
-      {'  '}{pr('users')}: {'{ '}{pr('posts')}: {pr('r')}.{pr('many')}.{fn('posts')}(){' }'},
-      {'\n'}
-      {'  '}{pr('posts')}: {'{\n'}
-      {'    '}{pr('author')}: {pr('r')}.{pr('one')}.{fn('users')}({'{ '}
-      {pr('from')}: {pr('r')}.{pr('posts')}.{pr('userId')},{' '}
-      {pr('to')}: {pr('r')}.{pr('users')}.{pr('_id')}
+      {'  '}
+      {pr('users')}: {'{ '}
+      {pr('posts')}: {pr('r')}.{pr('many')}.{fn('posts')}(){' }'},{'\n'}
+      {'  '}
+      {pr('posts')}: {'{\n'}
+      {'    '}
+      {pr('author')}: {pr('r')}.{pr('one')}.{fn('users')}({'{ '}
+      {pr('from')}: {pr('r')}.{pr('posts')}.{pr('userId')}, {pr('to')}:{' '}
+      {pr('r')}.{pr('users')}.{pr('id')}
       {' }'}),
       {'\n'}
       {'  }'},{'\n'}
@@ -188,28 +197,27 @@ function Step1Code() {
       })}
       {' }'}) {op('=>')} {'{'}
       {'\n'}
-      <PopoverBox indent={12}>{'input: { limit?: number }'}</PopoverBox>
+      <PopoverBox indent={22}>{'input: { limit?: number }'}</PopoverBox>
       {'\n'}
       {'    '}
       {kw('return ')}
-      {pr('ctx')}.{pr('orm')}.{pr('query')}.{pr('posts')}.
-      {T({
-        children: fn('findMany'),
-        lsp: 'findMany(opts): Promise<Post[]>',
-        showPopover: true,
-      })}
+      {pr('ctx')}.{pr('orm')}.{pr('query')}.{pr('posts')}.{fn('findMany')}
       {'({'}
       {'\n'}
-      <PopoverBox indent={6}>{'findMany(opts): Promise<Post[]>'}</PopoverBox>
-      {'\n'}
-      {'      '}{pr('where')}: {'{ '}{pr('published')}: {_num('true')}{' }'},
-      {'\n'}
-      {'      '}{pr('orderBy')}: {'{ '}{pr('_creationTime')}: {str("'desc'")}{' }'},
-      {'\n'}
-      {'      '}{pr('limit')}: {pr('input')}.{pr('limit')} {op('??')} {_num('10')},
-      {'\n'}
-      {'      '}{pr('with')}: {'{ '}{pr('author')}: {_num('true')}{' }'},
-      {'\n'}
+      {'      '}
+      {pr('where')}: {'{ '}
+      {pr('published')}: {_num('true')}
+      {' }'},{'\n'}
+      {'      '}
+      {pr('orderBy')}: {'{ '}
+      {pr('_creationTime')}: {str("'desc'")}
+      {' }'},{'\n'}
+      {'      '}
+      {pr('limit')}: {pr('input')}.{pr('limit')} {op('??')} {_num('10')},{'\n'}
+      {'      '}
+      {pr('with')}: {'{ '}
+      {pr('author')}: {_num('true')}
+      {' }'},{'\n'}
       {'    }'});
       {'\n'}
       {'  }'});
@@ -434,7 +442,7 @@ function Features() {
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {features.map((feature) => (
             <Link
-              className="-m-4 group rounded-xl p-4 transition-colors hover:bg-fd-accent/50"
+              className="group -m-4 rounded-xl p-4 transition-colors hover:bg-fd-accent/50"
               href={feature.href}
               key={feature.title}
             >

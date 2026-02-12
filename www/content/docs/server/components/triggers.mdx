@@ -55,9 +55,9 @@ export const registerTriggers = () => {
 
 ## Wiring with cRPC
 
-Here's where triggers shine. Wrap mutations to apply triggers automatically:
+Here's where triggers shine. Pass `triggers` once in `.create(...)` and it applies to `mutation` + `internalMutation` automatically:
 
-```ts title="convex/lib/crpc.ts" showLineNumbers {1,3,8-14,16-22}
+```ts title="convex/lib/crpc.ts" showLineNumbers {1,3,8-14,16-23}
 import { withOrm } from './orm';
 import { registerTriggers } from './triggers';
 
@@ -67,20 +67,13 @@ const c = initCRPC
   .dataModel<DataModel>()
   .context({
     query: (ctx) => withOrm(ctx),
-    mutation: (ctx) => withOrm(triggers.wrapDB(ctx)),
+    mutation: (ctx) => withOrm(ctx),
   })
-  .create({
-    query,
-    internalQuery,
-    mutation,
-    internalMutation,
-    action,
-    internalAction,
-  });
+  .create({ triggers });
 ```
 
 <Callout icon={<InfoIcon />}>
-**Note:** The `any` types are required because the handler wrapper intercepts the internal cRPC types. This is safe as the types flow through correctly at runtime.
+This removes manual `mutation: (handler: any) => ...` wrappers in app code.
 </Callout>
 
 ## Trigger Types
@@ -378,31 +371,24 @@ triggers.register('votes', counter.trigger('voteCount'));
 
 ## Better Auth Integration
 
-For auth operations to trigger side effects, pass the wrapped mutation:
+For auth operations to trigger side effects, pass your trigger registry directly:
 
-```ts title="convex/functions/auth.ts" showLineNumbers {1-2,4,6-10,12-15}
-import { customCtx, customMutation } from 'convex-helpers/server/customFunctions';
-import { internalMutation } from './_generated/server';
+```ts title="convex/functions/auth.ts" showLineNumbers {1,3-4,6-17,19-23}
 import { registerTriggers } from './lib/triggers';
+import { getOrmCtx } from './lib/orm';
 
-const triggers = registerTriggers();
-
-// Wrap internalMutation with triggers for Better Auth
-export const internalMutationWithTriggers = customMutation(
-  internalMutation,
-  customCtx(async (ctx) => ({
-    db: triggers.wrapDB(ctx).db,
-  }))
-);
+const dbTriggers = registerTriggers();
 
 // Use in createClient and createApi
 export const authClient = createClient({
   // ...
-  internalMutation: internalMutationWithTriggers,
+  dbTriggers,
+  context: getOrmCtx,
 });
 
 export const { create, findOne, ... } = createApi(schema, createAuth, {
-  internalMutation: internalMutationWithTriggers,
+  dbTriggers,
+  context: getOrmCtx,
 });
 ```
 
@@ -418,15 +404,15 @@ Triggers only run when using wrapped mutations:
 // ✅ CORRECT: Import from your functions file
 import { mutation } from './lib/crpc';
 
-// ❌ WRONG: Direct import bypasses triggers
-import { mutation } from './_generated/server';
+// ❌ WRONG: Direct generic import bypasses triggers
+import { mutation } from 'convex/server';
 ```
 
 ### When Triggers DON'T Run
 
 <Callout icon={<InfoIcon />}>
 **Warning:** Triggers will NOT execute when:
-- Using unwrapped mutations (direct `_generated/server` imports)
+- Using unwrapped mutations (direct `convex/server` imports)
 - Modifying data in the Convex dashboard
 - Using `npx convex import`
 - Using streaming import

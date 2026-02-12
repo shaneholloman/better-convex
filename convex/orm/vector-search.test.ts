@@ -48,7 +48,7 @@ test('vector search returns rows in provider order', async () => {
       },
     });
 
-    expect(rows.map((row) => row._id)).toEqual([secondPostId, firstPostId]);
+    expect(rows.map((row) => row.id)).toEqual([secondPostId, firstPostId]);
   });
 });
 
@@ -149,7 +149,7 @@ test('vector search skips missing docs from provider results', async () => {
     });
 
     expect(rows).toHaveLength(1);
-    expect(rows[0]?._id).toBe(keptPostId);
+    expect(rows[0]?.id).toBe(keptPostId);
   });
 });
 

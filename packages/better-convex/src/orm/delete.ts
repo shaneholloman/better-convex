@@ -11,6 +11,7 @@ import {
   getMutationAsyncDelayMs,
   getMutationCollectionLimits,
   getMutationExecutionMode,
+  normalizePublicSystemFields,
   getOrmContext,
   getTableDeleteConfig,
   getTableName,
@@ -511,10 +512,12 @@ export class ConvexDeleteBuilder<
       visited.add(`${tableName}:${(row as any)._id}`);
       if (this.returningFields) {
         if (this.returningFields === true) {
-          results.push(row as any);
+          results.push(normalizePublicSystemFields(row as any));
         } else {
           results.push(
-            selectReturningRow(row as any, this.returningFields as any)
+            normalizePublicSystemFields(
+              selectReturningRow(row as any, this.returningFields as any)
+            )
           );
         }
       }

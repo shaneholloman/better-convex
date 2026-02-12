@@ -47,7 +47,7 @@ export const relations = defineRelations({ users, posts }, (r) => ({
   posts: {
     author: r.one.users({
       from: r.posts.userId,
-      to: r.users._id,
+      to: r.users.id,
     }),
   },
 }));
@@ -89,8 +89,8 @@ await ctx.db.delete(id);
 
 ```ts
 await db.insert(users).values({ name: 'Ada' });
-await db.update(users).set({ name: 'Ada Lovelace' }).where(eq(users._id, id));
-await db.delete(users).where(eq(users._id, id));
+await db.update(users).set({ name: 'Ada Lovelace' }).where(eq(users.id, id));
+await db.delete(users).where(eq(users.id, id));
 ```
 
 ## Verification

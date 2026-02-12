@@ -32,3 +32,14 @@ test('convexTable validator is compatible with Convex schema', () => {
   expect(users.validator).toBeDefined();
   expect(users.tableName).toBe('users');
 });
+
+test.each(['id', '_id', '_creationTime'])(
+  'convexTable rejects reserved column name: %s',
+  (columnName) => {
+    expect(() =>
+      convexTable('users', {
+        [columnName]: text().notNull(),
+      } as Record<string, ReturnType<typeof text>>)
+    ).toThrow(/reserved/i);
+  }
+);

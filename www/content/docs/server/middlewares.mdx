@@ -136,7 +136,7 @@ type Meta = {
 const c = initCRPC
   .dataModel<DataModel>()
   .meta<Meta>()
-  .create({ ... });
+  .create();
 ```
 
 Now middleware can read metadata and act accordingly:

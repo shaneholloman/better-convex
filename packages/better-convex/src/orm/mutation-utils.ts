@@ -97,6 +97,21 @@ export type SerializedFilterExpression =
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
+export const normalizePublicSystemFields = <T>(value: T): T => {
+  if (!isPlainObject(value)) {
+    return value;
+  }
+  if (!Object.prototype.hasOwnProperty.call(value, '_id')) {
+    return value;
+  }
+  const obj = value as Record<string, unknown>;
+  const { _id, ...rest } = obj;
+  return {
+    ...rest,
+    id: _id,
+  } as T;
+};
+
 export const encodeUndefinedDeep = (value: unknown): unknown => {
   if (value === undefined) {
     return { [UNDEFINED_SENTINEL_KEY]: true };

@@ -75,7 +75,7 @@ describe('foreign key enforcement', () => {
         .values({ name: 'Ada', slug: 'ada' })
         .returning();
 
-      await orm.insert(profiles).values({ userId: user._id }).returning();
+      await orm.insert(profiles).values({ userId: user.id }).returning();
 
       await expect(
         orm.insert(profiles).values({ userId: 'missing' as any })
@@ -91,14 +91,14 @@ describe('foreign key enforcement', () => {
 
       const [profile] = await orm
         .insert(profiles)
-        .values({ userId: user._id })
+        .values({ userId: user.id })
         .returning();
 
       await expect(
         orm
           .update(profiles)
           .set({ userId: 'missing' as any })
-          .where(eq(profiles._id, profile._id))
+          .where(eq(profiles.id, profile.id))
           .returning()
       ).rejects.toThrow(/foreign/i);
     }));

@@ -28,28 +28,11 @@ Create a file at `convex/lib/crpc.ts`. This is where all your procedure builders
 
 ```ts title="convex/lib/crpc.ts" showLineNumbers {12-22}
 import { initCRPC } from 'better-convex/server';
-import {
-  query,
-  mutation,
-  action,
-  httpAction,
-  internalQuery,
-  internalMutation,
-  internalAction,
-} from '../functions/_generated/server';
 import type { DataModel } from '../functions/_generated/dataModel';
 
 const c = initCRPC
   .dataModel<DataModel>()
-  .create({
-    query,
-    mutation,
-    action,
-    httpAction,
-    internalQuery,
-    internalMutation,
-    internalAction,
-  });
+  .create();
 ```
 
 <Callout icon={<InfoIcon />}>
@@ -59,7 +42,7 @@ These import paths assume `convex.json` has `"functions": "convex/functions"`. I
 The `initCRPC` builder chains configuration methods:
 
 1. **`.dataModel<DataModel>()`** - Enables type-safe data model types (table names, `Id<'table'>`) on `ctx`
-2. **`.create({ ... })`** - Passes Convex's generated functions to create typed builders
+2. **`.create()`** - Uses default Convex generic builders (override only when needed)
 
 ## Export Procedure Builders
 
@@ -149,7 +132,7 @@ Now let's use our builders to create a simple query. Here's the before and after
 <Compare>
   <CompareItem title="Before (vanilla Convex)">
     ```ts title="convex/functions/user.ts" showLineNumbers
-    import { query } from './_generated/server';
+    import { query } from 'convex/server';
     import { v } from 'convex/values';
     import { orm } from '../lib/orm';
 
@@ -246,7 +229,7 @@ type Meta = {
 const c = initCRPC
   .dataModel<DataModel>()
   .meta<Meta>()
-  .create({ ... });
+  .create();
 ```
 
 Now middleware can check metadata:
@@ -278,7 +261,7 @@ const c = initCRPC
     query: (ctx) => withOrm(ctx),
     mutation: (ctx) => withOrm(ctx),
   })
-  .create({ ... });
+  .create();
 ```
 
 Now all your procedures have `ctx.orm` available automatically.
@@ -331,7 +314,7 @@ If you're coming from vanilla Convex, here's what changes.
 
 ### What stays the same
 
-- Import `query`, `mutation`, `action` from `_generated/server`
+- Import `query`, `mutation`, `action` from `convex/server`
 - File-based organization in `convex/functions/`
 - Export functions as named exports
 
@@ -340,7 +323,7 @@ If you're coming from vanilla Convex, here's what changes.
 <Compare>
   <CompareItem title="Before (vanilla Convex)">
     ```ts title="convex/functions/user.ts" showLineNumbers
-    import { query } from './_generated/server';
+    import { query } from 'convex/server';
     import { v } from 'convex/values';
     import { orm } from '../lib/orm';
 

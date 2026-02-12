@@ -35,7 +35,7 @@ export const getAllUsers = publicQuery.query(async ({ ctx }) => {
 
 ### findFirst
 
-Use `findFirst()` to retrieve a single row matching your criteria. This example uses `_id` which has a built-in index:
+Use `findFirst()` to retrieve a single row matching your criteria. This example uses `id` which has a built-in index:
 
 ```ts title="convex/functions/users.ts" showLineNumbers
 import { z } from 'zod';
@@ -46,7 +46,7 @@ export const getFirstUser = publicQuery
   .input(z.object({ userId: zid('users') }))
   .query(async ({ ctx, input }) => {
     return ctx.orm.query.users.findFirst({
-      where: { _id: input.userId },
+      where: { id: input.userId },
     });
   });
 ```
@@ -55,7 +55,7 @@ If you expect a row to exist, use `findFirstOrThrow()`:
 
 ```ts showLineNumbers
 const user = await ctx.orm.query.users.findFirstOrThrow({
-  where: { _id: input.userId },
+  where: { id: input.userId },
 });
 ```
 

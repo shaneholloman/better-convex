@@ -107,12 +107,11 @@ Export HTTP route builders from your cRPC setup. These determine whether endpoin
 ```ts title="convex/lib/crpc.ts" showLineNumbers
 import { CRPCError, initCRPC } from 'better-convex/server';
 import type { DataModel, Id } from '../_generated/dataModel';
-import { httpAction } from '../_generated/server';
 
 const c = initCRPC
   .dataModel<DataModel>()
   .context({ /* your context setup */ })
-  .create({ /* your options */, httpAction });
+  .create({ /* your options */ });
 
 // Public HTTP route - no auth required
 export const publicRoute = c.httpAction;

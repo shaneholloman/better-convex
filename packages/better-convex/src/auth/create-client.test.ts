@@ -109,6 +109,86 @@ describe('createClient', () => {
     expect(beforeUpdate).toEqual({ name: 'new' });
   });
 
+  test('applies context before executing trigger callbacks', async () => {
+    const internalMutation = ((config: any) => config) as any;
+
+    const beforeCreate = mock(async (ctx: any, data: any) => ({
+      ...data,
+      usedOrm: ctx.orm === true,
+    }));
+
+    const client = createClient({
+      authFunctions,
+      internalMutation,
+      schema: {} as any,
+      context: async (ctx: any) => ({ ...ctx, orm: true }),
+      triggers: {
+        user: {
+          beforeCreate,
+        },
+      } as any,
+    });
+
+    const api = client.triggersApi() as any;
+
+    const result = await api.beforeCreate.handler(
+      { db: {} },
+      { data: { email: 'a@b.com' }, model: 'user' }
+    );
+
+    expect(beforeCreate).toHaveBeenCalled();
+    expect(result).toEqual({ email: 'a@b.com', usedOrm: true });
+  });
+
+  test('applies dbTriggers, then context', async () => {
+    const beforeCreate = mock(async (ctx: any, data: any) => ({
+      ...data,
+      order: ctx.order,
+      transformed: {
+        db: ctx.dbWrapped === true,
+        context: ctx.contextWrapped === true,
+      },
+    }));
+
+    const client = createClient({
+      authFunctions,
+      schema: {} as any,
+      dbTriggers: {
+        wrapDB: (ctx: any) => ({
+          ...ctx,
+          dbWrapped: true,
+          order: [...(ctx.order ?? []), 'db'],
+        }),
+      },
+      context: async (ctx: any) => ({
+        ...ctx,
+        contextWrapped: true,
+        order: [...ctx.order, 'context'],
+      }),
+      triggers: {
+        user: {
+          beforeCreate,
+        },
+      } as any,
+    });
+
+    const api = client.triggersApi() as any;
+    const result = await api.beforeCreate._handler(
+      { db: {} },
+      { data: { email: 'a@b.com' }, model: 'user' }
+    );
+
+    expect(beforeCreate).toHaveBeenCalled();
+    expect(result).toEqual({
+      email: 'a@b.com',
+      order: ['db', 'context'],
+      transformed: {
+        db: true,
+        context: true,
+      },
+    });
+  });
+
   test('exposes adapter and httpAdapter factories', () => {
     const client = createClient({
       authFunctions,

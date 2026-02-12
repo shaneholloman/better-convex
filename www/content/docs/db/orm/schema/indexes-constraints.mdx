@@ -104,7 +104,7 @@ Foreign keys are enforced at runtime by the ORM mutation builders.
 
 #### Column `.references()`
 
-Here's how to reference another table's `_id`:
+Here's how to reference another table's `id`:
 
 ```ts showLineNumbers {8}
 import { convexTable, id, text } from 'better-convex/orm';
@@ -115,13 +115,13 @@ export const users = convexTable('users', {
 
 export const posts = convexTable('posts', {
   title: text().notNull(),
-  authorId: id('users').notNull().references(() => users._id),
+  authorId: id('users').notNull().references(() => users.id),
 });
 ```
 
 #### `foreignKey()`
 
-For referencing non-`_id` columns, use the `foreignKey()` builder:
+For referencing non-`id` columns, use the `foreignKey()` builder:
 
 ```ts showLineNumbers {9}
 import { convexTable, foreignKey, text } from 'better-convex/orm';
@@ -152,7 +152,7 @@ export const posts = convexTable(
   'posts',
   {
     title: text().notNull(),
-    authorId: id('users').notNull().references(() => users._id, {
+    authorId: id('users').notNull().references(() => users.id, {
       onDelete: 'cascade',
     }),
   },
@@ -161,7 +161,7 @@ export const posts = convexTable(
 ```
 
 <Callout icon={<InfoIcon />}>
-**Tip:** For non-`_id` foreign keys, add an index on the referenced columns (parent table) so inserts/updates can validate quickly. For `cascade` / `set null` / `set default`, add an index on the referencing columns (child table). Without an index, the ORM will throw if it detects referencing rows.
+**Tip:** For non-`id` foreign keys, add an index on the referenced columns (parent table) so inserts/updates can validate quickly. For `cascade` / `set null` / `set default`, add an index on the referencing columns (child table). Without an index, the ORM will throw if it detects referencing rows.
 </Callout>
 
 ### Check Constraints
@@ -260,7 +260,7 @@ export const posts = convexTable(
 
 A few things work differently from SQL-based Drizzle:
 
-- Convex creates `_id` automatically (no `primaryKey()` builder)
+- Convex creates `id` automatically (no `primaryKey()` builder)
 - Check constraints are enforced at runtime (ORM mutations only)
 - SQL-only features (database-side cascades, triggers, raw SQL) are not applicable
 

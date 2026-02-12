@@ -68,7 +68,7 @@ describe('M7 Mutations', () => {
     expect(user).toBeDefined();
     expect(user.name).toBe('Alice');
     expect(user.email).toBe('alice@example.com');
-    expect(user._id).toBeDefined();
+    expect(user.id).toBeDefined();
   });
 
   it('should insert and return partial fields', async ({ ctx }) => {
@@ -91,7 +91,7 @@ describe('M7 Mutations', () => {
     const [updated] = await db
       .update(users)
       .set({ name: 'Updated' })
-      .where(eq(users._id, user._id))
+      .where(eq(users.id, user.id))
       .returning();
 
     expect(updated.name).toBe('Updated');
@@ -103,7 +103,7 @@ describe('M7 Mutations', () => {
 
     const deleted = await db
       .delete(users)
-      .where(eq(users._id, user._id))
+      .where(eq(users.id, user.id))
       .returning({
         name: users.name,
         email: users.email,
@@ -114,7 +114,7 @@ describe('M7 Mutations', () => {
       name: 'Alice',
       email: 'alice@example.com',
     });
-    expect(await ctx.db.get(user._id)).toBeNull();
+    expect(await ctx.db.get(user.id)).toBeNull();
   });
 
   it('should skip insert on conflict do nothing', async ({ ctx }) => {
@@ -797,7 +797,7 @@ describe('M7 Mutations', () => {
           .update(users)
           .set({ role: 'editor' })
           .where(eq(users.status, 'draft'))
-          .returning({ id: users._id, role: users.role })
+          .returning({ id: users.id, role: users.role })
           .execute({ mode: 'async', batchSize: 2, delayMs: 0 });
 
         expect(firstBatch).toHaveLength(2);
@@ -916,7 +916,7 @@ describe('M7 Mutations', () => {
 
         await ctx.orm
           .delete(scheduledUsers)
-          .where(eq(scheduledUsers._id, userId))
+          .where(eq(scheduledUsers.id, userId))
           .execute();
 
         const updated = await ctx.db.get(userId);
@@ -972,7 +972,7 @@ describe('M7 Mutations', () => {
         await ctx.orm
           .delete(scheduledUsers)
           .hard()
-          .where(eq(scheduledUsers._id, userId))
+          .where(eq(scheduledUsers.id, userId))
           .execute();
 
         expect(await ctx.db.get(userId)).toBeNull();
@@ -1002,7 +1002,7 @@ describe('M7 Mutations', () => {
 
       await ctx.orm
         .delete(softUsers)
-        .where(eq(softUsers._id, userId))
+        .where(eq(softUsers.id, userId))
         .execute();
 
       const updated = await ctx.db.get(userId);
@@ -1047,7 +1047,7 @@ describe('M7 Mutations', () => {
 
           await ctx.orm
             .delete(scheduledUsers)
-            .where(eq(scheduledUsers._id, userId))
+            .where(eq(scheduledUsers.id, userId))
             .executeAsync();
         },
         {
@@ -1096,7 +1096,7 @@ describe('M7 Mutations', () => {
         await ctx.orm
           .delete(scheduledUsers)
           .hard()
-          .where(eq(scheduledUsers._id, userId))
+          .where(eq(scheduledUsers.id, userId))
           .executeAsync({ batchSize: 1, delayMs: 0 });
 
         expect(await ctx.db.get(userId)).toBeNull();

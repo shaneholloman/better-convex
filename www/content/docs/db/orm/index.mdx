@@ -21,7 +21,7 @@ The ORM mirrors Drizzle's relational query builder while adapting to Convex's do
 
 Here's a quick summary of the key differences you'll encounter coming from a SQL-based ORM:
 
-- `_id` and `_creationTime` are auto-created by Convex
+- `id` and `_creationTime` are auto-created by Convex
 - Fields are nullable by default (`text()` -> `string | null`)
 - `columns` projection and string operators run post-fetch
 - `with` is relation loading (no SQL joins)
@@ -51,7 +51,7 @@ export const posts = convexTable('posts', {
 export const relations = defineRelations({ users, posts }, (r) => ({
   users: { posts: r.many.posts() },
   posts: {
-    author: r.one.users({ from: r.posts.userId, to: r.users._id }),
+    author: r.one.users({ from: r.posts.userId, to: r.users.id }),
   },
 }));
 ```

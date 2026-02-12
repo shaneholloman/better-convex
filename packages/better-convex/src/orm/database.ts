@@ -104,7 +104,7 @@ export type CreateDatabaseOptions = {
  * const schema = { users, posts };
  * const relations = defineRelations(schema, (r) => ({
  *   posts: {
- *     author: r.one.users({ from: r.posts.authorId, to: r.users._id }),
+ *     author: r.one.users({ from: r.posts.authorId, to: r.users.id }),
  *   },
  * }));
  * const edges = extractRelationsConfig(relations);

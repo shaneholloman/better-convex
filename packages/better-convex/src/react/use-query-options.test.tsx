@@ -55,7 +55,7 @@ describe('use-query-options', () => {
     useConvexActionSpy.mockRestore();
   });
 
-  const mutationContext = { client: {} as any, meta: undefined } as any;
+  const mutationFnContext = { client: {} as any, meta: undefined } as any;
 
   test('useConvexQueryOptions handles skipToken and sets enabled=false', () => {
     const fn = makeFunctionReference<'query'>('todos:list');
@@ -146,7 +146,7 @@ describe('use-query-options', () => {
 
     const out = await result.current.mutationFn?.(
       { id: 'u1' } as any,
-      mutationContext
+      mutationFnContext
     );
     expect(out).toBeUndefined();
     expect(guard).toHaveBeenCalledTimes(1);
@@ -169,7 +169,7 @@ describe('use-query-options', () => {
 
     const out = await result.current.mutationFn?.(
       { prompt: 'hi' } as any,
-      mutationContext
+      mutationFnContext
     );
     expect(out).toEqual({ ok: true });
     expect(convexAction).toHaveBeenCalledTimes(1);
@@ -204,7 +204,7 @@ describe('use-query-options', () => {
         file,
         extra: 'x',
       } as any,
-      mutationContext
+      mutationFnContext
     );
 
     expect(out).toEqual({ key: 'k1', url: 'https://upload.example' });
@@ -251,7 +251,7 @@ describe('use-query-options', () => {
     });
 
     await expect(
-      result.current.mutationFn?.({ file } as any, mutationContext)
+      result.current.mutationFn?.({ file } as any, mutationFnContext)
     ).rejects.toThrow('Upload failed: Bad Request');
 
     fetchSpy.mockRestore();

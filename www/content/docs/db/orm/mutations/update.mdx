@@ -9,7 +9,7 @@ In this guide, we'll learn how to update rows using the ORM's Drizzle-style `upd
 
 ## Basic Update
 
-Let's start with a mutation that renames a user by `_id`:
+Let's start with a mutation that renames a user by `id`:
 
 ```ts showLineNumbers title="convex/functions/users.ts"
 import { z } from 'zod';
@@ -24,7 +24,7 @@ export const renameUser = publicMutation
     await ctx.orm
       .update(users)
       .set({ name: input.name })
-      .where(eq(users._id, input.userId));
+      .where(eq(users.id, input.userId));
   });
 ```
 
@@ -40,14 +40,14 @@ Use `.returning()` to get back the updated rows. You can return all fields or pi
 const updated = await ctx.orm
   .update(users)
   .set({ name: 'Mr. Dan' })
-  .where(eq(users._id, userId))
+  .where(eq(users.id, userId))
   .returning();
 
 const ids = await ctx.orm
   .update(users)
   .set({ name: 'Mr. Dan' })
-  .where(eq(users._id, userId))
-  .returning({ id: users._id });
+  .where(eq(users.id, userId))
+  .returning({ id: users.id });
 ```
 
 ## Safety Limits
@@ -125,7 +125,7 @@ const firstBatch = await ctx.orm
   .update(users)
   .set({ role: 'member' })
   .where(eq(users.role, 'pending'))
-  .returning({ id: users._id })
+  .returning({ id: users.id })
   .execute({ mode: 'async', batchSize: 200, delayMs: 0 });
 ```
 

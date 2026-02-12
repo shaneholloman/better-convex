@@ -34,7 +34,7 @@ Here's the full set of options for a `one()` relation:
 ```ts showLineNumbers
 r.one.users({
   from: r.posts.authorId,
-  to: r.users._id,
+  to: r.users.id,
   optional: false,
   alias: 'author',
   where: { isActive: true },
@@ -52,7 +52,7 @@ And the options for a `many()` relation:
 
 ```ts showLineNumbers
 r.many.posts({
-  from: r.users._id,
+  from: r.users.id,
   to: r.posts.authorId,
   alias: 'posts',
   where: { published: true },
@@ -91,12 +91,12 @@ export const relations = defineRelations({ users, posts }, (r) => ({
   posts: {
     author: r.one.users({
       from: r.posts.authorId,
-      to: r.users._id,
+      to: r.users.id,
       alias: 'author',
     }),
     reviewer: r.one.users({
       from: r.posts.reviewerId,
-      to: r.users._id,
+      to: r.users.id,
       alias: 'reviewer',
     }),
   },
@@ -127,7 +127,7 @@ const relations = defineRelations({ users, profiles }, (r) => ({
   profiles: {
     user: r.one.users({
       from: r.profiles.userId,
-      to: r.users._id,
+      to: r.users.id,
     }),
   },
   users: {
@@ -137,7 +137,7 @@ const relations = defineRelations({ users, profiles }, (r) => ({
 ```
 
 <Callout icon={<InfoIcon />}>
-**Note**: Use `from` and `to` to describe the foreign key relationship. In Convex, primary keys are `_id`.
+**Note**: Use `from` and `to` to describe the foreign key relationship. In Convex, primary keys are `id`.
 </Callout>
 
 <Callout icon={<AlertTriangle />}>
@@ -169,14 +169,14 @@ const relations = defineRelations({ users, posts }, (r) => ({
   posts: {
     author: r.one.users({
       from: r.posts.userId,
-      to: r.users._id,
+      to: r.users.id,
     }),
   },
 }));
 ```
 
 **Key Points:**
-- **Foreign key is on the "many" side**: `posts.userId` references `users._id`
+- **Foreign key is on the "many" side**: `posts.userId` references `users.id`
 - **Define both sides**: Define relations on both users and posts
 - **Export both**: Both table and relations object must be in schema export
 
@@ -208,8 +208,8 @@ const relations = defineRelations({ posts, tags, postsTags }, (r) => ({
     posts: r.many.postsTags(),
   },
   postsTags: {
-    post: r.one.posts({ from: r.postsTags.postId, to: r.posts._id }),
-    tag: r.one.tags({ from: r.postsTags.tagId, to: r.tags._id }),
+    post: r.one.posts({ from: r.postsTags.postId, to: r.posts.id }),
+    tag: r.one.tags({ from: r.postsTags.tagId, to: r.tags.id }),
   },
 }));
 ```
@@ -244,8 +244,8 @@ const relations = defineRelations({ users, groups, memberships }, (r) => ({
     memberships: r.many.memberships(),
   },
   memberships: {
-    user: r.one.users({ from: r.memberships.userId, to: r.users._id }),
-    group: r.one.groups({ from: r.memberships.groupId, to: r.groups._id }),
+    user: r.one.users({ from: r.memberships.userId, to: r.users.id }),
+    group: r.one.groups({ from: r.memberships.groupId, to: r.groups.id }),
   },
 }));
 ```
@@ -286,15 +286,15 @@ const usersToGroups = convexTable('usersToGroups', {
 const relations = defineRelations({ users, groups, usersToGroups }, (r) => ({
   users: {
     groups: r.many.groups({
-      from: r.users._id.through(r.usersToGroups.userId),
-      to: r.groups._id.through(r.usersToGroups.groupId),
+      from: r.users.id.through(r.usersToGroups.userId),
+      to: r.groups.id.through(r.usersToGroups.groupId),
       alias: 'users-groups-direct',
     }),
   },
   groups: {
     users: r.many.users({
-      from: r.groups._id.through(r.usersToGroups.groupId),
-      to: r.users._id.through(r.usersToGroups.userId),
+      from: r.groups.id.through(r.usersToGroups.groupId),
+      to: r.users.id.through(r.usersToGroups.userId),
       alias: 'users-groups-direct',
     }),
   },
@@ -318,11 +318,11 @@ const relations = defineRelations({ users }, (r) => ({
   users: {
     manager: r.one.users({
       from: r.users.managerId,
-      to: r.users._id,
+      to: r.users.id,
       alias: 'manager',
     }),
     reports: r.many.users({
-      from: r.users._id,
+      from: r.users.id,
       to: r.users.managerId,
       alias: 'manager',
     }),
@@ -354,7 +354,7 @@ const relations = defineRelations({ users, posts }, (r) => ({
   posts: {
     author: r.one.users({
       from: r.posts.authorId,
-      to: r.users._id,
+      to: r.users.id,
       optional: false,
     }),
   },
@@ -372,7 +372,7 @@ const relations = defineRelations({ users, posts }, (r) => ({
   posts: {
     author: r.one.users({
       from: r.posts.userId,
-      to: r.users._id,
+      to: r.users.id,
     }),
   },
   users: {
@@ -388,7 +388,7 @@ Make sure to export both tables and relations from your schema:
 ```ts showLineNumbers
 export const relations = defineRelations({ users, posts }, (r) => ({
   users: { posts: r.many.posts() },
-  posts: { author: r.one.users({ from: r.posts.userId, to: r.users._id }) },
+  posts: { author: r.one.users({ from: r.posts.userId, to: r.users.id }) },
 }));
 ```
 
@@ -403,7 +403,7 @@ import { users, posts, comments } from './schema';
 const userRelations = defineRelationsPart({ users, posts }, (r) => ({
   users: {
     posts: r.many.posts({
-      from: r.users._id,
+      from: r.users.id,
       to: r.posts.authorId,
     }),
   },
@@ -412,7 +412,7 @@ const userRelations = defineRelationsPart({ users, posts }, (r) => ({
 const postRelations = defineRelationsPart({ posts, comments }, (r) => ({
   posts: {
     comments: r.many.comments({
-      from: r.posts._id,
+      from: r.posts.id,
       to: r.comments.postId,
     }),
   },
@@ -460,7 +460,7 @@ const posts = convexTable('posts', {
 const relations = defineRelations({ users, posts }, (r) => ({
   users: {
     publishedPosts: r.many.posts({
-      from: r.users._id,
+      from: r.users.id,
       to: r.posts.authorId,
       where: { published: true },
       alias: 'published-posts',
@@ -480,7 +480,7 @@ The ORM will use indexes when loading relations and will throw (unless `allowFul
 - For compound relations, your index must start with the same columns in the same order as `to` / `.through(...)`.
 - `many()` (one-to-many): index the child foreign key (example: `posts.userId`)
 - `.through()` (many-to-many): index the junction table foreign keys you query by (usually both directions; add a compound index if you also query by both)
-- `one()`: `to: ..._id` uses `db.get()` (no extra index); non-`_id` targets require an index on the target fields
+- `one()`: `to: ...id` uses `db.get()` (no extra index); non-`id` targets require an index on the target fields
 
 ```ts title="convex/schema.ts" showLineNumbers {8,18-19}
 import { convexTable, id, index, text } from 'better-convex/orm';

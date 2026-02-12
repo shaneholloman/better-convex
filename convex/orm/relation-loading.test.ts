@@ -68,44 +68,44 @@ const testSchemaWithComments = defineSchema(testTables, {
 const testRelations = defineRelations(testTables, (r) => ({
   users: {
     posts: r.many.posts({
-      from: r.users._id,
+      from: r.users.id,
       to: r.posts.authorId,
     }),
     groups: r.many.groups({
-      from: r.users._id.through(r.usersToGroups.userId),
-      to: r.groups._id.through(r.usersToGroups.groupId),
+      from: r.users.id.through(r.usersToGroups.userId),
+      to: r.groups.id.through(r.usersToGroups.groupId),
       alias: 'users-groups',
     }),
   },
   posts: {
     author: r.one.users({
       from: r.posts.authorId,
-      to: r.users._id,
+      to: r.users.id,
     }),
     comments: r.many.comments({
-      from: r.posts._id,
+      from: r.posts.id,
       to: r.comments.postId,
     }),
   },
   comments: {
     post: r.one.posts({
       from: r.comments.postId,
-      to: r.posts._id,
+      to: r.posts.id,
     }),
     author: r.one.users({
       from: r.comments.authorId,
-      to: r.users._id,
+      to: r.users.id,
     }),
   },
   groups: {},
   usersToGroups: {
     user: r.one.users({
       from: r.usersToGroups.userId,
-      to: r.users._id,
+      to: r.users.id,
     }),
     group: r.one.groups({
       from: r.usersToGroups.groupId,
-      to: r.groups._id,
+      to: r.groups.id,
     }),
   },
   cities: {},
@@ -147,7 +147,7 @@ describe('M6.5 Phase 1: Relation Loading', () => {
       });
 
       expect(users).toHaveLength(1);
-      expect(users[0]._id).toBe(userId);
+      expect(users[0].id).toBe(userId);
       expect(users[0].posts).toEqual([]);
     });
 
@@ -180,10 +180,10 @@ describe('M6.5 Phase 1: Relation Loading', () => {
       })) as any;
 
       expect(users).toHaveLength(1);
-      expect(users[0]._id).toBe(userId);
+      expect(users[0].id).toBe(userId);
       expect(users[0].posts).toHaveLength(2);
-      expect(users[0].posts[0]._id).toBe(post1Id);
-      expect(users[0].posts[1]._id).toBe(post2Id);
+      expect(users[0].posts[0].id).toBe(post1Id);
+      expect(users[0].posts[1].id).toBe(post2Id);
       expect(users[0].posts[0].text).toBe('First post');
       expect(users[0].posts[1].text).toBe('Second post');
     });
@@ -241,19 +241,19 @@ describe('M6.5 Phase 1: Relation Loading', () => {
       expect(users).toHaveLength(3);
 
       // Verify Alice's posts
-      const alice = users.find((u: any) => u._id === user1Id);
+      const alice = users.find((u: any) => u.id === user1Id);
       expect(alice).toBeDefined();
       expect(alice!.posts).toHaveLength(2);
       expect(alice!.posts.every((p: any) => p.authorId === user1Id)).toBe(true);
 
       // Verify Bob's posts
-      const bob = users.find((u: any) => u._id === user2Id);
+      const bob = users.find((u: any) => u.id === user2Id);
       expect(bob).toBeDefined();
       expect(bob!.posts).toHaveLength(1);
       expect(bob!.posts[0].authorId).toBe(user2Id);
 
       // Verify Charlie has no posts
-      const charlie = users.find((u: any) => u._id === user3Id);
+      const charlie = users.find((u: any) => u.id === user3Id);
       expect(charlie).toBeDefined();
       expect(charlie!.posts).toEqual([]);
     });
@@ -404,9 +404,9 @@ describe('M6.5 Phase 1: Relation Loading', () => {
       })) as any;
 
       expect(posts).toHaveLength(1);
-      expect(posts[0]._id).toBe(postId);
+      expect(posts[0].id).toBe(postId);
       expect(posts[0].author).toBeDefined();
-      expect(posts[0].author!._id).toBe(userId);
+      expect(posts[0].author!.id).toBe(userId);
       expect(posts[0].author!.name).toBe('Alice');
     });
 
@@ -427,7 +427,7 @@ describe('M6.5 Phase 1: Relation Loading', () => {
       });
 
       expect(posts).toHaveLength(1);
-      expect(posts[0]._id).toBe(postId);
+      expect(posts[0].id).toBe(postId);
       expect(posts[0].author).toBeNull();
     });
 
@@ -489,7 +489,7 @@ describe('M6.5 Phase 1: Relation Loading', () => {
       // Verify all posts by Alice reference the same user object
       const alicePosts = posts.filter((p: any) => p.authorId === user1Id);
       expect(alicePosts).toHaveLength(3);
-      expect(alicePosts.every((p: any) => p.author!._id === user1Id)).toBe(
+      expect(alicePosts.every((p: any) => p.author!.id === user1Id)).toBe(
         true
       );
       expect(alicePosts.every((p: any) => p.author!.name === 'Alice')).toBe(
@@ -499,7 +499,7 @@ describe('M6.5 Phase 1: Relation Loading', () => {
       // Verify all posts by Bob reference the same user object
       const bobPosts = posts.filter((p: any) => p.authorId === user2Id);
       expect(bobPosts).toHaveLength(2);
-      expect(bobPosts.every((p: any) => p.author!._id === user2Id)).toBe(true);
+      expect(bobPosts.every((p: any) => p.author!.id === user2Id)).toBe(true);
       expect(bobPosts.every((p: any) => p.author!.name === 'Bob')).toBe(true);
     });
   });
@@ -534,7 +534,7 @@ describe('M6.5 Phase 1: Relation Loading', () => {
       });
 
       expect(user).toBeDefined();
-      expect(user!._id).toBe(userId);
+      expect(user!.id).toBe(userId);
       expect(user!.posts).toHaveLength(2);
     });
   });
@@ -580,12 +580,12 @@ describe('M6.5 Phase 2: Nested Relation Loading', () => {
       });
 
       expect(users).toHaveLength(1);
-      expect(users[0]._id).toBe(userId);
+      expect(users[0].id).toBe(userId);
       expect((users[0] as any).posts).toHaveLength(1);
-      expect((users[0] as any).posts[0]._id).toBe(postId);
+      expect((users[0] as any).posts[0].id).toBe(postId);
       expect((users[0] as any).posts[0].comments).toHaveLength(2);
-      expect((users[0] as any).posts[0].comments[0]._id).toBe(comment1Id);
-      expect((users[0] as any).posts[0].comments[1]._id).toBe(comment2Id);
+      expect((users[0] as any).posts[0].comments[0].id).toBe(comment1Id);
+      expect((users[0] as any).posts[0].comments[1].id).toBe(comment2Id);
     });
 
     test('should handle empty nested relations', async ({ ctx }) => {
@@ -691,14 +691,14 @@ describe('M6.5 Phase 2: Nested Relation Loading', () => {
       expect(users).toHaveLength(2);
 
       // Verify Alice's nested data
-      const alice = users.find((u: any) => u._id === user1Id) as any;
+      const alice = users.find((u: any) => u.id === user1Id) as any;
       expect(alice).toBeDefined();
       expect(alice.posts).toHaveLength(2);
       expect(alice.posts[0].comments).toHaveLength(2);
       expect(alice.posts[1].comments).toHaveLength(1);
 
       // Verify Bob's nested data
-      const bob = users.find((u: any) => u._id === user2Id) as any;
+      const bob = users.find((u: any) => u.id === user2Id) as any;
       expect(bob).toBeDefined();
       expect(bob.posts).toHaveLength(1);
       expect(bob.posts[0].comments).toHaveLength(1);
@@ -913,11 +913,11 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       expect(users).toHaveLength(2);
 
       // Verify Alice has exactly 2 posts (not affected by Bob's posts)
-      const alice = users.find((u: any) => u._id === user1Id) as any;
+      const alice = users.find((u: any) => u.id === user1Id) as any;
       expect(alice.posts).toHaveLength(2);
 
       // Verify Bob has exactly 2 posts (not affected by Alice's posts)
-      const bob = users.find((u: any) => u._id === user2Id) as any;
+      const bob = users.find((u: any) => u.id === user2Id) as any;
       expect(bob.posts).toHaveLength(2);
     });
   });
@@ -983,10 +983,10 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         },
       });
 
-      const alice = users.find((u: any) => u._id === user1Id) as any;
+      const alice = users.find((u: any) => u.id === user1Id) as any;
       expect(alice.posts.map((post: any) => post.numLikes)).toEqual([20, 30]);
 
-      const bob = users.find((u: any) => u._id === user2Id) as any;
+      const bob = users.find((u: any) => u.id === user2Id) as any;
       expect(bob.posts.map((post: any) => post.numLikes)).toEqual([15, 25]);
     });
 
@@ -1024,7 +1024,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         },
       });
 
-      const charlie = users.find((u: any) => u._id === userId) as any;
+      const charlie = users.find((u: any) => u.id === userId) as any;
       expect(charlie.groups.map((group: any) => group.name)).toEqual([
         'B',
         'C',
@@ -1109,7 +1109,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       const noIndexRelations = defineRelations(noIndexTables, (r) => ({
         noIndexUsers: {
           posts: r.many.noIndexPosts({
-            from: r.noIndexUsers._id,
+            from: r.noIndexUsers.id,
             to: r.noIndexPosts.authorId,
           }),
         },
@@ -1154,10 +1154,10 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       const noIndexRelations = defineRelations(noIndexTables, (r) => ({
         noIndexThroughUsers: {
           groups: r.many.noIndexThroughGroups({
-            from: r.noIndexThroughUsers._id.through(
+            from: r.noIndexThroughUsers.id.through(
               r.noIndexUsersToGroups.userId
             ),
-            to: r.noIndexThroughGroups._id.through(
+            to: r.noIndexThroughGroups.id.through(
               r.noIndexUsersToGroups.groupId
             ),
             alias: 'no-index-through',
@@ -1202,7 +1202,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       const noIndexRelations = defineRelations(noIndexTables, (r) => ({
         noIndexRelaxedUsers: {
           posts: r.many.noIndexRelaxedPosts({
-            from: r.noIndexRelaxedUsers._id,
+            from: r.noIndexRelaxedUsers.id,
             to: r.noIndexRelaxedPosts.authorId,
           }),
         },
@@ -1451,7 +1451,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       const relations = defineRelations(tables, (r) => ({
         fanoutManyUsers: {
           posts: r.many.fanoutManyPosts({
-            from: r.fanoutManyUsers._id,
+            from: r.fanoutManyUsers.id,
             to: r.fanoutManyPosts.authorId,
           }),
         },
@@ -1524,7 +1524,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         fanoutOnePosts: {
           author: r.one.fanoutOneUsers({
             from: r.fanoutOnePosts.authorId,
-            to: r.fanoutOneUsers._id,
+            to: r.fanoutOneUsers.id,
           }),
         },
       }));
@@ -1602,10 +1602,10 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       const relations = defineRelations(tables, (r) => ({
         fanoutThroughUsers: {
           groups: r.many.fanoutThroughGroups({
-            from: r.fanoutThroughUsers._id.through(
+            from: r.fanoutThroughUsers.id.through(
               r.fanoutThroughUsersToGroups.userId
             ),
-            to: r.fanoutThroughGroups._id.through(
+            to: r.fanoutThroughGroups.id.through(
               r.fanoutThroughUsersToGroups.groupId
             ),
           }),
@@ -1687,7 +1687,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
       const largeManyRelations = defineRelations(largeManyTables, (r) => ({
         largeManyUsers: {
           posts: r.many.largeManyPosts({
-            from: r.largeManyUsers._id,
+            from: r.largeManyUsers.id,
             to: r.largeManyPosts.authorId,
           }),
         },
@@ -1741,7 +1741,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         largeOnePosts: {
           author: r.one.largeOneUsers({
             from: r.largeOnePosts.authorId,
-            to: r.largeOneUsers._id,
+            to: r.largeOneUsers.id,
           }),
         },
       }));
@@ -1766,7 +1766,7 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
 
         expect(posts).toHaveLength(1);
         expect((posts[0] as any).author).toBeTruthy();
-        expect((posts[0] as any).author._id).toBe(lastUserId);
+        expect((posts[0] as any).author.id).toBe(lastUserId);
         expect((posts[0] as any).author.name).toBe(
           `u-${RELATION_SIZE_OVER_10K - 1}`
         );
@@ -1799,10 +1799,10 @@ describe('M6.5 Phase 3: Relation Filters and Limits', () => {
         (r) => ({
           largeThroughUsers: {
             groups: r.many.largeThroughGroups({
-              from: r.largeThroughUsers._id.through(
+              from: r.largeThroughUsers.id.through(
                 r.largeThroughUsersToGroups.userId
               ),
-              to: r.largeThroughGroups._id.through(
+              to: r.largeThroughGroups.id.through(
                 r.largeThroughUsersToGroups.groupId
               ),
             }),

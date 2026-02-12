@@ -35,7 +35,7 @@ const users = convexTable('users', {
 ```
 
 **Auto‑generated fields**
-- `_id: Id<TName>`
+- `id: Id<TName>`
 - `_creationTime: number`
 
 ### `convexTable.withRLS()`
@@ -205,7 +205,7 @@ integer().$defaultFn(() => Date.now())
 integer().$onUpdateFn(() => Date.now())
 text().unique()
 text().unique('handle_unique', { nulls: 'not distinct' })
-id('users').references(() => users._id)
+id('users').references(() => users.id)
 text().references(() => users.slug, { onDelete: 'cascade' })
 ```
 
@@ -236,7 +236,7 @@ rlsRole('admin', { createRole: true }).existing();
 defineRelations(schema, (r) => ({
   users: { posts: r.many.posts() },
   posts: {
-    author: r.one.users({ from: r.posts.authorId, to: r.users._id }),
+    author: r.one.users({ from: r.posts.authorId, to: r.users.id }),
   },
 }))
 ```
@@ -428,7 +428,7 @@ const page = await db.query.messages
     { index: { name: 'by_from_to', range: (q) => q.eq('from', me).eq('to', them) } },
     { index: { name: 'by_from_to', range: (q) => q.eq('from', them).eq('to', me) } },
   ])
-  .interleaveBy(['_creationTime', '_id'])
+  .interleaveBy(['_creationTime', 'id'])
   .filter(async (m) => !m.deletedAt)
   .map(async (m) => ({ ...m, preview: m.body.slice(0, 120) }))
   .paginate({ cursor: null, limit: 20 });
@@ -529,7 +529,7 @@ await db.insert(users).values({ name: 'Ada', email: 'ada@example.com' });
 await db
   .update(users)
   .set({ name: 'Ada Lovelace' })
-  .where(eq(users._id, userId));
+  .where(eq(users.id, userId));
 ```
 
 **`set()` semantics**
@@ -538,7 +538,7 @@ await db
 
 **Full-scan guardrail**
 - `update()` without `where()` throws unless you call `.allowFullScan()`.
-- Non‑`_id` filters require `.allowFullScan()` only when no index is available.
+- Non‑`id` filters require `.allowFullScan()` only when no index is available.
 - Matched rows are capped by `mutationMaxRows` (default `1000`), collected in `mutationBatchSize` pages (default `100`).
 - Async fan-out uses `mutationLeafBatchSize` (default `900`) for non-recursive FK actions.
 - Async fan-out enforces `mutationMaxBytesPerBatch` (default `2_097_152` measured bytes) and `mutationScheduleCallCap` (default `100`).
@@ -562,12 +562,12 @@ await db
 ### `delete()`
 
 ```ts showLineNumbers
-await db.delete(users).where(eq(users._id, userId));
+await db.delete(users).where(eq(users.id, userId));
 ```
 
 **Full-scan guardrail**
 - `delete()` without `where()` throws unless you call `.allowFullScan()`.
-- Non‑`_id` filters require `.allowFullScan()` only when no index is available.
+- Non‑`id` filters require `.allowFullScan()` only when no index is available.
 - Matched rows are capped by `mutationMaxRows` (default `1000`), collected in `mutationBatchSize` pages (default `100`).
 - Async fan-out uses `mutationLeafBatchSize` (default `900`) for non-recursive FK actions.
 - Async fan-out enforces `mutationMaxBytesPerBatch` (default `2_097_152` measured bytes) and `mutationScheduleCallCap` (default `100`).
@@ -590,18 +590,18 @@ await db
 **Delete helpers**
 ```ts showLineNumbers
 // Soft delete (sets deletionTime)
-await db.delete(users).where(eq(users._id, userId)).soft();
+await db.delete(users).where(eq(users.id, userId)).soft();
 
 // Force hard delete even if table default is soft/scheduled
-await db.delete(users).where(eq(users._id, userId)).hard();
+await db.delete(users).where(eq(users.id, userId)).hard();
 
 // Cascade behavior for FK actions
-await db.delete(users).where(eq(users._id, userId)).cascade({ mode: 'hard' });
+await db.delete(users).where(eq(users.id, userId)).cascade({ mode: 'hard' });
 
 // Scheduled delete (soft now, hard later)
 await db
   .delete(users)
-  .where(eq(users._id, userId))
+  .where(eq(users.id, userId))
   .scheduled({ delayMs: 60_000 });
 ```
 
@@ -619,7 +619,7 @@ Async mutation batches (`execute({ mode: 'async' })` / `.executeAsync()` for upd
 const [user] = await db
   .insert(users)
   .values({ name: 'Ada', email: 'ada@example.com' })
-  .returning({ id: users._id, email: users.email });
+  .returning({ id: users.id, email: users.email });
 ```
 
 ### `onConflictDoUpdate()`
@@ -681,7 +681,7 @@ users.$inferInsert
 ## Introspection Helpers
 
 ```ts
-getTableColumns(users) // includes _id/_creationTime
+getTableColumns(users) // includes id/_creationTime
 getTableConfig(users)  // indexes/unique/fks/rls/checks
 ```
 

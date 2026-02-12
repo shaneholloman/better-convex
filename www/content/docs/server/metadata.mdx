@@ -60,7 +60,7 @@ type Meta = {
 const c = initCRPC
   .dataModel<DataModel>()
   .meta<Meta>()
-  .create({ ... });
+  .create();
 ```
 
 Now TypeScript knows what metadata properties are valid.
@@ -121,8 +121,6 @@ const c = initCRPC
   .meta<Meta>()
   .create({
     defaultMeta: { auth: 'optional' },
-    query,
-    mutation,
   });
 
 // All procedures start with { auth: 'optional' }
@@ -291,7 +289,7 @@ If you're coming from vanilla Convex, here's what changes.
     const c = initCRPC
       .dataModel<DataModel>()
       .meta<Meta>()
-      .create({ ... });
+      .create();
 
     export const adminQuery = authQuery
       .meta({ role: 'admin' })

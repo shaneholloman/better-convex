@@ -14,6 +14,7 @@ import {
   getMutationCollectionLimits,
   getMutationExecutionMode,
   getOrmContext,
+  normalizePublicSystemFields,
   getTableColumns,
   getTableName,
   selectReturningRow,
@@ -585,10 +586,12 @@ export class ConvexUpdateBuilder<
       }
 
       if (this.returningFields === true) {
-        results.push(updated as any);
+        results.push(normalizePublicSystemFields(updated as any));
       } else {
         results.push(
-          selectReturningRow(updated as any, this.returningFields as any)
+          normalizePublicSystemFields(
+            selectReturningRow(updated as any, this.returningFields as any)
+          )
         );
       }
     }

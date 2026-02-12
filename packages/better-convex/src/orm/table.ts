@@ -50,6 +50,7 @@ import {
  * Reserved Convex system table names that cannot be used
  */
 const RESERVED_TABLES = new Set(['_storage', '_scheduled_functions']);
+const RESERVED_COLUMN_NAMES = new Set(['id', '_id', '_creationTime']);
 
 /**
  * Valid table name pattern: starts with letter, contains only alphanumeric and underscore
@@ -773,6 +774,14 @@ class ConvexTableImpl<T extends TableConfig> {
   constructor(name: T['name'], columns: T['columns']) {
     validateTableName(name);
 
+    for (const columnName of Object.keys(columns as Record<string, unknown>)) {
+      if (RESERVED_COLUMN_NAMES.has(columnName)) {
+        throw new Error(
+          `Column name '${columnName}' is reserved. System fields are managed by Convex ORM.`
+        );
+      }
+    }
+
     this[TableName] = name;
 
     // Assign column names to builders
@@ -1190,7 +1199,7 @@ export interface ConvexTable<
  * ConvexTable with columns as properties
  * Following Drizzle's PgTableWithColumns pattern
  * Mapped type makes columns accessible: table.columnName
- * Includes system fields (_id, _creationTime) available on all Convex documents
+ * Includes system fields (id, _creationTime) available on all Convex documents
  */
 export type ConvexTableWithColumns<
   T extends TableConfig,
@@ -1268,7 +1277,7 @@ const convexTableInternal: ConvexTableFnInternal = (
   // Create raw table instance
   const rawTable = new ConvexTableImpl(name, columns as any);
 
-  // Create system fields (_id, _creationTime)
+  // Create system fields (id, _creationTime)
   const systemFields = createSystemFields(name);
   for (const builder of Object.values(systemFields)) {
     (builder as any).config.table = rawTable;
@@ -1276,6 +1285,13 @@ const convexTableInternal: ConvexTableFnInternal = (
 
   // Following Drizzle pattern: Object.assign to attach columns AND system fields as properties
   const table = Object.assign(rawTable, rawTable[Columns], systemFields) as any;
+  // Internal alias for runtime internals; intentionally not in public types.
+  Object.defineProperty(table, '_id', {
+    value: systemFields.id,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  });
 
   applyExtraConfig(rawTable, extraConfig?.(rawTable[Columns] as any));
 

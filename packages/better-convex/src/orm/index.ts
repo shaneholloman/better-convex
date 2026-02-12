@@ -20,7 +20,7 @@
  *
  * const relations = defineRelations({ users, posts }, (r) => ({
  *   posts: {
- *     author: r.one.users({ from: r.posts.authorId, to: r.users._id }),
+ *     author: r.one.users({ from: r.posts.authorId, to: r.users.id }),
  *   },
  * }));
  *

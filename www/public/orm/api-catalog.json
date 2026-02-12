@@ -152,7 +152,7 @@
       },
       "returns": "Promise resolving when delete complete",
       "workaround": "Use ctx.db.delete(id) for now",
-      "example": "await db(ctx).delete.users.where(eq(users._id, userId));",
+      "example": "await db(ctx).delete.users.where(eq(users.id, userId));",
       "docUrl": "/docs/db/orm/mutations#delete",
       "category": "mutations"
     }
@@ -246,7 +246,7 @@
         "target": "Target table",
         "config": "{ fields: [...], references: [...] }"
       },
-      "example": "one(users, { fields: [posts.userId], references: [users._id] })",
+      "example": "one(users, { fields: [posts.userId], references: [users.id] })",
       "docUrl": "/docs/db/orm/relations-deep-dive#one-to-one-relations",
       "category": "relations"
     },
@@ -270,7 +270,7 @@
     "selfReferencing": {
       "signature": "one(sameTable, { fields: [...], references: [...] })",
       "description": "Self-referencing relations (e.g., parent/child)",
-      "example": "one(categories, { fields: [categories.parentId], references: [categories._id] })",
+      "example": "one(categories, { fields: [categories.parentId], references: [categories.id] })",
       "docUrl": "/docs/db/orm/relations-deep-dive#self-referencing-relations",
       "category": "relations"
     },

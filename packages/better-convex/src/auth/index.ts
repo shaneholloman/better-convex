@@ -8,4 +8,5 @@ export * from './create-api';
 export * from './create-client';
 export * from './helpers';
 export * from './middleware';
+export * from './registerRoutes';
 export * from './types';

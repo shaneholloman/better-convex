@@ -86,7 +86,7 @@ test('pagination - multiple pages with cursor', async () => {
 
     // Verify no duplicates across pages
     const allUsers = [...page1.page, ...page2.page, ...page3.page];
-    const uniqueIds = new Set(allUsers.map((u: any) => u._id));
+    const uniqueIds = new Set(allUsers.map((u: any) => u.id));
     expect(uniqueIds.size).toBe(25);
   });
 });
@@ -522,8 +522,8 @@ test('pagination - cursor stability (replaying cursor returns same results)', as
 
     // Both should return identical results
     expect(page2a.page.length).toBe(page2b.page.length);
-    expect((page2a.page[0] as any)._id).toBe((page2b.page[0] as any)._id);
-    expect((page2a.page[4] as any)._id).toBe((page2b.page[4] as any)._id);
+    expect((page2a.page[0] as any).id).toBe((page2b.page[0] as any).id);
+    expect((page2a.page[4] as any).id).toBe((page2b.page[4] as any).id);
   });
 });
 

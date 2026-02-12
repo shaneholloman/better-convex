@@ -17,9 +17,9 @@ type AnyColumns = Record<string, ColumnBuilder<any, any, any>>;
 function getSystemFields<TTable extends ConvexTable<any>>(
   table: TTable
 ): SystemFields<TTable['_']['name']> {
-  if ((table as any)._id && (table as any)._creationTime) {
+  if ((table as any).id && (table as any)._creationTime) {
     return {
-      _id: (table as any)._id,
+      id: (table as any).id,
       _creationTime: (table as any)._creationTime,
     } as SystemFields<TTable['_']['name']>;
   }

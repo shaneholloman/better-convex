@@ -10,6 +10,7 @@ import {
   evaluateFilter,
   getColumnName,
   getOrmContext,
+  normalizePublicSystemFields,
   getTableColumns,
   getTableName,
   getUniqueIndexes,
@@ -199,9 +200,11 @@ export class ConvexInsertBuilder<
 
   private resolveReturningRow(row: Record<string, unknown>) {
     if (this.returningFields === true) {
-      return row;
+      return normalizePublicSystemFields(row);
     }
-    return selectReturningRow(row, this.returningFields as any);
+    return normalizePublicSystemFields(
+      selectReturningRow(row, this.returningFields as any)
+    );
   }
 
   private async handleConflict(value: InsertValue<TTable>): Promise<

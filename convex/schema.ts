@@ -138,25 +138,25 @@ export const relations = defineRelations(tables, (r) => ({
   users: {
     city: r.one.cities({
       from: r.users.cityId,
-      to: r.cities._id,
+      to: r.cities.id,
       alias: 'UsersInCity',
     }),
     homeCity: r.one.cities({
       from: r.users.homeCityId,
-      to: r.cities._id,
+      to: r.cities.id,
     }),
     posts: r.many.posts({
-      from: r.users._id,
+      from: r.users.id,
       to: r.posts.authorId,
     }),
     comments: r.many.comments({
-      from: r.users._id,
+      from: r.users.id,
       to: r.comments.authorId,
     }),
   },
   cities: {
     users: r.many.users({
-      from: r.cities._id,
+      from: r.cities.id,
       to: r.users.cityId,
       alias: 'UsersInCity',
     }),
@@ -164,37 +164,37 @@ export const relations = defineRelations(tables, (r) => ({
   posts: {
     author: r.one.users({
       from: r.posts.authorId,
-      to: r.users._id,
+      to: r.users.id,
     }),
     comments: r.many.comments({
-      from: r.posts._id,
+      from: r.posts.id,
       to: r.comments.postId,
     }),
   },
   comments: {
     post: r.one.posts({
       from: r.comments.postId,
-      to: r.posts._id,
+      to: r.posts.id,
     }),
     author: r.one.users({
       from: r.comments.authorId,
-      to: r.users._id,
+      to: r.users.id,
     }),
   },
   books: {
     authors: r.many.users({
-      from: r.books._id.through(r.bookAuthors.bookId),
-      to: r.users._id.through(r.bookAuthors.authorId),
+      from: r.books.id.through(r.bookAuthors.bookId),
+      to: r.users.id.through(r.bookAuthors.authorId),
     }),
   },
   bookAuthors: {
     book: r.one.books({
       from: r.bookAuthors.bookId,
-      to: r.books._id,
+      to: r.books.id,
     }),
     author: r.one.users({
       from: r.bookAuthors.authorId,
-      to: r.users._id,
+      to: r.users.id,
     }),
   },
 }));

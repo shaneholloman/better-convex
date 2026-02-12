@@ -89,8 +89,8 @@ await ctx.orm.query.table.findMany({
 **Mutations:**
 ```ts
 await ctx.orm.insert(table).values(data)
-await ctx.orm.update(table).set(data).where(eq(table._id, id))
-await ctx.orm.delete(table).where(eq(table._id, id))
+await ctx.orm.update(table).set(data).where(eq(table.id, id))
+await ctx.orm.delete(table).where(eq(table.id, id))
 // Full-scan opt-in (only if no index on email)
 await ctx.orm.update(table).set(data).where(eq(table.email, email)) // indexed
 await ctx.orm.update(table).set(data).where(eq(table.email, email)).allowFullScan()

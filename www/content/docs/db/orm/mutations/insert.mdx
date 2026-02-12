@@ -47,7 +47,7 @@ const [user] = await ctx.orm
 const [partial] = await ctx.orm
   .insert(users)
   .values({ email: 'grace@example.com', name: 'Grace' })
-  .returning({ id: users._id, email: users.email });
+  .returning({ id: users.id, email: users.email });
 ```
 
 <Callout icon={<InfoIcon />}>
