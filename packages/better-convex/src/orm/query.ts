@@ -79,17 +79,20 @@ import {
 } from './timestamp-mode';
 import type {
   DBQueryConfig,
+  FilterOperators,
   FindManyPipelineConfig,
   FindManyPipelineFlatMapStage,
   FindManyUnionSource,
   IndexKey,
   OrderByClause,
   OrderByValue,
+  PredicateWhereClause,
   PredicateWhereIndexConfig,
   TableRelationalConfig,
   TablesRelationalConfig,
   ValueOrArray,
   VectorSearchProvider,
+  WhereCallback,
 } from './types';
 import {
   type IndexStrategy,
@@ -1705,7 +1708,19 @@ export class GelRelationalQuery<
       return null;
     }
     if (typeof where === 'function') {
-      return async (row: any) => await (where as any)(row);
+      const whereResult = this._resolveWhereCallbackExpression(
+        where as (...args: any[]) => unknown,
+        tableConfig,
+        { context: 'pipeline' }
+      );
+      if (!whereResult) {
+        return null;
+      }
+      if (this._isPredicateWhereClause(whereResult)) {
+        return async (row: any) => await whereResult.predicate(row);
+      }
+      return async (row: any) =>
+        this._evaluatePostFetchFilter(row, whereResult);
     }
     return async (row: any) => {
       const expression = this._buildFilterExpression(
@@ -1719,13 +1734,166 @@ export class GelRelationalQuery<
     };
   }
 
+  private _assertWhereIndexRequirement(options: {
+    where: unknown;
+    tableConfig: TableRelationalConfig;
+    hasConfiguredIndex: boolean;
+    context: string;
+  }): void {
+    const { where, tableConfig, hasConfiguredIndex, context } = options;
+    if (!where) {
+      return;
+    }
+
+    let whereExpression: FilterExpression<boolean> | undefined;
+
+    if (typeof where === 'function') {
+      const result = this._resolveWhereCallbackExpression(
+        where as (...args: any[]) => unknown,
+        tableConfig,
+        { context: 'pipeline' }
+      );
+      if (!result) {
+        return;
+      }
+      if (this._isPredicateWhereClause(result)) {
+        if (!hasConfiguredIndex) {
+          throw new Error(
+            `${context} where uses predicate(...) and requires .withIndex(...) or source.index.`
+          );
+        }
+        return;
+      }
+      whereExpression = result;
+    } else {
+      whereExpression = this._buildFilterExpression(
+        where as RelationsFilter<any, any>,
+        tableConfig
+      );
+    }
+
+    if (!whereExpression) {
+      return;
+    }
+
+    const compiler = new WhereClauseCompiler(
+      tableConfig.table.tableName,
+      getIndexes(tableConfig.table).map((index) => ({
+        indexName: index.name,
+        indexFields: index.fields,
+      }))
+    );
+    const compiled = compiler.compile(whereExpression);
+    if (
+      (compiled.strategy === 'none' || compiled.postFilters.length > 0) &&
+      !hasConfiguredIndex
+    ) {
+      throw new Error(
+        `${context} where is not fully index-compiled and requires .withIndex(...) or source.index.`
+      );
+    }
+  }
+
+  private _isFilterExpressionNode(
+    value: unknown
+  ): value is FilterExpression<boolean> {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      'accept' in value &&
+      typeof (value as { accept?: unknown }).accept === 'function'
+    );
+  }
+
+  private _isPredicateWhereClause(
+    value: unknown
+  ): value is PredicateWhereClause<any> {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      '__kind' in value &&
+      (value as { __kind?: unknown }).__kind === 'predicate' &&
+      'predicate' in value &&
+      typeof (value as { predicate?: unknown }).predicate === 'function'
+    );
+  }
+
+  private _createFilterOperators<TTableConfig extends TableRelationalConfig>(
+    _tableConfig: TTableConfig
+  ): FilterOperators<TTableConfig> {
+    return {
+      and,
+      or,
+      not,
+      eq,
+      ne,
+      gt,
+      gte,
+      lt,
+      lte,
+      between,
+      notBetween,
+      inArray,
+      notInArray,
+      arrayContains,
+      arrayContained,
+      arrayOverlaps,
+      isNull,
+      isNotNull,
+      like,
+      ilike,
+      notLike,
+      notIlike,
+      startsWith,
+      endsWith,
+      contains,
+      predicate: (predicate) => ({
+        __kind: 'predicate',
+        predicate,
+      }),
+    };
+  }
+
+  private _resolveWhereCallbackExpression(
+    whereFn: (...args: any[]) => unknown,
+    tableConfig: TableRelationalConfig,
+    { context }: { context: 'root' | 'relation' | 'pipeline' }
+  ): FilterExpression<boolean> | PredicateWhereClause<any> | undefined {
+    const maybeExpression = whereFn(
+      tableConfig.table,
+      this._createFilterOperators(tableConfig)
+    );
+
+    if (maybeExpression === undefined) {
+      return;
+    }
+
+    if (this._isFilterExpressionNode(maybeExpression)) {
+      return maybeExpression;
+    }
+
+    if (this._isPredicateWhereClause(maybeExpression)) {
+      if (context === 'relation') {
+        throw new Error(
+          `${context} where callback does not support predicate(...). Return a filter expression.`
+        );
+      }
+      return maybeExpression;
+    }
+
+    throw new Error(
+      `${context} where callback must return a filter expression or predicate(...).`
+    );
+  }
+
   private _buildBasePipelineStream(
     queryConfig: {
       index?: { name: string; filters: FilterExpression<boolean>[] };
       postFilters: FilterExpression<boolean>[];
       order?: { direction: 'asc' | 'desc'; field: string }[];
     },
-    wherePredicate: ((row: any) => boolean | Promise<boolean>) | undefined
+    wherePredicate: ((row: any) => boolean | Promise<boolean>) | undefined,
+    configuredIndex?: PredicateWhereIndexConfig<TTableConfig>
   ): QueryStream<any> {
     const schemaDefinition = this._getSchemaDefinitionOrThrow();
     let streamQuery: any = stream(
@@ -1746,6 +1914,11 @@ export class GelRelationalQuery<
           }
           return indexQuery;
         }
+      );
+    } else if (configuredIndex?.name) {
+      streamQuery = streamQuery.withIndex(
+        configuredIndex.name as any,
+        configuredIndex.range ? (configuredIndex.range as any) : (q: any) => q
       );
     } else if (primaryOrder && primaryOrder.field !== '_creationTime') {
       const orderIndex = getIndexes(this.tableConfig.table).find(
@@ -1782,6 +1955,13 @@ export class GelRelationalQuery<
     source: FindManyUnionSource<TTableConfig>,
     fallbackOrder: 'asc' | 'desc'
   ): QueryStream<any> {
+    this._assertWhereIndexRequirement({
+      where: source.where,
+      tableConfig: this.tableConfig,
+      hasConfiguredIndex: Boolean(source.index?.name),
+      context: 'pipeline.union source',
+    });
+
     const schemaDefinition = this._getSchemaDefinitionOrThrow();
     let sourceStream: any = stream(
       this.db as GenericDatabaseReader<any>,
@@ -1872,6 +2052,12 @@ export class GelRelationalQuery<
       stage.where,
       targetTableConfig
     );
+    this._assertWhereIndexRequirement({
+      where: stage.where,
+      tableConfig: targetTableConfig,
+      hasConfiguredIndex: Boolean(indexName),
+      context: `pipeline.flatMap(${relationName})`,
+    });
 
     return sourceStream.flatMap(async (parent: any) => {
       const values = sourceFields.map((field) => parent[field]);
@@ -1983,14 +2169,31 @@ export class GelRelationalQuery<
           filter?: ((q: any) => unknown) | undefined;
         }
       | undefined;
-    const wherePredicate =
-      typeof config.where === 'function'
-        ? (config.where as (row: any) => boolean | Promise<boolean>)
-        : undefined;
-    const whereFilter =
-      typeof config.where === 'function'
-        ? undefined
-        : (config.where as RelationsFilter<any, any> | undefined);
+    const hasFunctionWhere = typeof config.where === 'function';
+    let wherePredicate: ((row: any) => boolean | Promise<boolean>) | undefined;
+    let whereFilter: RelationsFilter<any, any> | undefined;
+    let whereExpressionFromCallback: FilterExpression<boolean> | undefined;
+    const configuredIndex = config.index as
+      | PredicateWhereIndexConfig<TTableConfig>
+      | undefined;
+
+    if (hasFunctionWhere) {
+      const whereFn = config.where as WhereCallback<TTableConfig>;
+      const callbackExpression = this._resolveWhereCallbackExpression(
+        whereFn as (...args: any[]) => unknown,
+        this.tableConfig,
+        { context: 'root' }
+      );
+      if (this._isPredicateWhereClause(callbackExpression)) {
+        wherePredicate = callbackExpression.predicate as (
+          row: any
+        ) => boolean | Promise<boolean>;
+      } else {
+        whereExpressionFromCallback = callbackExpression;
+      }
+    } else {
+      whereFilter = config.where as RelationsFilter<any, any> | undefined;
+    }
     const strict = this.tableConfig.strict !== false;
     const allowFullScan = this.allowFullScan === true;
 
@@ -2087,7 +2290,7 @@ export class GelRelationalQuery<
       !searchConfig &&
       !wherePredicate &&
       !isCursorPaginated &&
-      config.index === undefined
+      configuredIndex === undefined
     ) {
       const orderSpecs = this._orderBySpecs(config.orderBy);
       const offset = config.offset ?? 0;
@@ -2133,7 +2336,19 @@ export class GelRelationalQuery<
       return this._returnSelectedRows(selectedRows);
     }
 
-    const queryConfig = this._toConvexQuery();
+    const queryConfig = this._toConvexQuery(whereExpressionFromCallback);
+    const whereRequiresExplicitIndex =
+      !searchConfig &&
+      !vectorSearchConfig &&
+      config.where !== undefined &&
+      (wherePredicate !== undefined ||
+        queryConfig.postFilters.length > 0 ||
+        queryConfig.strategy === 'none');
+    if (whereRequiresExplicitIndex && !configuredIndex?.name) {
+      throw new Error(
+        'This where() requires .withIndex(name, range?). Add .withIndex(...) before findMany/findFirst.'
+      );
+    }
 
     if (pageByKey) {
       const schemaDefinition = this._getSchemaDefinitionOrThrow();
@@ -2215,7 +2430,8 @@ export class GelRelationalQuery<
       } else {
         streamQuery = this._buildBasePipelineStream(
           queryConfig,
-          wherePredicate
+          wherePredicate,
+          configuredIndex
         );
       }
 
@@ -2286,8 +2502,8 @@ export class GelRelationalQuery<
       if (config.where !== undefined) {
         throw new Error('vectorSearch cannot be combined with where.');
       }
-      if (config.index !== undefined) {
-        throw new Error('vectorSearch cannot be combined with index.');
+      if (configuredIndex !== undefined) {
+        throw new Error('vectorSearch cannot be combined with withIndex().');
       }
       if (config.offset !== undefined) {
         throw new Error('vectorSearch cannot be combined with offset.');
@@ -2377,13 +2593,13 @@ export class GelRelationalQuery<
           'search cannot be combined with orderBy. Search results are ordered by relevance.'
         );
       }
-      if (wherePredicate) {
+      if (hasFunctionWhere) {
         throw new Error(
           'search cannot be combined with where(fn). Use search.filters or object where.'
         );
       }
-      if (config.index !== undefined) {
-        throw new Error('search cannot be combined with index.');
+      if (configuredIndex !== undefined) {
+        throw new Error('search cannot be combined with withIndex().');
       }
       if (
         this._hasSearchDisallowedRelationFilter(whereFilter, this.tableConfig)
@@ -2529,6 +2745,19 @@ export class GelRelationalQuery<
           needsPostFetchSortForPrimary = true;
         }
       }
+    } else if (configuredIndex?.name) {
+      query = query.withIndex(
+        configuredIndex.name as any,
+        configuredIndex.range ? (configuredIndex.range as any) : (q: any) => q
+      );
+
+      if (primaryOrder) {
+        if (primaryOrder.field === '_creationTime') {
+          query = query.order(primaryOrder.direction);
+        } else {
+          needsPostFetchSortForPrimary = true;
+        }
+      }
     } else if (queryConfig.order && primaryOrder) {
       // No WHERE index - check if orderBy field has an index
       const orderField = primaryOrder.field;
@@ -2559,36 +2788,12 @@ export class GelRelationalQuery<
 
     usePostFetchSort = needsPostFetchSortForPrimary || hasSecondaryOrders;
 
-    if (!queryConfig.index && queryConfig.postFilters.length > 0) {
-      if (isCursorPaginated) {
-        if (maxScan === undefined) {
-          if (strict) {
-            throw new Error(
-              'Cursor pagination with scan fallback requires maxScan when strict=true. Add maxScan or make the query indexable.'
-            );
-          }
-          console.warn(
-            'Cursor pagination is running with scan fallback and no maxScan because strict: false.'
-          );
-        }
-      } else {
-        if (!allowFullScan) {
-          throw new Error(
-            'Query requires allowFullScan: true when no index is available.'
-          );
-        }
-        console.warn(
-          'Query is running without an index (allowFullScan: true).'
-        );
-      }
-    }
-
     if (wherePredicate) {
-      const predicateIndex = config.index as
-        | PredicateWhereIndexConfig<TTableConfig>
-        | undefined;
+      const predicateIndex = configuredIndex;
       if (!predicateIndex?.name) {
-        throw new Error('Predicate where() requires index: { name, range? }.');
+        throw new Error(
+          'predicate(...) requires .withIndex(name, range?) on the query.'
+        );
       }
       const schemaDefinition = (this.schema as any)[OrmSchemaDefinition];
       if (!schemaDefinition) {
@@ -3345,7 +3550,7 @@ export class GelRelationalQuery<
    * Convert query config to Convex query parameters
    * Phase 4 implementation with WhereClauseCompiler
    */
-  private _toConvexQuery(): {
+  private _toConvexQuery(whereExpressionOverride?: FilterExpression<boolean>): {
     table: string;
     strategy: IndexStrategy;
     index?: { name: string; filters: FilterExpression<boolean>[] };
@@ -3367,8 +3572,13 @@ export class GelRelationalQuery<
     );
 
     // Compile where clause to FilterExpression (if present)
-    let whereExpression: FilterExpression<boolean> | undefined;
-    if (config.where && typeof config.where !== 'function') {
+    let whereExpression: FilterExpression<boolean> | undefined =
+      whereExpressionOverride;
+    if (
+      !whereExpression &&
+      config.where &&
+      typeof config.where !== 'function'
+    ) {
       whereExpression = this._buildFilterExpression(
         config.where as RelationsFilter<any, any>,
         this.tableConfig
@@ -3973,11 +4183,17 @@ export class GelRelationalQuery<
     ) {
       const whereFilter = (relationConfig as any).where;
       if (typeof whereFilter === 'function') {
-        throw new Error(
-          'Function-style where clauses are not supported in Drizzle v1 mode.'
+        const whereExpression = this._resolveWhereCallbackExpression(
+          whereFilter as (...args: any[]) => unknown,
+          targetTableConfig,
+          { context: 'relation' }
         );
-      }
-      if (whereFilter) {
+        if (whereExpression && !this._isPredicateWhereClause(whereExpression)) {
+          targets = targets.filter((target) =>
+            this._evaluatePostFetchFilter(target, whereExpression)
+          );
+        }
+      } else if (whereFilter) {
         const targetEdges = this._getTargetTableEdges(edge.targetTable);
         targets = await this._applyRelationsFilterToRows(
           targets,
@@ -4316,11 +4532,17 @@ export class GelRelationalQuery<
     ) {
       const whereFilter = (relationConfig as any).where;
       if (typeof whereFilter === 'function') {
-        throw new Error(
-          'Function-style where clauses are not supported in Drizzle v1 mode.'
+        const whereExpression = this._resolveWhereCallbackExpression(
+          whereFilter as (...args: any[]) => unknown,
+          targetTableConfig,
+          { context: 'relation' }
         );
-      }
-      if (whereFilter) {
+        if (whereExpression && !this._isPredicateWhereClause(whereExpression)) {
+          targets = targets.filter((target) =>
+            this._evaluatePostFetchFilter(target, whereExpression)
+          );
+        }
+      } else if (whereFilter) {
         const targetEdges = this._getTargetTableEdges(edge.targetTable);
         targets = await this._applyRelationsFilterToRows(
           targets,

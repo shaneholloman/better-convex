@@ -73,12 +73,25 @@ const admins = await db.query.users.findMany({
 });
 ```
 
+Callback `where` is also supported for Drizzle-style operator syntax:
+
+```ts showLineNumbers {2-3}
+const admins = await db.query.users.findMany({
+  where: (users, { eq }) => eq(users.role, 'admin'),
+});
+```
+
 There are a few important differences from SQL-based Drizzle to keep in mind. SQL-only RQB features like `RAW` filters and `sql.placeholder(...)` are not supported in Convex. The `extras` option is supported, but computed post-fetch (no SQL computed fields).
 
-Predicate `where` (function form) runs via stream filtering and requires an explicit `index: { name, range? }` config. There is no implicit full-scan fallback.
+Predicate `where` (function form) runs via stream filtering and requires an explicit `.withIndex(name, range?)` on the query. There is no implicit full-scan fallback.
 
 <Callout icon={<AlertTriangle />}>
-**Important**: When using predicate `where: (row) => ...`, you must provide an explicit `index` configuration. Without it, the query will fail rather than silently scanning every document.
+**Important**: When using `ops.predicate(...)`, call `.withIndex(...)` first. Without it, the query fails rather than silently scanning every document.
+</Callout>
+
+<Callout icon={<InfoIcon />}>
+**Disclaimer:** Use predicate filters while prototyping, or when result volume is known to stay small.  
+For scalable paths, prefer index-compiled filters and index-first query design.
 </Callout>
 
 ### Core Operators
@@ -119,7 +132,7 @@ The ORM supports familiar string matching operators. Most run post-fetch, but a 
 
 For large datasets, prefer indexed filters first. `startsWith` and `like('prefix%')` use index ranges when the field is indexed. `between` and `notBetween` are also index-compiled when the field is indexed.
 
-Compound indexes follow Convex prefix rules. For an index on `[type, numLikes]`, `where: { numLikes: 10 }` is treated as non-indexable and requires `allowFullScan` unless you also constrain the leading field (`type`). Reversed `AND` equality order is normalized to index field order before query execution.
+Compound indexes follow Convex prefix rules. For an index on `[type, numLikes]`, `where: { numLikes: 10 }` is treated as non-indexable and requires explicit `.withIndex(...)` (and `maxScan` in cursor mode) unless you also constrain the leading field (`type`). Reversed `AND` equality order is normalized to index field order before query execution.
 
 <Callout icon={<InfoIcon />}>
 **Tip**: Always constrain leading index fields first. For compound indexes, you must include earlier fields before later ones can be index-compiled.
@@ -150,7 +163,7 @@ See [/docs/server/components/aggregates](/docs/server/components/aggregates).
 
 ### Full-Scan Operators and Workarounds
 
-These operators are non-index-compiled and require `allowFullScan` unless paired with another indexable pre-filter. Here are scalable workarounds for each:
+These operators are non-index-compiled and require explicit `.withIndex(...)` unless paired with another indexable pre-filter. Here are scalable workarounds for each:
 
 | Operator | Scalable workaround |
 |---|---|
@@ -159,8 +172,8 @@ These operators are non-index-compiled and require `allowFullScan` unless paired
 | `endsWith` | Store a reversed value column (for example `reversedEmail`) and use `startsWith` on that indexed column |
 | `ilike`, `notIlike` | Store a normalized lowercase column and query with `startsWith`/`like('prefix%')` where possible |
 | `notLike` | Use an indexed positive pre-filter, then apply `notLike` post-fetch |
-| `NOT` (general) | Rewrite to positive indexable predicates when possible; otherwise explicit full-scan opt-in |
-| predicate `where: (row) => ...` | Use `index: { name, range? }`; add `maxScan` (cursor pagination only) to cap scan cost |
+| `NOT` (general) | Rewrite to positive indexable predicates when possible; otherwise use `.withIndex(...)` and cap cursor scans with `maxScan` |
+| callback `where` + `predicate(...)` | Use `.withIndex(name, range?)`; add `maxScan` (cursor pagination only) to cap scan cost |
 
 ### Logical Filters
 
@@ -268,7 +281,7 @@ const posts = await db.query.posts.findMany({
 
 **Search mode constraints**
 - `orderBy` is not allowed (Convex relevance ordering is used)
-- `where: (row) => ...` is not allowed
+- callback `where` (`(table, ops) => ...`) is not allowed
 - relation-based `where` is not allowed
 - object `where` on base table fields is allowed (post-search filter)
 - `with:` is allowed for eager loading
@@ -318,7 +331,7 @@ const posts = await db.query.posts.findMany({
 - `cursor` is not allowed
 - `maxScan` is not allowed
 - `where` is not allowed
-- `index` is not allowed
+- `.withIndex(...)` is not allowed
 - `offset` is not allowed
 - top-level `limit` is not allowed (use `vectorSearch.limit`)
 - `_score` is returned only when `vectorSearch.includeScore: true`
@@ -331,8 +344,8 @@ Use this decision matrix to pick the right approach and avoid accidental full sc
 | Goal | Recommended Tool | Notes |
 |---|---|---|
 | Simple filters, no pagination | `db.query.*.findMany({ where, limit })` | Uses index compilation when possible; non-paginated reads must be sized |
-| Complex JS predicate, no pagination | `db.query.*.findMany({ where: (row) => ..., index: { name: 'by_field' }, limit: 100 })` | Explicit index required; non-paginated reads must be sized |
-| Complex JS predicate + pagination | `db.query.*.findMany({ where: (row) => ..., index: { name: 'by_field' }, cursor, limit, maxScan })` | Explicit index + bounded scan |
+| Complex JS predicate, no pagination | `db.query.*.withIndex('by_field').findMany({ where: (_t, { predicate }) => predicate((row) => ...), limit: 100 })` | Explicit index required; non-paginated reads must be sized |
+| Complex JS predicate + pagination | `db.query.*.withIndex('by_field').findMany({ where: (_t, { predicate }) => predicate((row) => ...), cursor, limit, maxScan })` | Explicit index + bounded scan |
 | Large lists | `db.query.*.findMany({ cursor: null, limit: 20 })` | First `orderBy` field should be indexed |
 | Search + equality filters | `db.query.*.findMany({ search: { index, query, filters? } })` | `filters` must be in search index `filterFields` |
 | Embedding similarity | `db.query.*.findMany({ vectorSearch: { index, vector, limit, includeScore?, filter? } })` | Similarity order from vector search; no `cursor`/`where`/`orderBy` |
@@ -385,6 +398,16 @@ const users = await db.query.users.findMany({
 });
 ```
 
+Callback form is also supported:
+
+```ts showLineNumbers {2-4}
+const users = await db.query.users.findMany({
+  extras: () => ({
+    emailDomain: (row) => row.email.split('@')[1]!,
+  }),
+});
+```
+
 Extras are computed in JavaScript after fetching documents (and after `with:` relations are loaded). They can't be used in `where`/`orderBy` and should be treated as post-fetch helpers.
 
 ## Performance Tips
@@ -399,7 +422,7 @@ Here's a quick reference for the most frequent issues:
 
 | Issue | Fix |
 |---|---|
-| `where` expects an object | Use `where: { field: value }` |
+| `where` callback fails | Return a filter expression: `where: (table, { eq }) => eq(table.field, value)` |
 | `eq(field, null)` | Use `{ isNull: true }` |
 | Slow ordering | Add an index on the primary `orderBy` field |
 | `columns` doesn't reduce reads | Projection is post-fetch |

@@ -79,7 +79,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
       deletedAt: 123456,
     });
 
-    const result = await db.query.users.findMany({
+    const result = await db.query.users.withIndex('by_status').findMany({
       where: { status: { ne: 'deleted' } },
     });
 
@@ -282,7 +282,7 @@ describe('M4 Where Filtering - Binary Operators', () => {
       deletedAt: null,
     });
 
-    const result = await db.query.users.findMany({
+    const result = await db.query.users.withIndex('by_age').findMany({
       where: { age: { notBetween: [18, 65] } },
     });
 
@@ -320,7 +320,7 @@ describe('M4 Where Filtering - Logical Operators', () => {
       deletedAt: 123456,
     });
 
-    const result = await db.query.users.findMany({
+    const result = await db.query.users.withIndex('by_status').findMany({
       where: {
         status: 'active',
         age: { gt: 18 },
@@ -356,7 +356,7 @@ describe('M4 Where Filtering - Logical Operators', () => {
       deletedAt: 123456,
     });
 
-    const result = await db.query.users.findMany({
+    const result = await db.query.users.withIndex('by_status').findMany({
       where: {
         status: { OR: ['active', 'pending'] },
       },
@@ -384,8 +384,7 @@ describe('M4 Where Filtering - Logical Operators', () => {
       deletedAt: 123456,
     });
 
-    const result = await db.query.users.findMany({
-      allowFullScan: true,
+    const result = await db.query.users.withIndex('by_status').findMany({
       where: {
         NOT: { status: 'deleted' },
       },
@@ -420,7 +419,7 @@ describe('M4 Where Filtering - Logical Operators', () => {
       deletedAt: null,
     });
 
-    const result = await db.query.users.findMany({
+    const result = await db.query.users.withIndex('by_status').findMany({
       where: {
         OR: [{ status: 'active' }, { status: 'pending' }],
         age: { gt: 18, lt: 65 },
@@ -431,7 +430,7 @@ describe('M4 Where Filtering - Logical Operators', () => {
     expect(result[0].name).toBe('Alice');
   });
 
-  test('requires allowFullScan when filtering by non-leading compound index field', async ({
+  test('requires .withIndex() when filtering by non-leading compound index field', async ({
     ctx,
   }) => {
     const db = ctx.orm;
@@ -456,11 +455,10 @@ describe('M4 Where Filtering - Logical Operators', () => {
       db.query.posts.findMany({
         where: { numLikes: 10 },
       })
-    ).rejects.toThrow(/allowFullScan: true/i);
+    ).rejects.toThrow(/requires \.withIndex/i);
 
-    const result = await db.query.posts.findMany({
+    const result = await db.query.posts.withIndex('numLikesAndType').findMany({
       where: { numLikes: 10 },
-      allowFullScan: true,
     });
 
     expect(result).toHaveLength(2);
@@ -598,8 +596,7 @@ describe('M4 Where Filtering - Column Logical Operators', () => {
       deletedAt: null,
     });
 
-    const result = await db.query.users.findMany({
-      allowFullScan: true,
+    const result = await db.query.users.withIndex('by_age').findMany({
       where: {
         age: { OR: [{ lt: 18 }, { gt: 65 }] },
       },
@@ -669,8 +666,7 @@ describe('M4 Where Filtering - Column Logical Operators', () => {
       deletedAt: 456,
     });
 
-    const result = await db.query.users.findMany({
-      allowFullScan: true,
+    const result = await db.query.users.withIndex('by_deleted_at').findMany({
       where: {
         deletedAt: { NOT: { isNull: true } },
       },
@@ -711,7 +707,7 @@ describe('M4 Where Filtering - Array Operators', () => {
       deletedAt: 123456,
     });
 
-    const result = await db.query.users.findMany({
+    const result = await db.query.users.withIndex('by_status').findMany({
       where: { status: { in: ['active', 'pending'] } },
     });
 
@@ -737,7 +733,7 @@ describe('M4 Where Filtering - Array Operators', () => {
       deletedAt: 123456,
     });
 
-    const result = await db.query.users.findMany({
+    const result = await db.query.users.withIndex('by_status').findMany({
       where: { status: { notIn: ['deleted'] } },
     });
 
@@ -807,7 +803,7 @@ describe('M4 Where Filtering - Null Operators', () => {
       deletedAt: 123456,
     });
 
-    const result = await db.query.users.findMany({
+    const result = await db.query.users.withIndex('by_deleted_at').findMany({
       where: { deletedAt: { isNotNull: true } },
     });
 
@@ -971,14 +967,13 @@ describe('M4 Where Filtering - Edge Cases', () => {
       deletedAt: null,
     });
 
-    const result = await db.query.users.findMany({
+    const result = await db.query.users.withIndex('by_status').findMany({
       where: {
         status: { in: ['active', 'pending'] },
         OR: [{ age: { gt: 18 } }, { age: { lt: 65 } }],
         deletedAt: { isNotNull: true },
         name: 'Alice',
       },
-      allowFullScan: true,
     });
 
     expect(result).toHaveLength(1);

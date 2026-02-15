@@ -68,7 +68,7 @@ export type FindManyUnionSource<
   TTableConfig extends TableRelationalConfig = TableRelationalConfig,
 > = {
   index?: PredicateWhereIndexConfig<TTableConfig>;
-  where?: RelationsFilter<TTableConfig, any> | WherePredicate<TTableConfig>;
+  where?: RelationsFilter<TTableConfig, any> | WhereCallback<TTableConfig>;
 };
 
 type PipelineRelationName<TTableConfig extends TableRelationalConfig> = Extract<
@@ -412,11 +412,11 @@ export type DBQueryConfig<
     }
   : {}) & {
     /**
-     * Relation-aware filter object (v1) or predicate (full-scan opt-in).
+     * Relation-aware filter object (v1) or callback expression.
      */
     where?:
       | RelationsFilter<TTableConfig, TSchema>
-      | WherePredicate<TTableConfig>
+      | WhereCallback<TTableConfig>
       | undefined;
     /**
      * Allow full scans when no index can be used.
@@ -424,9 +424,17 @@ export type DBQueryConfig<
     allowFullScan?: boolean | undefined;
   };
 
-export type WherePredicate<TTableConfig extends TableRelationalConfig> = (
-  row: InferModelFromColumns<TableColumns<TTableConfig>>
-) => boolean | Promise<boolean>;
+export type PredicateWhereClause<TTableConfig extends TableRelationalConfig> = {
+  readonly __kind: 'predicate';
+  readonly predicate: (
+    row: InferModelFromColumns<TableColumns<TTableConfig>>
+  ) => boolean | Promise<boolean>;
+};
+
+export type WhereCallback<TTableConfig extends TableRelationalConfig> = (
+  table: TTableConfig['table'],
+  operators: FilterOperators<TTableConfig>
+) => FilterExpression<boolean> | PredicateWhereClause<TTableConfig> | undefined;
 
 type PredicateWhereIndexMap<TTableConfig extends TableRelationalConfig> =
   TTableConfig['table'] extends ConvexTable<any, infer TIndexes, any, any>
@@ -674,7 +682,7 @@ export type EnforcePredicateIndex<
   ? TConfig extends { search: infer TSearch }
     ? [TSearch] extends [undefined]
       ? TConfig extends { where: infer TWhere }
-        ? TWhere extends (...args: any[]) => any
+        ? TWhere extends (row: any) => boolean | Promise<boolean>
           ? Omit<TConfig, 'allowFullScan' | 'index'> & {
               where: TWhere;
               index: PredicateWhereIndexConfig<TTableConfig>;
@@ -685,7 +693,7 @@ export type EnforcePredicateIndex<
       : TConfig
     : TConfig
   : TConfig extends { where: infer TWhere }
-    ? TWhere extends (...args: any[]) => any
+    ? TWhere extends (row: any) => boolean | Promise<boolean>
       ? Omit<TConfig, 'allowFullScan' | 'index'> & {
           where: TWhere;
           index: PredicateWhereIndexConfig<TTableConfig>;
@@ -751,7 +759,19 @@ export type EnforceVectorSearchConstraints<
  * Operators use 'raw' mode for comparisons (no null union in comparison values)
  * Runtime wraps builders with column() helper for FilterExpression construction
  */
-export interface FilterOperators {
+export interface FilterOperators<
+  TTableConfig extends TableRelationalConfig = TableRelationalConfig,
+> {
+  and(
+    ...expressions: (FilterExpression<boolean> | undefined)[]
+  ): FilterExpression<boolean> | undefined;
+
+  or(
+    ...expressions: (FilterExpression<boolean> | undefined)[]
+  ): FilterExpression<boolean> | undefined;
+
+  not(expression: FilterExpression<boolean>): FilterExpression<boolean>;
+
   eq<TBuilder extends ColumnBuilder<any, any, any>>(
     field: TBuilder,
     value: GetColumnData<TBuilder, 'raw'>
@@ -862,6 +882,12 @@ export interface FilterOperators {
     field: TBuilder,
     substring: string
   ): FilterExpression<boolean>;
+
+  predicate(
+    predicate: (
+      row: InferModelFromColumns<TableColumns<TTableConfig>>
+    ) => boolean | Promise<boolean>
+  ): PredicateWhereClause<TTableConfig>;
 }
 
 /**

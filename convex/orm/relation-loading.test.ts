@@ -379,6 +379,40 @@ describe('M6.5 Phase 1: Relation Loading', () => {
       expect(users[0].posts).toHaveLength(1);
       expect(users[0].posts[0]).toHaveProperty('textLength', 5);
     });
+
+    test('should support callback where inside relations', async ({ ctx }) => {
+      const userId = await ctx.db.insert('users', {
+        name: 'Alice',
+        email: 'alice@example.com',
+      });
+      await ctx.db.insert('posts', {
+        text: 'Published',
+        numLikes: 1,
+        type: 'post',
+        authorId: userId,
+        published: true,
+      });
+      await ctx.db.insert('posts', {
+        text: 'Draft',
+        numLikes: 1,
+        type: 'post',
+        authorId: userId,
+        published: false,
+      });
+
+      const db = ctx.orm;
+      const users = await db.query.users.findMany({
+        with: {
+          posts: {
+            where: (posts, { eq }) => eq(posts.published, true),
+          },
+        },
+      });
+
+      expect(users).toHaveLength(1);
+      expect(users[0].posts).toHaveLength(1);
+      expect(users[0].posts[0].text).toBe('Published');
+    });
   });
 
   describe('Many-to-One Relations (posts.author)', () => {

@@ -329,7 +329,7 @@ Now let's lock how to choose filter modes so migration stays fast at scale.
 | Need | Native Convex | ORM |
 |---|---|---|
 | Indexed equality/range filtering | `withIndex("...")` range expression | object `where` (index-compiled when possible) |
-| Complex JS predicate filtering | `.filter(...)` (table/index scan semantics) | predicate `where` + explicit `index: { name, range? }` |
+| Complex JS predicate filtering | `.filter(...)` (table/index scan semantics) | callback `where` + `predicate(...)` + explicit `.withIndex(...)` |
 | Full-text relevance search | `withSearchIndex(...)` | `findMany({ search })` |
 | Vector similarity search | `ctx.vectorSearch(...)` in actions | `findMany({ vectorSearch })` (or native action pattern) |
 
@@ -338,18 +338,20 @@ Here are the guardrails to keep in mind during migration:
 - Native Convex requires explicit `withIndex(...)` to force index usage.
 - ORM compiles index plans from `where`/`orderBy` where possible, but still enforces sizing and scan guardrails.
 - Compound indexes follow prefix rules in both worlds: constrain leading index fields before trailing fields.
-- Predicate `where` in ORM must include explicit `index` and should be bounded with `maxScan` in cursor mode.
+- Predicate `where` in ORM must include explicit `.withIndex(...)` and should be bounded with `maxScan` in cursor mode.
 
 Example predicate `where` in ORM:
 
 ```ts showLineNumbers {3-4}
-const page = await ctx.orm.query.users.findMany({
-  where: (u) => u.email.endsWith('@example.com'),
-  index: { name: 'by_email' },
-  cursor: null,
-  limit: 20,
-  maxScan: 500,
-});
+const page = await ctx.orm.query.users
+  .withIndex('by_email')
+  .findMany({
+    where: (_users, { predicate }) =>
+      predicate((u) => u.email.endsWith('@example.com')),
+    cursor: null,
+    limit: 20,
+    maxScan: 500,
+  });
 ```
 
 This makes scan behavior explicit instead of accidental.

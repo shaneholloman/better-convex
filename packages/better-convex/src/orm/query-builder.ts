@@ -21,7 +21,6 @@ import type {
   DBQueryConfig,
   EnforceAllowFullScan,
   EnforceCursorMaxScan,
-  EnforcePredicateIndex,
   EnforceSearchConstraints,
   EnforceVectorSearchConstraints,
   FindManyPageByKeyConfig,
@@ -37,22 +36,31 @@ import type {
   TablesRelationalConfig,
   VectorQueryConfig,
   VectorSearchProvider,
-  WherePredicate,
 } from './types';
 
 type EnforcedConfig<
   TConfig,
   TTableConfig extends TableRelationalConfig,
+  THasIndex extends boolean = false,
 > = EnforceVectorSearchConstraints<
   EnforceSearchConstraints<
-    EnforcePredicateIndex<
-      EnforceCursorMaxScan<EnforceAllowFullScan<TConfig, TTableConfig>>,
-      TTableConfig
+    EnforceCursorMaxScan<
+      THasIndex extends true
+        ? TConfig
+        : EnforceAllowFullScan<TConfig, TTableConfig>
     >,
     TTableConfig
   >,
   TTableConfig
 >;
+
+type DisallowWithIndexSearchOrVector<THasIndex extends boolean> =
+  THasIndex extends true
+    ? {
+        search?: never;
+        vectorSearch?: never;
+      }
+    : unknown;
 
 type PredicateIndexName<TTableConfig extends TableRelationalConfig> =
   PredicateWhereIndexConfig<TTableConfig> extends {
@@ -65,32 +73,6 @@ type PredicateIndexConfigByName<
   TTableConfig extends TableRelationalConfig,
   TIndexName extends PredicateIndexName<TTableConfig>,
 > = Extract<PredicateWhereIndexConfig<TTableConfig>, { name: TIndexName }>;
-
-type PredicatePaginatedConfig<
-  TSchema extends TablesRelationalConfig,
-  TTableConfig extends TableRelationalConfig,
-  TIndexName extends PredicateIndexName<TTableConfig>,
-> = Omit<
-  CursorPaginatedConfigNoSearch<TSchema, TTableConfig>,
-  'where' | 'index' | 'allowFullScan' | 'search'
-> & {
-  where: WherePredicate<TTableConfig>;
-  index: PredicateIndexConfigByName<TTableConfig, TIndexName>;
-  allowFullScan?: never;
-};
-
-type PredicateNonPaginatedConfig<
-  TSchema extends TablesRelationalConfig,
-  TTableConfig extends TableRelationalConfig,
-  TIndexName extends PredicateIndexName<TTableConfig>,
-> = Omit<
-  NonCursorConfigNoSearch<TSchema, TTableConfig>,
-  'where' | 'index' | 'allowFullScan' | 'search'
-> & {
-  where: WherePredicate<TTableConfig>;
-  index: PredicateIndexConfigByName<TTableConfig, TIndexName>;
-  allowFullScan?: never;
-};
 
 type SearchPaginatedConfig<
   TSchema extends TablesRelationalConfig,
@@ -196,7 +178,7 @@ type CursorPaginatedConfig<
   TTableConfig extends TableRelationalConfig,
 > = Omit<
   DBQueryConfig<'many', true, TSchema, TTableConfig>,
-  'cursor' | 'limit' | 'pageByKey' | 'allowFullScan' | 'pipeline'
+  'cursor' | 'limit' | 'pageByKey' | 'allowFullScan' | 'pipeline' | 'index'
 > & {
   cursor: string | null;
   limit: number;
@@ -211,7 +193,7 @@ type NonCursorConfig<
   TTableConfig extends TableRelationalConfig,
 > = Omit<
   DBQueryConfig<'many', true, TSchema, TTableConfig>,
-  'maxScan' | 'endCursor' | 'pipeline'
+  'maxScan' | 'endCursor' | 'pipeline' | 'index'
 > & {
   cursor?: never;
   maxScan?: never;
@@ -263,6 +245,7 @@ type FindFirstConfigNoSearch<
   | 'endCursor'
   | 'pipeline'
   | 'pageByKey'
+  | 'index'
 > & {
   search?: undefined;
   vectorSearch?: undefined;
@@ -409,10 +392,16 @@ export class RelationalSelectChain<
     return this.withConfig({ where });
   }
 
-  index(
-    index: SelectPipelineBaseConfig<TSchema, TTableConfig>['index']
+  withIndex<TIndexName extends PredicateIndexName<TTableConfig>>(
+    indexName: TIndexName,
+    range?: PredicateIndexConfigByName<TTableConfig, TIndexName>['range']
   ): RelationalSelectChain<TSchema, TTableConfig, TRow> {
-    return this.withConfig({ index });
+    return this.withConfig({
+      index: {
+        name: indexName,
+        ...(range ? { range } : {}),
+      } as unknown as PredicateWhereIndexConfig<TTableConfig>,
+    });
   }
 
   orderBy(
@@ -572,6 +561,7 @@ export class RelationalSelectChain<
 export class RelationalQueryBuilder<
   TSchema extends TablesRelationalConfig,
   TTableConfig extends TableRelationalConfig,
+  THasIndex extends boolean = false,
 > {
   /**
    * Type anchor for HKT pattern
@@ -593,19 +583,28 @@ export class RelationalQueryBuilder<
     private allEdges?: EdgeMetadata[], // M6.5 Phase 2: All edges for nested loading
     private rls?: RlsContext,
     private relationLoading?: { concurrency?: number },
-    private vectorSearch?: VectorSearchProvider
+    private vectorSearch?: VectorSearchProvider,
+    private queryIndex?: PredicateWhereIndexConfig<TTableConfig>
   ) {}
 
   private createQuery<TResult>(
     config: DBQueryConfig<'many', true, TSchema, TTableConfig>,
     mode: 'many' | 'first' | 'firstOrThrow'
   ): GelRelationalQuery<TSchema, TTableConfig, TResult> {
+    const mergedConfig =
+      this.queryIndex && config.index === undefined
+        ? ({
+            ...config,
+            index: this.queryIndex,
+          } as DBQueryConfig<'many', true, TSchema, TTableConfig>)
+        : config;
+
     return new GelRelationalQuery<TSchema, TTableConfig, TResult>(
       this.schema,
       this.tableConfig,
       this.edgeMetadata,
       this.db,
-      config,
+      mergedConfig,
       mode,
       this.allEdges,
       this.rls,
@@ -623,7 +622,30 @@ export class RelationalQueryBuilder<
       TSchema,
       TTableConfig,
       BuildQueryResult<TSchema, TTableConfig, true>
-    >((config, mode) => this.createQuery(config, mode), {});
+    >(
+      (config, mode) => this.createQuery(config, mode),
+      this.queryIndex ? ({ index: this.queryIndex } as any) : {}
+    );
+  }
+
+  withIndex<TIndexName extends PredicateIndexName<TTableConfig>>(
+    indexName: TIndexName,
+    range?: PredicateIndexConfigByName<TTableConfig, TIndexName>['range']
+  ): RelationalQueryBuilder<TSchema, TTableConfig, true> {
+    return new RelationalQueryBuilder<TSchema, TTableConfig, true>(
+      this.schema,
+      this.tableConfig,
+      this.edgeMetadata,
+      this.db,
+      this.allEdges,
+      this.rls,
+      this.relationLoading,
+      this.vectorSearch,
+      {
+        name: indexName,
+        ...(range ? { range } : {}),
+      } as unknown as PredicateWhereIndexConfig<TTableConfig>
+    );
   }
 
   /**
@@ -642,7 +664,11 @@ export class RelationalQueryBuilder<
    * });
    */
   findMany<TConfig extends SearchPaginatedConfig<TSchema, TTableConfig>>(
-    config: KnownKeysOnly<TConfig, SearchPaginatedConfig<TSchema, TTableConfig>>
+    config: KnownKeysOnly<
+      TConfig,
+      SearchPaginatedConfig<TSchema, TTableConfig>
+    > &
+      DisallowWithIndexSearchOrVector<THasIndex>
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
@@ -652,7 +678,8 @@ export class RelationalQueryBuilder<
     config: KnownKeysOnly<
       TConfig,
       SearchNonPaginatedConfig<TSchema, TTableConfig>
-    >
+    > &
+      DisallowWithIndexSearchOrVector<THasIndex>
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
@@ -662,33 +689,8 @@ export class RelationalQueryBuilder<
     config: KnownKeysOnly<
       TConfig,
       VectorNonPaginatedConfig<TSchema, TTableConfig>
-    >
-  ): GelRelationalQuery<
-    TSchema,
-    TTableConfig,
-    BuildQueryResult<TSchema, TTableConfig, TConfig>[]
-  >;
-  findMany<
-    TIndexName extends PredicateIndexName<TTableConfig>,
-    TConfig extends PredicatePaginatedConfig<TSchema, TTableConfig, TIndexName>,
-  >(
-    config: PredicatePaginatedConfig<TSchema, TTableConfig, TIndexName> &
-      TConfig
-  ): GelRelationalQuery<
-    TSchema,
-    TTableConfig,
-    PaginatedResult<BuildQueryResult<TSchema, TTableConfig, TConfig>>
-  >;
-  findMany<
-    TIndexName extends PredicateIndexName<TTableConfig>,
-    TConfig extends PredicateNonPaginatedConfig<
-      TSchema,
-      TTableConfig,
-      TIndexName
-    >,
-  >(
-    config: PredicateNonPaginatedConfig<TSchema, TTableConfig, TIndexName> &
-      TConfig
+    > &
+      DisallowWithIndexSearchOrVector<THasIndex>
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
@@ -701,7 +703,7 @@ export class RelationalQueryBuilder<
       TConfig,
       CursorPaginatedConfigNoSearch<TSchema, TTableConfig>
     > &
-      EnforcedConfig<TConfig, TTableConfig>
+      EnforcedConfig<TConfig, TTableConfig, THasIndex>
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
@@ -712,7 +714,7 @@ export class RelationalQueryBuilder<
       TConfig,
       NonCursorConfigNoSearch<TSchema, TTableConfig>
     > &
-      EnforcedConfig<TConfig, TTableConfig>
+      EnforcedConfig<TConfig, TTableConfig, THasIndex>
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
@@ -720,7 +722,7 @@ export class RelationalQueryBuilder<
   >;
   findMany<TConfig extends KeyPageConfig<TSchema, TTableConfig>>(
     config: KnownKeysOnly<TConfig, KeyPageConfig<TSchema, TTableConfig>> &
-      EnforcedConfig<TConfig, TTableConfig>
+      EnforcedConfig<TConfig, TTableConfig, THasIndex>
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
@@ -756,7 +758,11 @@ export class RelationalQueryBuilder<
    * });
    */
   findFirst<TConfig extends SearchFindFirstConfig<TSchema, TTableConfig>>(
-    config: KnownKeysOnly<TConfig, SearchFindFirstConfig<TSchema, TTableConfig>>
+    config: KnownKeysOnly<
+      TConfig,
+      SearchFindFirstConfig<TSchema, TTableConfig>
+    > &
+      DisallowWithIndexSearchOrVector<THasIndex>
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
@@ -767,7 +773,7 @@ export class RelationalQueryBuilder<
       TConfig,
       FindFirstConfigNoSearch<TSchema, TTableConfig>
     > &
-      EnforcedConfig<TConfig, TTableConfig>
+      EnforcedConfig<TConfig, TTableConfig, THasIndex>
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
@@ -800,7 +806,11 @@ export class RelationalQueryBuilder<
   findFirstOrThrow<
     TConfig extends SearchFindFirstConfig<TSchema, TTableConfig>,
   >(
-    config: KnownKeysOnly<TConfig, SearchFindFirstConfig<TSchema, TTableConfig>>
+    config: KnownKeysOnly<
+      TConfig,
+      SearchFindFirstConfig<TSchema, TTableConfig>
+    > &
+      DisallowWithIndexSearchOrVector<THasIndex>
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,
@@ -813,7 +823,7 @@ export class RelationalQueryBuilder<
       TConfig,
       FindFirstConfigNoSearch<TSchema, TTableConfig>
     > &
-      EnforcedConfig<TConfig, TTableConfig>
+      EnforcedConfig<TConfig, TTableConfig, THasIndex>
   ): GelRelationalQuery<
     TSchema,
     TTableConfig,

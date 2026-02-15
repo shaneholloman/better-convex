@@ -76,14 +76,15 @@ await ctx.orm.query.table.findMany({
   limit: 20,
 })
 
-await ctx.orm.query.table.findMany({
-  // Predicate where requires an explicit index plan (no allowFullScan fallback)
-  where: (row) => row.status === 'active',
-  index: { name: 'by_status' },
-  cursor: null,
-  limit: 20,
-  maxScan: 2000,
-})
+await ctx.orm.query.table
+  .withIndex('by_status')
+  .findMany({
+    // Predicate where requires an explicit index plan (no allowFullScan fallback)
+    where: (_table, { predicate }) => predicate((row) => row.status === 'active'),
+    cursor: null,
+    limit: 20,
+    maxScan: 2000,
+  })
 ```
 
 **Mutations:**
@@ -173,7 +174,7 @@ isNotNull(field)
 - `count/sum/avg/max/min is not on db.query.*` → Use `/docs/server/components/aggregates` (`@convex-dev/aggregate`)
 - `'include' does not exist` → Use `with` instead of `include`
 - `findMany() requires explicit sizing` → Add `limit`, use cursor pagination (`cursor` + `limit`), set schema `defaultLimit`, or opt in with `allowFullScan`
-- `allowFullScan required` → Predicate `where`, missing relation index, or unbounded update/delete requires `allowFullScan`
+- `.withIndex(...) required` → Non-index-compiled filters and predicate `where` need explicit index selection
 - `matched more than mutationMaxRows` → Narrow update/delete filter or raise `defaults.mutationMaxRows`
 - `update/delete pagination does not support multi-probe filters yet` → Rewrite to a single-range index filter, or run non-paginated mode with row cap
 
@@ -186,7 +187,7 @@ isNotNull(field)
 - `like('prefix%')`
 - same-field equality `OR` branches
 
-**Still full-scan operators (require explicit opt-in):**
+**Still non-index-compiled operators (require explicit `.withIndex(...)`):**
 - `arrayContains`, `arrayContained`, `arrayOverlaps` (use inverted/join tables)
 - `contains` (use search index or tokenized denormalized field)
 - `endsWith` (use reversed-string indexed column + `startsWith`)

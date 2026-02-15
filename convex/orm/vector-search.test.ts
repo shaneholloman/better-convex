@@ -271,20 +271,20 @@ test('vector search guardrails reject incompatible options', async () => {
           vector: [0.1, 0.2, 0.3],
           limit: 1,
         },
-        where: (row: any) => row.type === 'article',
+        where: (_posts: any, { predicate }: any) =>
+          predicate((row: any) => row.type === 'article'),
       } as any)
     ).rejects.toThrow(/vectorSearch.+where|where.+vectorSearch/i);
 
     await expect(
-      db.query.posts.findMany({
+      db.query.posts.withIndex('by_author').findMany({
         vectorSearch: {
           index: 'embedding_vec',
           vector: [0.1, 0.2, 0.3],
           limit: 1,
         },
-        index: { name: 'by_author' },
       } as any)
-    ).rejects.toThrow(/vectorSearch.+index|index.+vectorSearch/i);
+    ).rejects.toThrow(/vectorSearch.+withIndex|withIndex.+vectorSearch/i);
 
     await expect(
       db.query.posts.findMany({

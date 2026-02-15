@@ -52,14 +52,62 @@ describe('M3 Query Builder', () => {
       const db = ctx.orm;
       await expect(
         (db.query.users.findMany as any)({
-          where: (row: any) => row.name === 'Alice',
+          where: (_users: any, ops: any) =>
+            ops.predicate((row: any) => row.name === 'Alice'),
         })
-      ).rejects.toThrow(/index/i);
+      ).rejects.toThrow(/withIndex/i);
 
-      const rows = await db.query.users.findMany({
-        where: (row) => row.name === 'Alice',
-        index: { name: 'by_name', range: (q) => q.eq('name', 'Alice') },
+      const rows = await db.query.users
+        .withIndex('by_name', (q) => q.eq('name', 'Alice'))
+        .findMany({
+          where: (_users, { predicate }) =>
+            predicate((row) => row.name === 'Alice'),
+        });
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].name).toBe('Alice');
+    });
+
+    it('should support callback where without explicit index', async ({
+      ctx,
+    }) => {
+      await ctx.db.insert('users', {
+        name: 'Alice',
+        email: 'alice@example.com',
       });
+      await ctx.db.insert('users', {
+        name: 'Bob',
+        email: 'bob@example.com',
+      });
+
+      const db = ctx.orm;
+      const rows = await db.query.users.findMany({
+        where: (users, { eq }) => eq(users.name, 'Alice'),
+      });
+
+      expect(rows).toHaveLength(1);
+      expect(rows[0].name).toBe('Alice');
+    });
+
+    it('should support withIndex for predicate where without inline index config', async ({
+      ctx,
+    }) => {
+      await ctx.db.insert('users', {
+        name: 'Alice',
+        email: 'alice@example.com',
+      });
+      await ctx.db.insert('users', {
+        name: 'Bob',
+        email: 'bob@example.com',
+      });
+
+      const db = ctx.orm;
+      const rows = await db.query.users
+        .withIndex('by_name', (q) => q.eq('name', 'Alice'))
+        .findMany({
+          where: (_users, { predicate }) =>
+            predicate((row) => row.name === 'Alice'),
+        });
 
       expect(rows).toHaveLength(1);
       expect(rows[0].name).toBe('Alice');
@@ -398,6 +446,28 @@ describe('M3 Query Builder', () => {
       expect(result).toHaveLength(1);
       expect(result[0]).toHaveProperty('nameUpper', 'ALICE');
       expect(Object.keys(result[0])).toEqual(['nameUpper']);
+    });
+
+    it('should compute extras from callback form', async ({ ctx }) => {
+      await ctx.db.insert('users', {
+        name: 'Alice',
+        email: 'alice@example.com',
+      });
+
+      let calls = 0;
+      const db = ctx.orm;
+      const result = await db.query.users.findMany({
+        extras: () => {
+          calls += 1;
+          return {
+            emailDomain: (row) => row.email.split('@')[1],
+          };
+        },
+      });
+
+      expect(calls).toBe(1);
+      expect(result).toHaveLength(1);
+      expect(result[0].emailDomain).toBe('example.com');
     });
   });
 });

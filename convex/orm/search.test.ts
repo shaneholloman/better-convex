@@ -246,7 +246,8 @@ test('search + where(fn) throws guardrail error', async () => {
           index: 'text_search',
           query: 'galaxy',
         },
-        where: (row: any) => row.type === 'news',
+        where: (_posts: any, { predicate }: any) =>
+          predicate((row: any) => row.type === 'news'),
       } as any)
     ).rejects.toThrow(/search.+where/i);
   });

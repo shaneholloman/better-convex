@@ -325,15 +325,14 @@ await db.query.users.findMany({
 ```
 
 **Options**
-- `where`: object filter (Drizzle shape) or predicate function
+- `where`: object filter, callback expression (`(table, ops) => ...`), or callback predicate via `ops.predicate(...)`
 - `search`: `{ index, query, filters? }` (full‑text search mode; only on tables with search indexes)
 - `vectorSearch`: `{ index, vector, limit, includeScore?, filter? }` (vector similarity mode; only on tables with vector indexes)
-- `index`: required when `where` is a function (`{ name, range? }`)
 - `orderBy`: `{ field: 'asc' | 'desc' }`
 - `limit`, `offset`
 - `cursor`: `string | null` (cursor pagination; first page is `null`)
 - `maxScan`: `number` (only valid with cursor pagination; caps scan-fallback paths like predicate/object post-filter and index-union pagination)
-- `allowFullScan`: opt‑in for non-cursor object-filter full scans when no index is available (not supported with cursor pagination; not used with predicate `where`, `search`, or `vectorSearch`)
+- `allowFullScan`: opt‑in for unsized non-cursor scans and relation fan-out overrides (not supported with cursor pagination; not used with `search` or `vectorSearch`)
 - `with`: relation loading
 - `columns`: post‑fetch projection
 - `extras`: post‑fetch computed fields
@@ -349,7 +348,7 @@ Relation loading also enforces fan-out key caps: if unique relation lookup keys 
 
 **Search mode constraints**
 - `orderBy` is not allowed (results stay in Convex relevance order)
-- predicate `where` is not allowed
+- function `where` (callback/predicate) is not allowed
 - relation-based `where` is not allowed
 - object `where` on base table fields is allowed (post-search filter)
 - `with` is allowed
@@ -360,7 +359,7 @@ Relation loading also enforces fan-out key caps: if unique relation lookup keys 
 - `cursor` is not allowed
 - `maxScan` is not allowed
 - `where` is not allowed
-- `index` is not allowed
+- `.withIndex(...)` is not allowed
 - `offset` is not allowed
 - top-level `limit` is not allowed (use `vectorSearch.limit`)
 - `includeScore: true` adds `_score` to each returned row
@@ -511,7 +510,7 @@ Use this mode when you need deterministic key boundaries (explicit adjacency con
 **Index compilation**
 - Index-backed by default when possible.
 - Currently index-compiled: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `between`, `notBetween`, `in`, `notIn`, `isNull`, `isNotNull`, `startsWith`, `like('prefix%')`, and same-field equality `OR`.
-- Remaining operators still require `.allowFullScan()` when no indexable path exists.
+- Remaining non-index-compiled operators require explicit `.withIndex(...)`.
 
 **Workarounds for remaining full-scan operators**
 - `arrayContains` / `arrayContained` / `arrayOverlaps`: use an inverted/join table indexed by element.
@@ -520,7 +519,7 @@ Use this mode when you need deterministic key boundaries (explicit adjacency con
 - `ilike` / `notIlike`: normalize to lowercase in a dedicated indexed field.
 - `notLike`: index a positive pre-filter, then post-filter with `notLike`.
 - `RAW`: keep explicit full-scan opt-in and narrow with indexed filters first.
-- Predicate `where`: provide `index: { name, range? }` and use `maxScan` for bounded scans (cursor pagination only).
+- Predicate `where`: call `.withIndex(name, range?)` and use `maxScan` for bounded scans (cursor pagination only).
 
 ## Mutations
 

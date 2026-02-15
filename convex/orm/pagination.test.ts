@@ -107,9 +107,9 @@ test('predicate pagination honors maxScan', async () => {
     const ctx = await runCtx(baseCtx);
     const db = ctx.orm;
 
-    const page1 = await db.query.users.findMany({
-      where: (row) => row.name.endsWith('0'),
-      index: { name: 'by_name' },
+    const page1 = await db.query.users.withIndex('by_name').findMany({
+      where: (_users, { predicate }) =>
+        predicate((row) => row.name.endsWith('0')),
       cursor: null,
       limit: 5,
       maxScan: 10,
@@ -119,9 +119,9 @@ test('predicate pagination honors maxScan', async () => {
     expect(page1.isDone).toBe(false);
     expect(page1.continueCursor).not.toBeNull();
 
-    const page2 = await db.query.users.findMany({
-      where: (row) => row.name.endsWith('0'),
-      index: { name: 'by_name' },
+    const page2 = await db.query.users.withIndex('by_name').findMany({
+      where: (_users, { predicate }) =>
+        predicate((row) => row.name.endsWith('0')),
       cursor: page1.continueCursor,
       limit: 5,
       maxScan: 10,
@@ -148,9 +148,9 @@ test('predicate pagination exposes split metadata when maxScan is hit', async ()
     const ctx = await runCtx(baseCtx);
     const db = ctx.orm;
 
-    const page = await db.query.users.findMany({
-      where: (row) => row.name.endsWith('0'),
-      index: { name: 'by_name' },
+    const page = await db.query.users.withIndex('by_name').findMany({
+      where: (_users, { predicate }) =>
+        predicate((row) => row.name.endsWith('0')),
       cursor: null,
       limit: 5,
       maxScan: 1,
@@ -265,7 +265,7 @@ test('pagination with index-union filter requires maxScan when strict=true', asy
     const db = ctx.orm;
 
     await expect(
-      db.query.users.findMany({
+      db.query.users.withIndex('by_status').findMany({
         where: { status: { in: ['active', 'pending'] } },
         cursor: null,
         limit: 5,
@@ -292,7 +292,7 @@ test('pagination with index-union filter works with maxScan', async () => {
     const ctx = await runCtx(baseCtx);
     const db = ctx.orm;
 
-    const page = await db.query.users.findMany({
+    const page = await db.query.users.withIndex('by_status').findMany({
       where: { status: { in: ['active', 'pending'] } },
       cursor: null,
       limit: 5,
@@ -322,7 +322,7 @@ test('pagination with index-union filter exposes split metadata when maxScan is 
     const ctx = await runCtx(baseCtx);
     const db = ctx.orm;
 
-    const page = await db.query.users.findMany({
+    const page = await db.query.users.withIndex('by_status').findMany({
       where: { status: { in: ['active', 'pending'] } },
       cursor: null,
       limit: 5,
@@ -357,7 +357,7 @@ test('pagination with index-union filter warns and allows without maxScan when s
         });
       }
 
-      const page = await ctx.orm.query.users.findMany({
+      const page = await ctx.orm.query.users.withIndex('by_status').findMany({
         where: { status: { in: ['active', 'pending'] } },
         cursor: null,
         limit: 5,
@@ -401,14 +401,14 @@ test('pagination on non-leading compound field requires maxScan when strict=true
     const db = ctx.orm;
 
     await expect(
-      db.query.posts.findMany({
+      db.query.posts.withIndex('numLikesAndType').findMany({
         where: { numLikes: 10 },
         cursor: null,
         limit: 2,
       })
     ).rejects.toThrow(/maxScan/i);
 
-    const page = await db.query.posts.findMany({
+    const page = await db.query.posts.withIndex('numLikesAndType').findMany({
       where: { numLikes: 10 },
       cursor: null,
       limit: 2,

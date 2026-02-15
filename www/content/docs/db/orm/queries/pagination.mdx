@@ -107,13 +107,15 @@ This keeps adjacent pages stitched correctly as new rows arrive.
 `maxScan` is available only in cursor mode. It caps scanned rows instead of throwing when a page would scan too much.
 
 ```ts showLineNumbers
-const page = await db.query.users.findMany({
-  where: (u) => u.email.endsWith('@example.com'),
-  index: { name: 'by_email' },
-  cursor: null,
-  limit: 20,
-  maxScan: 500,
-});
+const page = await db.query.users
+  .withIndex('by_email')
+  .findMany({
+    where: (_users, { predicate }) =>
+      predicate((u) => u.email.endsWith('@example.com')),
+    cursor: null,
+    limit: 20,
+    maxScan: 500,
+  });
 ```
 
 When the scan budget is hit, you'll get a partial page plus `pageStatus` and `splitCursor` hints.
