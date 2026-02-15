@@ -106,7 +106,7 @@ Export HTTP route builders from your cRPC setup. These determine whether endpoin
 
 ```ts title="convex/lib/crpc.ts" showLineNumbers
 import { CRPCError, initCRPC } from 'better-convex/server';
-import type { DataModel, Id } from '../_generated/dataModel';
+import type { DataModel } from '../functions/_generated/dataModel';
 
 const c = initCRPC
   .dataModel<DataModel>()
@@ -123,7 +123,7 @@ export const authRoute = c.httpAction.use(async ({ ctx, next }) => {
     throw new CRPCError({ code: 'UNAUTHORIZED' });
   }
   return next({
-    ctx: { ...ctx, userId: identity.subject as Id<'user'> },
+    ctx: { ...ctx, userId: identity.subject },
   });
 });
 

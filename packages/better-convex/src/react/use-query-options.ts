@@ -22,7 +22,7 @@ import type {
   FunctionReturnType,
 } from 'convex/server';
 import { getFunctionName } from 'convex/server';
-
+import { CRPCClientError } from '../crpc/error';
 import {
   convexAction,
   convexInfiniteQueryOptions,
@@ -282,7 +282,10 @@ export function useConvexMutationOptions<
     mutationFn: async (args) => {
       // Only guard if auth is required
       if (authType === 'required' && guard()) {
-        return undefined as FunctionReturnType<Mutation>;
+        throw new CRPCClientError({
+          code: 'UNAUTHORIZED',
+          functionName: name,
+        });
       }
 
       return convexMutation(
@@ -339,7 +342,10 @@ export function useConvexActionOptions<
     mutationFn: async (args) => {
       // Only guard if auth is required
       if (authType === 'required' && guard()) {
-        return undefined as FunctionReturnType<Action>;
+        throw new CRPCClientError({
+          code: 'UNAUTHORIZED',
+          functionName: name,
+        });
       }
 
       return convexAction(

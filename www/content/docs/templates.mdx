@@ -275,7 +275,7 @@ import { CRPCError, initCRPC } from 'better-convex/server';
 import type { Auth } from 'convex/server';
 
 import { api } from '../functions/_generated/api';
-import type { DataModel, Id } from '../functions/_generated/dataModel';
+import type { DataModel } from '../functions/_generated/dataModel';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../functions/_generated/server';
 
 import { getAuth } from './auth';
@@ -288,7 +288,7 @@ import { registerTriggers } from './triggers';
 // =============================================================================
 
 type SessionUser = {
-  id: Id<'user'>;
+  id: string;
   plan?: 'premium' | null;
   isAdmin?: boolean;
   // Add your user fields here
@@ -298,20 +298,20 @@ type SessionUser = {
 export type MaybeAuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> = Ctx & {
   auth: Auth & Partial<ReturnType<typeof getAuth> & { headers: Headers }>;
   user: SessionUser | null;
-  userId: Id<'user'> | null;
+  userId: string | null;
 };
 
 /** Context with required auth - user/userId guaranteed */
 export type AuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> = Ctx & {
   auth: Auth & ReturnType<typeof getAuth> & { headers: Headers };
   user: SessionUser;
-  userId: Id<'user'>;
+  userId: string;
 };
 
 /** Context type for authenticated actions */
 export type AuthActionCtx = ActionCtx & {
   user: SessionUser;
-  userId: Id<'user'>;
+  userId: string;
 };
 
 // =============================================================================
@@ -561,7 +561,7 @@ export const authRoute = c.httpAction.use(async ({ ctx, next }) => {
     throw new CRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
   }
   return next({
-    ctx: { ...ctx, userId: identity.subject as Id<'user'> },
+    ctx: { ...ctx, userId: identity.subject as string },
   });
 });
 
@@ -844,7 +844,6 @@ User queries including `getSessionUser` for auth state caching.
 
 ```ts title="convex/functions/user.ts" showLineNumbers {6-17,18-29}
 import { z } from 'zod';
-import { zid } from 'convex-helpers/server/zod';
 import { optionalAuthQuery } from '../lib/crpc';
 
 /** Get session user - used by AuthSync and authAction */
@@ -852,7 +851,7 @@ export const getSessionUser = optionalAuthQuery
   .output(
     z.union([
       z.object({
-        id: zid('user'),
+        id: z.string(),
         email: z.string(),
         image: z.string().nullish(),
         name: z.string(),
@@ -1220,7 +1219,7 @@ Database triggers for automatic side effects.
 
 ```ts title="convex/lib/triggers.ts" showLineNumbers {5-17}
 import { Triggers } from 'convex-helpers/server/triggers';
-import type { DataModel } from '../_generated/dataModel';
+import type { DataModel } from '../functions/_generated/dataModel';
 
 export const registerTriggers = () => {
   const triggers = new Triggers<DataModel>();
@@ -1246,12 +1245,12 @@ See [Triggers documentation](/docs/server/components/triggers) for patterns.
 Rate limiting configuration with tiered access.
 
 ```ts title="convex/lib/rate-limiter.ts" showLineNumbers
-import { HOUR, MINUTE, RateLimiter, SECOND } from '@convex-dev/rate-limiter';
+import { MINUTE, RateLimiter, SECOND } from '@convex-dev/rate-limiter';
 import { CRPCError } from 'better-convex/server';
-import { components } from '../_generated/api';
-import type { MutationCtx } from '../_generated/server';
+import { components } from '../functions/_generated/api';
+import type { MutationCtx } from '../functions/_generated/server';
 
-export const rateLimiter = new RateLimiter(components.rateLimiter, {
+const rateLimitConfig = {
   // Token bucket: smooth limiting with burst capacity
   'ai:free': { kind: 'token bucket', period: 10 * SECOND, rate: 10 },
   'ai:premium': { kind: 'token bucket', period: 10 * SECOND, rate: 50 },
@@ -1264,7 +1263,9 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   'default:free': { kind: 'fixed window', period: MINUTE, rate: 30 },
   'default:premium': { kind: 'fixed window', period: MINUTE, rate: 100 },
   'default:public': { kind: 'fixed window', period: MINUTE, rate: 20 },
-});
+} as const;
+
+export const rateLimiter = new RateLimiter(components.rateLimiter, rateLimitConfig);
 
 type SessionUser = { id: string; plan?: 'premium' | null; isAdmin?: boolean };
 

@@ -2,6 +2,7 @@ import { skipToken } from '@tanstack/react-query';
 import { renderHook } from '@testing-library/react';
 import * as convexReact from 'convex/react';
 import { makeFunctionReference } from 'convex/server';
+import type { CRPCClientError } from '../crpc/error';
 import { encodeWire } from '../crpc/transformer';
 import type { AuthType } from '../internal/auth';
 import * as authModule from '../internal/auth';
@@ -130,7 +131,7 @@ describe('use-query-options', () => {
     });
   });
 
-  test('useConvexMutationOptions guards required mutations and skips calling convex mutation', async () => {
+  test('useConvexMutationOptions guards required mutations and throws unauthorized', async () => {
     const fn = makeFunctionReference<'mutation'>('users:update');
 
     const guard = mock(() => true);
@@ -145,11 +146,12 @@ describe('use-query-options', () => {
 
     const { result } = renderHook(() => useConvexMutationOptions(fn));
 
-    const out = await result.current.mutationFn?.(
-      { id: 'u1' } as any,
-      mutationFnContext
-    );
-    expect(out).toBeUndefined();
+    await expect(
+      result.current.mutationFn?.({ id: 'u1' } as any, mutationFnContext)
+    ).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+      functionName: 'users:update',
+    } satisfies Partial<CRPCClientError>);
     expect(guard).toHaveBeenCalledTimes(1);
     expect(convexMutation).toHaveBeenCalledTimes(0);
   });
@@ -199,6 +201,30 @@ describe('use-query-options', () => {
     );
     expect(out).toEqual({ ok: true });
     expect(convexAction).toHaveBeenCalledTimes(1);
+  });
+
+  test('useConvexActionOptions guards required actions and throws unauthorized', async () => {
+    const fn = makeFunctionReference<'action'>('ai:generate');
+
+    const guard = mock(() => true);
+    useAuthGuardSpy.mockImplementation(() => guard as any);
+    useFnMetaSpy.mockImplementation(
+      () => (() => ({ auth: 'required' satisfies AuthType })) as any
+    );
+
+    const convexAction = mock(async () => ({ ok: true }));
+    useConvexActionSpy.mockImplementation(() => convexAction as any);
+
+    const { result } = renderHook(() => useConvexActionOptions(fn));
+
+    await expect(
+      result.current.mutationFn?.({ prompt: 'hi' } as any, mutationFnContext)
+    ).rejects.toMatchObject({
+      code: 'UNAUTHORIZED',
+      functionName: 'ai:generate',
+    } satisfies Partial<CRPCClientError>);
+    expect(guard).toHaveBeenCalledTimes(1);
+    expect(convexAction).toHaveBeenCalledTimes(0);
   });
 
   test('useConvexActionOptions serializes Date args before calling convex action', async () => {

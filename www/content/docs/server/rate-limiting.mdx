@@ -48,8 +48,8 @@ Now let's create the rate limiter configuration. We'll extract the config to a c
 ```ts title="convex/lib/rate-limiter.ts" showLineNumbers {6-17,19}
 import { HOUR, MINUTE, RateLimiter, SECOND } from '@convex-dev/rate-limiter';
 import { CRPCError } from 'better-convex/server';
-import { components } from '../_generated/api';
-import type { MutationCtx } from '../_generated/server';
+import { components } from '../functions/_generated/api';
+import type { MutationCtx } from '../functions/_generated/server';
 
 // Extract config for key checking in getRateLimitKey
 const rateLimitConfig = {

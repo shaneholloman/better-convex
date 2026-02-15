@@ -10,19 +10,19 @@ import { InfoIcon } from "lucide-react"
 
 ## Introduction
 
-Better Convex is a complete framework for Convex. It brings tRPC-style APIs, TanStack Query, Convex Ents, and Better Auth together into a cohesive developer experience.
+Better Convex is a complete framework for Convex. It brings tRPC-style APIs, TanStack Query, a Drizzle-style ORM, and Better Auth into one cohesive developer experience.
 
 **This is not just a query wrapper.** It's how you build production Convex applications.
 
 ## Philosophy
 
-We didn't reinvent the wheel. Better Convex integrates battle-tested tools - Convex Ents for relationships, TanStack Query for caching, Better Auth for authentication - into a unified developer experience.
+We didn't reinvent the wheel. Better Convex integrates battle-tested tools - Convex for realtime data, TanStack Query for caching, and Better Auth for authentication - behind a consistent API.
 
 Instead of assembling these yourself with custom glue code, you get:
 
 - **Type safety end-to-end** - From schema to procedures to client, with full inference
 - **Real-time by default** - WebSocket subscriptions flow into TanStack Query cache
-- **TanStack Query native** - No wrapper hooks, use `useQuery` and `useMutation` directly
+- **TanStack Query native** - Use `useQuery` and `useMutation` directly with cRPC options
 - **Incremental adoption** - Add features as you need them, migrate function by function
 
 ## What's Included

@@ -37,7 +37,7 @@ Now let's create a triggers registration file. This is where you'll define all y
 
 ```ts title="convex/lib/triggers.ts" showLineNumbers {3-4,6-11}
 import { Triggers } from 'convex-helpers/server/triggers';
-import type { DataModel } from '../_generated/dataModel';
+import type { DataModel } from '../functions/_generated/dataModel';
 
 export const registerTriggers = () => {
   const triggers = new Triggers<DataModel>();
