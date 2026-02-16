@@ -19,10 +19,11 @@ import type {
   ApplyPipelineStage,
   BuildQueryResult,
   DBQueryConfig,
-  EnforceAllowFullScan,
   EnforceCursorMaxScan,
+  EnforceNoAllowFullScanWhenIndexed,
   EnforceSearchConstraints,
   EnforceVectorSearchConstraints,
+  EnforceWithIndexForWhere,
   FindManyPageByKeyConfig,
   FindManyPipelineConfig,
   FindManyPipelineFlatMapConfig,
@@ -45,9 +46,10 @@ type EnforcedConfig<
 > = EnforceVectorSearchConstraints<
   EnforceSearchConstraints<
     EnforceCursorMaxScan<
-      THasIndex extends true
-        ? TConfig
-        : EnforceAllowFullScan<TConfig, TTableConfig>
+      EnforceNoAllowFullScanWhenIndexed<
+        EnforceWithIndexForWhere<TConfig, TTableConfig, THasIndex>,
+        THasIndex
+      >
     >,
     TTableConfig
   >,
@@ -79,13 +81,12 @@ type SearchPaginatedConfig<
   TTableConfig extends TableRelationalConfig,
 > = Omit<
   CursorPaginatedConfig<TSchema, TTableConfig>,
-  'search' | 'vectorSearch' | 'where' | 'orderBy' | 'index'
+  'search' | 'vectorSearch' | 'where' | 'orderBy'
 > & {
   search: SearchQueryConfig<TTableConfig>;
   vectorSearch?: never;
   where?: SearchWhereFilter<TTableConfig> | undefined;
   orderBy?: never;
-  index?: never;
   pipeline?: never;
   pageByKey?: never;
   endCursor?: never;
@@ -96,13 +97,12 @@ type SearchNonPaginatedConfig<
   TTableConfig extends TableRelationalConfig,
 > = Omit<
   NonCursorConfig<TSchema, TTableConfig>,
-  'search' | 'vectorSearch' | 'where' | 'orderBy' | 'index'
+  'search' | 'vectorSearch' | 'where' | 'orderBy'
 > & {
   search: SearchQueryConfig<TTableConfig>;
   vectorSearch?: never;
   where?: SearchWhereFilter<TTableConfig> | undefined;
   orderBy?: never;
-  index?: never;
   pipeline?: never;
   pageByKey?: never;
   endCursor?: never;
@@ -118,7 +118,6 @@ type SearchFindFirstConfig<
   | 'vectorSearch'
   | 'where'
   | 'orderBy'
-  | 'index'
   | 'cursor'
   | 'maxScan'
   | 'pipeline'
@@ -127,7 +126,6 @@ type SearchFindFirstConfig<
   vectorSearch?: never;
   where?: SearchWhereFilter<TTableConfig> | undefined;
   orderBy?: never;
-  index?: never;
   pipeline?: never;
 };
 
@@ -140,7 +138,6 @@ type VectorNonPaginatedConfig<
   | 'search'
   | 'where'
   | 'orderBy'
-  | 'index'
   | 'offset'
   | 'limit'
   | 'cursor'
@@ -152,7 +149,6 @@ type VectorNonPaginatedConfig<
   search?: never;
   where?: never;
   orderBy?: never;
-  index?: never;
   offset?: never;
   limit?: never;
   cursor?: never;
@@ -178,7 +174,7 @@ type CursorPaginatedConfig<
   TTableConfig extends TableRelationalConfig,
 > = Omit<
   DBQueryConfig<'many', true, TSchema, TTableConfig>,
-  'cursor' | 'limit' | 'pageByKey' | 'allowFullScan' | 'pipeline' | 'index'
+  'cursor' | 'limit' | 'pageByKey' | 'allowFullScan' | 'pipeline'
 > & {
   cursor: string | null;
   limit: number;
@@ -193,7 +189,7 @@ type NonCursorConfig<
   TTableConfig extends TableRelationalConfig,
 > = Omit<
   DBQueryConfig<'many', true, TSchema, TTableConfig>,
-  'maxScan' | 'endCursor' | 'pipeline' | 'index'
+  'maxScan' | 'endCursor' | 'pipeline'
 > & {
   cursor?: never;
   maxScan?: never;
@@ -245,7 +241,6 @@ type FindFirstConfigNoSearch<
   | 'endCursor'
   | 'pipeline'
   | 'pageByKey'
-  | 'index'
 > & {
   search?: undefined;
   vectorSearch?: undefined;
@@ -314,13 +309,15 @@ type QueryFactory<
   TTableConfig extends TableRelationalConfig,
 > = <TResult>(
   config: DBQueryConfig<'many', true, TSchema, TTableConfig>,
-  mode: 'many' | 'first' | 'firstOrThrow'
+  mode: 'many' | 'first' | 'firstOrThrow',
+  configuredIndex?: PredicateWhereIndexConfig<TTableConfig>
 ) => GelRelationalQuery<TSchema, TTableConfig, TResult>;
 
 export class RelationalSelectChain<
   TSchema extends TablesRelationalConfig,
   TTableConfig extends TableRelationalConfig,
   TRow,
+  THasIndex extends boolean = false,
 > extends QueryPromise<TRow[]> {
   private readonly config: SelectPipelineBaseConfig<TSchema, TTableConfig>;
   private readonly pipeline: FindManyPipelineConfig<TSchema, TTableConfig>;
@@ -328,7 +325,8 @@ export class RelationalSelectChain<
   constructor(
     private readonly createQuery: QueryFactory<TSchema, TTableConfig>,
     config: SelectPipelineBaseConfig<TSchema, TTableConfig>,
-    pipeline?: FindManyPipelineConfig<TSchema, TTableConfig>
+    pipeline?: FindManyPipelineConfig<TSchema, TTableConfig>,
+    private readonly configuredIndex?: PredicateWhereIndexConfig<TTableConfig>
   ) {
     super();
     this.config = { ...config };
@@ -337,24 +335,31 @@ export class RelationalSelectChain<
 
   private withConfig(
     patch: Partial<SelectPipelineBaseConfig<TSchema, TTableConfig>>
-  ): RelationalSelectChain<TSchema, TTableConfig, TRow> {
-    return new RelationalSelectChain<TSchema, TTableConfig, TRow>(
+  ): RelationalSelectChain<TSchema, TTableConfig, TRow, THasIndex> {
+    return new RelationalSelectChain<TSchema, TTableConfig, TRow, THasIndex>(
       this.createQuery,
       { ...this.config, ...patch },
-      this.pipeline
+      this.pipeline,
+      this.configuredIndex
     );
   }
 
   private withPipeline<TNextRow>(
     patch: Partial<FindManyPipelineConfig<TSchema, TTableConfig>>
-  ): RelationalSelectChain<TSchema, TTableConfig, TNextRow> {
-    return new RelationalSelectChain<TSchema, TTableConfig, TNextRow>(
+  ): RelationalSelectChain<TSchema, TTableConfig, TNextRow, THasIndex> {
+    return new RelationalSelectChain<
+      TSchema,
+      TTableConfig,
+      TNextRow,
+      THasIndex
+    >(
       this.createQuery,
       this.config,
       {
         ...this.pipeline,
         ...patch,
-      }
+      },
+      this.configuredIndex
     );
   }
 
@@ -383,7 +388,11 @@ export class RelationalSelectChain<
   }
 
   execute(): Promise<TRow[]> {
-    return this.createQuery<TRow[]>(this.asManyConfig(), 'many').execute();
+    return this.createQuery<TRow[]>(
+      this.asManyConfig(),
+      'many',
+      this.configuredIndex
+    ).execute();
   }
 
   where(
@@ -395,13 +404,16 @@ export class RelationalSelectChain<
   withIndex<TIndexName extends PredicateIndexName<TTableConfig>>(
     indexName: TIndexName,
     range?: PredicateIndexConfigByName<TTableConfig, TIndexName>['range']
-  ): RelationalSelectChain<TSchema, TTableConfig, TRow> {
-    return this.withConfig({
-      index: {
+  ): RelationalSelectChain<TSchema, TTableConfig, TRow, true> {
+    return new RelationalSelectChain<TSchema, TTableConfig, TRow, true>(
+      this.createQuery,
+      this.config,
+      this.pipeline,
+      {
         name: indexName,
         ...(range ? { range } : {}),
-      } as unknown as PredicateWhereIndexConfig<TTableConfig>,
-    });
+      } as unknown as PredicateWhereIndexConfig<TTableConfig>
+    );
   }
 
   orderBy(
@@ -415,6 +427,7 @@ export class RelationalSelectChain<
   }
 
   allowFullScan(
+    this: RelationalSelectChain<TSchema, TTableConfig, TRow, false>,
     allowFullScan: boolean
   ): RelationalSelectChain<TSchema, TTableConfig, TRow> {
     return this.withConfig({ allowFullScan });
@@ -508,7 +521,8 @@ export class RelationalSelectChain<
         ...this.asManyConfig(),
         ...config,
       },
-      'many'
+      'many',
+      this.configuredIndex
     );
   }
 
@@ -520,7 +534,8 @@ export class RelationalSelectChain<
         ...this.asManyConfig(),
         pageByKey,
       },
-      'many'
+      'many',
+      this.configuredIndex
     );
   }
 
@@ -530,7 +545,8 @@ export class RelationalSelectChain<
         ...this.asManyConfig(),
         limit: 1,
       },
-      'first'
+      'first',
+      this.configuredIndex
     );
   }
 
@@ -540,7 +556,8 @@ export class RelationalSelectChain<
         ...this.asManyConfig(),
         limit: 1,
       },
-      'firstOrThrow'
+      'firstOrThrow',
+      this.configuredIndex
     );
   }
 }
@@ -589,42 +606,42 @@ export class RelationalQueryBuilder<
 
   private createQuery<TResult>(
     config: DBQueryConfig<'many', true, TSchema, TTableConfig>,
-    mode: 'many' | 'first' | 'firstOrThrow'
+    mode: 'many' | 'first' | 'firstOrThrow',
+    configuredIndex?: PredicateWhereIndexConfig<TTableConfig>
   ): GelRelationalQuery<TSchema, TTableConfig, TResult> {
-    const mergedConfig =
-      this.queryIndex && config.index === undefined
-        ? ({
-            ...config,
-            index: this.queryIndex,
-          } as DBQueryConfig<'many', true, TSchema, TTableConfig>)
-        : config;
+    const effectiveIndex = configuredIndex ?? this.queryIndex;
 
     return new GelRelationalQuery<TSchema, TTableConfig, TResult>(
       this.schema,
       this.tableConfig,
       this.edgeMetadata,
       this.db,
-      mergedConfig,
+      config,
       mode,
       this.allEdges,
       this.rls,
       this.relationLoading,
-      this.vectorSearch
+      this.vectorSearch,
+      effectiveIndex
     );
   }
 
   select(): RelationalSelectChain<
     TSchema,
     TTableConfig,
-    BuildQueryResult<TSchema, TTableConfig, true>
+    BuildQueryResult<TSchema, TTableConfig, true>,
+    THasIndex
   > {
     return new RelationalSelectChain<
       TSchema,
       TTableConfig,
-      BuildQueryResult<TSchema, TTableConfig, true>
+      BuildQueryResult<TSchema, TTableConfig, true>,
+      THasIndex
     >(
       (config, mode) => this.createQuery(config, mode),
-      this.queryIndex ? ({ index: this.queryIndex } as any) : {}
+      {},
+      undefined,
+      this.queryIndex
     );
   }
 

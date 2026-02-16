@@ -132,6 +132,55 @@ describe('adapterConfig', () => {
 });
 
 describe('httpAdapter', () => {
+  test('createSchema keeps Convex output when schema is non-ORM', async () => {
+    const adapterFactory = httpAdapter(
+      { runQuery: mock(async () => ({})) } as any,
+      {
+        authFunctions: {} as any,
+        schema: { tables: { user: {} } } as any,
+      } as any
+    );
+    const adapter = adapterFactory({} as any);
+
+    const result = await adapter.createSchema?.({} as any, 'auth/schema.ts');
+
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error('createSchema should return a result');
+    }
+    expect(result.code).toContain('defineTable');
+    expect(result.code).not.toContain('convexTable');
+  });
+
+  test('createSchema switches to ORM output when schema has ORM metadata', async () => {
+    const ormSchema = { tables: { user: {} } } as any;
+    Object.defineProperty(
+      ormSchema,
+      Symbol.for('better-convex:OrmSchemaOptions'),
+      {
+        value: {},
+      }
+    );
+
+    const adapterFactory = httpAdapter(
+      { runQuery: mock(async () => ({})) } as any,
+      {
+        authFunctions: {} as any,
+        schema: ormSchema,
+      } as any
+    );
+    const adapter = adapterFactory({} as any);
+
+    const result = await adapter.createSchema?.({} as any, 'auth/schema.ts');
+
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error('createSchema should return a result');
+    }
+    expect(result.code).toContain('convexTable');
+    expect(result.code).not.toContain('defineTable');
+  });
+
   test('dedupes OR queries by id for findMany and count', async () => {
     const runQuery = mock(async (_handle: unknown, args: any) => {
       const value = args.where?.[0]?.value;
@@ -453,5 +502,49 @@ describe('dbAdapter', () => {
       where: [{ field: '_id', operator: 'eq', value: id }],
     });
     expect(store.has(id)).toBe(false);
+  });
+
+  test('createSchema keeps Convex output when schema is non-ORM', async () => {
+    const { ctx } = createMemoryCtx({});
+    const adapterFactory = dbAdapter(ctx, () => ({}) as any, {
+      authFunctions: {} as any,
+      schema: { tables: { user: {} } } as any,
+    });
+    const adapter = adapterFactory({} as any);
+
+    const result = await adapter.createSchema?.({} as any, 'auth/schema.ts');
+
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error('createSchema should return a result');
+    }
+    expect(result.code).toContain('defineTable');
+    expect(result.code).not.toContain('convexTable');
+  });
+
+  test('createSchema switches to ORM output when schema has ORM metadata', async () => {
+    const { ctx } = createMemoryCtx({});
+    const ormSchema = { tables: { user: {} } } as any;
+    Object.defineProperty(
+      ormSchema,
+      Symbol.for('better-convex:OrmSchemaOptions'),
+      {
+        value: {},
+      }
+    );
+    const adapterFactory = dbAdapter(ctx, () => ({}) as any, {
+      authFunctions: {} as any,
+      schema: ormSchema,
+    });
+    const adapter = adapterFactory({} as any);
+
+    const result = await adapter.createSchema?.({} as any, 'auth/schema.ts');
+
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error('createSchema should return a result');
+    }
+    expect(result.code).toContain('convexTable');
+    expect(result.code).not.toContain('defineTable');
   });
 });

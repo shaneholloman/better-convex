@@ -6,7 +6,6 @@ import {
   unsetToken,
 } from 'better-convex/orm';
 import type { GenericDatabaseWriter } from 'convex/server';
-import type { GenericId } from 'convex/values';
 import { UserRow } from './fixtures/types';
 import { users } from './tables-rel';
 import { type Equal, Expect, IsAny, Not } from './utils';
@@ -70,7 +69,7 @@ const baseUserInsert = {
 
   type Expected = Array<{
     name: string;
-    city: GenericId<'cities'> | null;
+    city: string | null;
   }>;
 
   Expect<Equal<Expected, typeof result>>;
@@ -178,8 +177,8 @@ const baseUserInsert = {
 {
   db.insert(users).values({
     ...baseUserInsert,
-    // @ts-expect-error - cityId must be GenericId<'cities'> | null
-    cityId: 'not-an-id',
+    // @ts-expect-error - cityId must be string | null
+    cityId: 123,
   });
 }
 

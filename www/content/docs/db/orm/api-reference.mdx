@@ -429,10 +429,11 @@ await db.query.posts.findMany({
 
 ```ts showLineNumbers
 const page = await db.query.messages
+  .withIndex('by_from_to')
   .select()
   .union([
-    { index: { name: 'by_from_to', range: (q) => q.eq('from', me).eq('to', them) } },
-    { index: { name: 'by_from_to', range: (q) => q.eq('from', them).eq('to', me) } },
+    { where: { from: me, to: them } },
+    { where: { from: them, to: me } },
   ])
   .interleaveBy(['createdAt', 'id'])
   .filter(async (m) => !m.deletedAt)
@@ -510,7 +511,8 @@ Use this mode when you need deterministic key boundaries (explicit adjacency con
 **Index compilation**
 - Index-backed by default when possible.
 - Currently index-compiled: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `between`, `notBetween`, `in`, `notIn`, `isNull`, `isNotNull`, `startsWith`, `like('prefix%')`, and same-field equality `OR`.
-- Remaining non-index-compiled operators require explicit `.withIndex(...)`.
+- Object/callback expression filters can run without `.withIndex(...)`; if not index-compiled, they run as bounded scans.
+- Post-fetch operators are typed to require explicit `.withIndex(...)` (`contains`, `endsWith`, `ilike`, `notLike`, `notIlike`, array operators, `NOT`, `RAW`).
 
 **Workarounds for remaining full-scan operators**
 - `arrayContains` / `arrayContained` / `arrayOverlaps`: use an inverted/join table indexed by element.
@@ -518,7 +520,7 @@ Use this mode when you need deterministic key boundaries (explicit adjacency con
 - `endsWith`: store and index a reversed-string column, then use `startsWith`.
 - `ilike` / `notIlike`: normalize to lowercase in a dedicated indexed field.
 - `notLike`: index a positive pre-filter, then post-filter with `notLike`.
-- `RAW`: keep explicit full-scan opt-in and narrow with indexed filters first.
+- `RAW`: narrow with indexed pre-filters and call `.withIndex(...)`.
 - Predicate `where`: call `.withIndex(name, range?)` and use `maxScan` for bounded scans (cursor pagination only).
 
 ## Mutations

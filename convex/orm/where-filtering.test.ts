@@ -430,7 +430,7 @@ describe('M4 Where Filtering - Logical Operators', () => {
     expect(result[0].name).toBe('Alice');
   });
 
-  test('requires .withIndex() when filtering by non-leading compound index field', async ({
+  test('supports filtering by non-leading compound index field without .withIndex()', async ({
     ctx,
   }) => {
     const db = ctx.orm;
@@ -451,11 +451,15 @@ describe('M4 Where Filtering - Logical Operators', () => {
       type: 'news',
     });
 
-    await expect(
-      db.query.posts.findMany({
-        where: { numLikes: 10 },
-      })
-    ).rejects.toThrow(/requires \.withIndex/i);
+    const autoPlanned = await db.query.posts.findMany({
+      where: { numLikes: 10 },
+    });
+
+    expect(autoPlanned).toHaveLength(2);
+    expect(autoPlanned.map((post: any) => post.text).sort()).toEqual([
+      'post-a',
+      'post-b',
+    ]);
 
     const result = await db.query.posts.withIndex('numLikesAndType').findMany({
       where: { numLikes: 10 },
@@ -466,6 +470,72 @@ describe('M4 Where Filtering - Logical Operators', () => {
       'post-a',
       'post-b',
     ]);
+  });
+
+  test('supports where spanning multiple single-field indexes without .withIndex()', async ({
+    ctx,
+  }) => {
+    const db = ctx.orm;
+
+    await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+      age: 25,
+      status: 'active',
+      deletedAt: null,
+    });
+    await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice+2@example.com',
+      age: 30,
+      status: 'active',
+      deletedAt: null,
+    });
+
+    const autoPlanned = await db.query.users.findMany({
+      where: { name: 'Alice', age: 25 },
+    });
+
+    expect(autoPlanned).toHaveLength(1);
+    expect(autoPlanned[0].email).toBe('alice@example.com');
+
+    const result = await db.query.users
+      .withIndex('by_name', (q) => q.eq('name', 'Alice'))
+      .findMany({
+        where: { age: 25 },
+      });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].email).toBe('alice@example.com');
+  });
+
+  test('supports callback where spanning multiple single-field indexes without .withIndex()', async ({
+    ctx,
+  }) => {
+    const db = ctx.orm;
+
+    await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice@example.com',
+      age: 25,
+      status: 'active',
+      deletedAt: null,
+    });
+    await ctx.db.insert('users', {
+      name: 'Alice',
+      email: 'alice+2@example.com',
+      age: 30,
+      status: 'active',
+      deletedAt: null,
+    });
+
+    const result = await db.query.users.findMany({
+      where: (users, { and, eq }) =>
+        and(eq(users.name, 'Alice'), eq(users.age, 25)),
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].email).toBe('alice@example.com');
   });
 
   test('normalizes reversed AND equality clauses to valid compound index order', async ({
@@ -519,12 +589,11 @@ describe('M4 Where Filtering - Logical Operators', () => {
 
     const condition = false;
 
-    const result = await db.query.users.findMany({
-      where: {
-        status: 'active',
-        ...(condition ? { age: 25 } : {}),
-      },
-    });
+    const result = await db.query.users
+      .withIndex('by_status', (q) => q.eq('status', 'active'))
+      .findMany({
+        where: condition ? { age: 25 } : {},
+      });
 
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('Alice');
@@ -992,11 +1061,10 @@ describe('M4 Where Filtering - Edge Cases', () => {
     });
 
     await expect(
-      db.query.users.findMany({
+      db.query.users.withIndex('by_name').findMany({
         where: {
           RAW: () => ({}) as any,
         },
-        allowFullScan: true,
       })
     ).rejects.toThrow('RAW filters are not supported');
   });

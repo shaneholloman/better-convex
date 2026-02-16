@@ -289,7 +289,7 @@ const users = await db.query.users.findMany({
 - Sorting without an index falls back to `createdAt` ordering
 - Post-fetch sorting (multi-field or non-indexable orderBy) sorts before `offset`/`limit`, so the ORM must read the full filtered candidate set first
 - For these post-fetch sort paths, size non-paginated queries intentionally (`limit`, schema `defaultLimit`, or `allowFullScan`)
-- Compound index planning follows prefix validity. Non-leading-only predicates (for example `numLikes` on `[type, numLikes]`) are treated as non-indexable and require `allowFullScan`
+- Compound index planning follows prefix validity for index compilation. Non-leading-only predicates (for example `numLikes` on `[type, numLikes]`) can run, but they don't use the compound index prefix unless you also constrain the leading field (or explicitly anchor with `.withIndex(...)`)
 - Add `index('...').on(t.field)` on fields used for filter or sort
 
 ```ts showLineNumbers
@@ -315,7 +315,7 @@ const posts = convexTable(
 - Predicate `where` requires explicit `.withIndex(name, range?)` and runs post‑fetch via stream filtering
 - Search mode (`findMany({ search })`) is relevance-ordered; `orderBy` is not supported
 - Search mode supports base-table object `where`, but not predicate `where` or relation-based `where`
-- Vector mode (`findMany({ vectorSearch })`) does not support `cursor`, `limit`, `maxScan`, `where`, `orderBy`, `index`, or `offset`
+- Vector mode (`findMany({ vectorSearch })`) does not support `cursor`, `limit`, `maxScan`, `where`, `orderBy`, `.withIndex(...)`, or `offset`
 - Update/delete without `where()` throws unless `allowFullScan`
 - Update/delete matched rows are capped by `mutationMaxRows` (default `1000`) and collected in `mutationBatchSize` pages (default `100`)
 - Async FK fan-out uses `mutationLeafBatchSize` for non-recursive actions (default `900`)

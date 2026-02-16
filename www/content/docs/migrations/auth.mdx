@@ -631,6 +631,13 @@ If you were using the auto-generated component schema, you'll now define auth ta
     npx @better-auth/cli generate -y --output convex/functions/authSchema.ts --config convex/functions/auth.ts
     ```
 
+    <Callout icon={<InfoIcon />}>
+    **Auto selection:** `authClient.adapter(...).createSchema` detects ORM schema metadata (`Symbol.for("better-convex:OrmSchemaOptions")`).
+    - With ORM metadata, CLI output uses `better-convex/orm` (`convexTable`, `defineSchema`) and includes `.unique()` plus `.references(...)`.
+    - Without ORM metadata, CLI output stays on the existing Convex `defineTable` format.
+    - ORM output intentionally does not emit `onDelete`/cascade action config.
+    </Callout>
+
     Then import in your schema:
 
     ```ts title="convex/functions/schema.ts" showLineNumbers {2,5}

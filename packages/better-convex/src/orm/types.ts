@@ -67,7 +67,6 @@ export type IndexKey = (Value | undefined)[];
 export type FindManyUnionSource<
   TTableConfig extends TableRelationalConfig = TableRelationalConfig,
 > = {
-  index?: PredicateWhereIndexConfig<TTableConfig>;
   where?: RelationsFilter<TTableConfig, any> | WhereCallback<TTableConfig>;
 };
 
@@ -392,10 +391,6 @@ export type DBQueryConfig<
    */
   vectorSearch?: VectorQueryConfig<TTableConfig> | undefined;
   /**
-   * Explicit index for predicate where() path.
-   */
-  index?: PredicateWhereIndexConfig<TTableConfig> | undefined;
-  /**
    * Stream-backed advanced query pipeline.
    */
   pipeline?: _TIsRoot extends true
@@ -662,6 +657,35 @@ export type EnforceAllowFullScan<
         : TConfig
       : TConfig;
 
+type ReturnsPredicateClause<TWhere> = TWhere extends (
+  ...args: any[]
+) => infer TResult
+  ? Extract<NonNullable<TResult>, PredicateWhereClause<any>> extends never
+    ? false
+    : true
+  : false;
+
+export type EnforceWithIndexForWhere<
+  TConfig,
+  _TTableConfig extends TableRelationalConfig,
+  THasIndex extends boolean,
+> = THasIndex extends true
+  ? TConfig
+  : TConfig extends { where: infer TWhere }
+    ? ReturnsPredicateClause<TWhere> extends true
+      ? never
+      : HasStaticFullScanWhere<TWhere> extends true
+        ? never
+        : TConfig
+    : TConfig;
+
+export type EnforceNoAllowFullScanWhenIndexed<
+  TConfig,
+  THasIndex extends boolean,
+> = THasIndex extends true
+  ? Omit<TConfig, 'allowFullScan'> & { allowFullScan?: never }
+  : TConfig;
+
 export type EnforceCursorMaxScan<TConfig> = TConfig extends {
   cursor: string | null;
 }
@@ -675,33 +699,6 @@ export type EnforceCursorMaxScan<TConfig> = TConfig extends {
     : TConfig
   : TConfig;
 
-export type EnforcePredicateIndex<
-  TConfig,
-  TTableConfig extends TableRelationalConfig,
-> = 'search' extends keyof TConfig
-  ? TConfig extends { search: infer TSearch }
-    ? [TSearch] extends [undefined]
-      ? TConfig extends { where: infer TWhere }
-        ? TWhere extends (row: any) => boolean | Promise<boolean>
-          ? Omit<TConfig, 'allowFullScan' | 'index'> & {
-              where: TWhere;
-              index: PredicateWhereIndexConfig<TTableConfig>;
-              allowFullScan?: never;
-            }
-          : TConfig
-        : TConfig
-      : TConfig
-    : TConfig
-  : TConfig extends { where: infer TWhere }
-    ? TWhere extends (row: any) => boolean | Promise<boolean>
-      ? Omit<TConfig, 'allowFullScan' | 'index'> & {
-          where: TWhere;
-          index: PredicateWhereIndexConfig<TTableConfig>;
-          allowFullScan?: never;
-        }
-      : TConfig
-    : TConfig;
-
 export type EnforceSearchConstraints<
   TConfig,
   TTableConfig extends TableRelationalConfig,
@@ -709,11 +706,10 @@ export type EnforceSearchConstraints<
   ? TConfig extends { search: infer TSearch }
     ? [TSearch] extends [undefined]
       ? TConfig
-      : Omit<TConfig, 'where' | 'orderBy' | 'index' | 'vectorSearch'> & {
+      : Omit<TConfig, 'where' | 'orderBy' | 'vectorSearch'> & {
           search: TSearch;
           where?: SearchWhereFilter<TTableConfig> | undefined;
           orderBy?: never;
-          index?: never;
           vectorSearch?: never;
         }
     : TConfig
@@ -731,7 +727,6 @@ export type EnforceVectorSearchConstraints<
           | 'search'
           | 'where'
           | 'orderBy'
-          | 'index'
           | 'cursor'
           | 'maxScan'
           | 'offset'
@@ -742,7 +737,6 @@ export type EnforceVectorSearchConstraints<
           search?: never;
           where?: never;
           orderBy?: never;
-          index?: never;
           cursor?: never;
           maxScan?: never;
           offset?: never;

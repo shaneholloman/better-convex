@@ -4,7 +4,7 @@ import {
   createAdapterFactory,
   type DBAdapterDebugLogOption,
 } from 'better-auth/adapters';
-import { getAuthTables } from 'better-auth/db';
+import { type BetterAuthDBSchema, getAuthTables } from 'better-auth/db';
 import {
   createFunctionHandle,
   type FunctionHandle,
@@ -159,6 +159,29 @@ export const adapterConfig = {
   },
 } satisfies AdapterFactoryOptions['config'];
 
+const ORM_SCHEMA_OPTIONS = Symbol.for('better-convex:OrmSchemaOptions');
+
+const hasOrmSchemaMetadata = (schema: unknown) =>
+  !!schema && typeof schema === 'object' && ORM_SCHEMA_OPTIONS in schema;
+
+const createAuthSchema = async ({
+  file,
+  schema,
+  tables,
+}: {
+  tables: BetterAuthDBSchema;
+  file?: string;
+  schema?: SchemaDefinition<any, any>;
+}) => {
+  if (hasOrmSchemaMetadata(schema)) {
+    const { createSchemaOrm } = await import('./create-schema-orm');
+    return createSchemaOrm({ file, tables });
+  }
+
+  const { createSchema } = await import('./create-schema');
+  return createSchema({ file, tables });
+};
+
 export const httpAdapter = <
   DataModel extends GenericDataModel,
   Schema extends SchemaDefinition<any, any>,
@@ -167,10 +190,12 @@ export const httpAdapter = <
   {
     authFunctions,
     debugLogs,
+    schema,
     triggers,
   }: {
     authFunctions: AuthFunctions;
     debugLogs?: DBAdapterDebugLogOption;
+    schema?: Schema;
     triggers?: Triggers<DataModel, Schema>;
   }
 ) => {
@@ -245,11 +270,8 @@ export const httpAdapter = <
             onCreateHandle,
           });
         },
-        createSchema: async ({ file, tables }) => {
-          const { createSchema } = await import('./create-schema');
-
-          return createSchema({ file, tables });
-        },
+        createSchema: async ({ file, tables }) =>
+          createAuthSchema({ file, schema, tables }),
         delete: async (data) => {
           if (!('runMutation' in ctx)) {
             throw new Error('ctx is not a mutation ctx');
@@ -542,11 +564,8 @@ export const dbAdapter = <
             betterAuthSchema
           );
         },
-        createSchema: async ({ file, tables }) => {
-          const { createSchema } = await import('./create-schema');
-
-          return createSchema({ file, tables });
-        },
+        createSchema: async ({ file, tables }) =>
+          createAuthSchema({ file, schema, tables }),
         delete: async (data) => {
           const onDeleteHandle =
             authFunctions.onDelete && getTriggers(data.model)?.onDelete

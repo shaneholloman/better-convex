@@ -16,12 +16,12 @@ import type { GenericId } from 'convex/values';
 import * as schema from './tables-rel';
 import { type Equal, Expect } from './utils';
 
-type UserId = GenericId<'users'>;
-type PostId = GenericId<'posts'>;
-type CommentId = GenericId<'comments'>;
-type CityId = GenericId<'cities'>;
-type BookId = GenericId<'books'>;
-type NodeId = GenericId<'node'>;
+type UserId = string;
+type PostId = string;
+type CommentId = string;
+type CityId = string;
+type BookId = string;
+type NodeId = string;
 
 // Build schema following Better Convex pattern
 const schemaConfig = schema.relations;
@@ -79,7 +79,7 @@ const db = orm.db(mockDb);
 
   type Expected = Array<{
     id: UserId;
-    _creationTime: number;
+    createdAt: number;
     name: string;
     email: string;
     height: number | null;
@@ -91,7 +91,7 @@ const db = orm.db(mockDb);
     homeCityId: CityId | null;
     posts: Array<{
       id: PostId;
-      _creationTime: number;
+      createdAt: number;
       text: string;
       numLikes: number;
       type: string;
@@ -102,7 +102,7 @@ const db = orm.db(mockDb);
       published: boolean | null;
       author: {
         id: UserId;
-        _creationTime: number;
+        createdAt: number;
         name: string;
         email: string;
         height: number | null;
@@ -118,11 +118,11 @@ const db = orm.db(mockDb);
         author: {
           city: {
             id: CityId;
-            _creationTime: number;
+            createdAt: number;
             name: string;
             users: Array<{
               id: UserId;
-              _creationTime: number;
+              createdAt: number;
               name: string;
               email: string;
               height: number | null;
@@ -152,7 +152,7 @@ const db = orm.db(mockDb);
 
   type Expected = Array<{
     id: UserId;
-    _creationTime: number;
+    createdAt: number;
     name: string;
     email: string;
     height: number | null;
@@ -164,7 +164,7 @@ const db = orm.db(mockDb);
     homeCityId: CityId | null;
     posts: Array<{
       id: PostId;
-      _creationTime: number;
+      createdAt: number;
       text: string;
       numLikes: number;
       type: string;
@@ -194,7 +194,7 @@ const db = orm.db(mockDb);
 
   type Expected = Array<{
     id: UserId;
-    _creationTime: number;
+    createdAt: number;
     name: string;
     email: string;
     height: number | null;
@@ -206,7 +206,7 @@ const db = orm.db(mockDb);
     homeCityId: CityId | null;
     posts: Array<{
       id: PostId;
-      _creationTime: number;
+      createdAt: number;
       text: string;
       numLikes: number;
       type: string;
@@ -218,7 +218,7 @@ const db = orm.db(mockDb);
       published: boolean | null;
       comments: Array<{
         id: CommentId;
-        _creationTime: number;
+        createdAt: number;
         postId: PostId;
         authorId: UserId | null;
         text: string;
@@ -266,7 +266,7 @@ const db = orm.db(mockDb);
 
   type Expected = Array<{
     id: PostId;
-    _creationTime: number;
+    createdAt: number;
     text: string;
     numLikes: number;
     type: string;
@@ -278,7 +278,7 @@ const db = orm.db(mockDb);
     published: boolean | null;
     author: {
       id: UserId;
-      _creationTime: number;
+      createdAt: number;
       name: string;
       email: string;
       height: number | null;
@@ -328,7 +328,7 @@ const db = orm.db(mockDb);
 
   type NodeType = {
     id: NodeId;
-    _creationTime: number;
+    createdAt: number;
     parentId: NodeId | null;
     leftId: NodeId | null;
     rightId: NodeId | null;
@@ -362,11 +362,11 @@ const db = orm.db(mockDb);
 
   type Expected = Array<{
     id: BookId;
-    _creationTime: number;
+    createdAt: number;
     name: string;
     authors: Array<{
       id: UserId;
-      _creationTime: number;
+      createdAt: number;
       name: string;
       email: string;
       height: number | null;
@@ -393,7 +393,7 @@ const db = orm.db(mockDb);
   type Expected =
     | {
         id: UserId;
-        _creationTime: number;
+        createdAt: number;
         name: string;
         email: string;
         height: number | null;
@@ -405,7 +405,7 @@ const db = orm.db(mockDb);
         homeCityId: CityId | null;
         posts: Array<{
           id: PostId;
-          _creationTime: number;
+          createdAt: number;
           text: string;
           numLikes: number;
           type: string;

@@ -30,8 +30,8 @@ We'll start with a decision table, then walk through each mode with examples.
 
 | Query mode | Index requirement | Pagination support | Relation-aware filtering | Ordering |
 |---|---|---|---|---|
-| `findMany({ where: object })` | Optional if fully index-compiled; otherwise call `.withIndex(...)` | `limit/offset`, `cursor + limit` | Yes (`where: { relation: ... }`) | `orderBy` supported; first field drives cursor stability |
-| `findMany({ where: (table, ops) => ... })` | Optional if fully index-compiled; otherwise call `.withIndex(...)` | `limit/offset`, `cursor + limit` | No (base-table expression only) | `orderBy` supported; first field drives cursor stability |
+| `findMany({ where: object })` | Optional. Planner uses indexes when possible; otherwise it runs a bounded scan. Some post-fetch operators are typed to require `.withIndex(...)`. | `limit/offset`, `cursor + limit` | Yes (`where: { relation: ... }`) | `orderBy` supported; first field drives cursor stability |
+| `findMany({ where: (table, ops) => ... })` | Optional. Planner uses indexes when possible; otherwise it runs a bounded scan. Some post-fetch operators are typed to require `.withIndex(...)`. | `limit/offset`, `cursor + limit` | No (base-table expression only) | `orderBy` supported; first field drives cursor stability |
 | `findMany({ where: (_table, { predicate }) => predicate(...) })` | Required explicit `.withIndex(name, range?)` | `limit/offset`, `cursor + limit`, optional `maxScan` (cursor mode) | No (predicate replaces object relation filter path) | Index/stream-backed; first order field matters for cursor mode |
 | `findMany({ search })` | Required `searchIndex` | `limit/offset`, `cursor + limit` | No relation filters (base-table object `where` only) | Relevance order only (`orderBy` unsupported) |
 | `findMany({ vectorSearch })` | Required `vectorIndex` + configured provider | `vectorSearch.limit` only (no `cursor`, `offset`, top-level `limit`) | No | Similarity order only |
@@ -76,16 +76,11 @@ export const listConversation = publicQuery
   .paginated({ limit: 20, item: MessageSchema })
   .query(async ({ ctx, input }) => {
     return await ctx.orm.query.messages
+      .withIndex('by_from_to')
       .select()
       .union([
-        {
-          index: { name: 'by_from_to' },
-          where: { from: input.me, to: input.them },
-        },
-        {
-          index: { name: 'by_from_to' },
-          where: { from: input.them, to: input.me },
-        },
+        { where: { from: input.me, to: input.them } },
+        { where: { from: input.them, to: input.me } },
       ])
       .interleaveBy(['createdAt', 'id'])
       .filter(async (m) => !m.deletedAt)
@@ -313,8 +308,8 @@ Understanding when to use each approach is critical. Here's a comparison:
 ### Choosing the Right Approach
 
 1. **Need text search?** → Use search indexes
-2. **Need complex filters with pagination?** → Use predicate `where` + explicit `.withIndex(...)`
-3. **Need range queries (greater than, less than)?** → Use predicate `where` + explicit `.withIndex(...)`
+2. **Need complex per-row JS logic?** → Use predicate `where` + explicit `.withIndex(...)`
+3. **Need range queries (greater than, less than)?** → Use object/callback expression `where` (index-compiled when possible)
 4. **Need UNION or JOIN operations?** → Merge in application code
 5. **Need text search + relation/predicate filters?** → See options below
 
@@ -450,6 +445,8 @@ Here are key practices to follow when using filters and search.
 5. **Normalize search terms** - Consider lowercase for consistent matching
 6. **Handle empty queries** - Decide behavior when search query is empty
 7. **Prefer cursor pagination** - Use `findMany({ cursor: null, limit: 20 })` for large lists
+
+That's it. You now have all the tools for full-text search, predicate filtering, and advanced query composition in the ORM.
 
 ## Next Steps
 

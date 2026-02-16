@@ -71,7 +71,6 @@ describe('M5: like() operator', () => {
 
     // Find posts with 'JavaScript' in title
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { like: '%JavaScript%' } },
     });
 
@@ -170,7 +169,6 @@ describe('M5: like() operator', () => {
 
     // Find posts ending with 'Guide'
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { like: '%Guide' } },
     });
 
@@ -210,7 +208,6 @@ describe('M5: like() operator', () => {
 
     // Find exact match
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { like: 'Exact Title' } },
     });
 
@@ -248,7 +245,6 @@ describe('M5: like() operator', () => {
     });
 
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { notLike: '%JavaScript%' } },
     });
 
@@ -303,7 +299,6 @@ describe('M5: ilike() operator', () => {
 
     // Find posts with 'javascript' (any case)
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { ilike: '%javascript%' } },
     });
 
@@ -342,7 +337,6 @@ describe('M5: ilike() operator', () => {
     });
 
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { notIlike: '%javascript%' } },
     });
 
@@ -397,7 +391,6 @@ describe('M5: like() prefix pattern', () => {
 
     // Find posts with prefix 'Java'
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { like: 'Java%' } },
     });
 
@@ -437,7 +430,6 @@ describe('M5: like() prefix pattern', () => {
 
     // Find posts with prefix 'Java' (case-sensitive)
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { like: 'Java%' } },
     });
 
@@ -492,7 +484,6 @@ describe('M5: like() suffix pattern', () => {
 
     // Find posts ending with 'Guide'
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { like: '%Guide' } },
     });
 
@@ -532,7 +523,6 @@ describe('M5: like() suffix pattern', () => {
 
     // Find posts ending with 'Guide' (case-sensitive)
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { like: '%Guide' } },
     });
 
@@ -587,7 +577,6 @@ describe('M5: like() substring pattern', () => {
 
     // Find posts containing 'JavaScript'
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { like: '%JavaScript%' } },
     });
 
@@ -627,7 +616,6 @@ describe('M5: like() substring pattern', () => {
 
     // Find posts containing 'JavaScript' (case-sensitive)
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { like: '%JavaScript%' } },
     });
 
@@ -731,7 +719,6 @@ describe('M5: endsWith operator', () => {
     });
 
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { endsWith: 'Guide' } },
     });
 
@@ -782,7 +769,6 @@ describe('M5: contains operator', () => {
     });
 
     const posts = await db.query.posts.withIndex('by_title').findMany({
-      allowFullScan: true,
       where: { title: { contains: 'Script' } },
     });
 

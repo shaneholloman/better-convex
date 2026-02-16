@@ -63,7 +63,7 @@ The ORM supports Drizzle-style `like`/`ilike` operators and evaluates them **pos
 Here's how to search for posts containing "javascript" (case-insensitive):
 
 ```ts showLineNumbers {2}
-await db.query.posts.findMany({
+await db.query.posts.withIndex('by_title').findMany({
   where: { title: { ilike: '%javascript%' } },
 });
 ```
@@ -71,7 +71,7 @@ await db.query.posts.findMany({
 You can also use convenience operators for common patterns:
 
 ```ts showLineNumbers {2}
-await db.query.users.findMany({
+await db.query.users.withIndex('by_email').findMany({
   where: { email: { endsWith: '@example.com' } },
 });
 ```

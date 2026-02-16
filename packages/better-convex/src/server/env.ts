@@ -24,7 +24,7 @@ export function createEnv<TSchema extends z.ZodObject<z.ZodRawShape>>(
       return cached;
     }
 
-    const isCodegen = codegenFallback && !runtimeEnv.NODE_ENV;
+    const isCodegen = codegenFallback && !process.env.NODE_ENV;
     const envForParse = isCodegen
       ? {
           ...Object.fromEntries(

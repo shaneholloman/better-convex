@@ -132,7 +132,7 @@ The ORM supports familiar string matching operators. Most run post-fetch, but a 
 
 For large datasets, prefer indexed filters first. `startsWith` and `like('prefix%')` use index ranges when the field is indexed. `between` and `notBetween` are also index-compiled when the field is indexed.
 
-Compound indexes follow Convex prefix rules. For an index on `[type, numLikes]`, `where: { numLikes: 10 }` is treated as non-indexable and requires explicit `.withIndex(...)` (and `maxScan` in cursor mode) unless you also constrain the leading field (`type`). Reversed `AND` equality order is normalized to index field order before query execution.
+Compound indexes follow Convex prefix rules for index compilation. For an index on `[type, numLikes]`, `where: { numLikes: 10 }` can run, but it won't use that compound index prefix unless you also constrain the leading field (`type`) or explicitly anchor the query with `.withIndex(...)`. Reversed `AND` equality order is normalized to index field order before query execution.
 
 <Callout icon={<InfoIcon />}>
 **Tip**: Always constrain leading index fields first. For compound indexes, you must include earlier fields before later ones can be index-compiled.
@@ -163,7 +163,7 @@ See [/docs/server/components/aggregates](/docs/server/components/aggregates).
 
 ### Full-Scan Operators and Workarounds
 
-These operators are non-index-compiled and require explicit `.withIndex(...)` unless paired with another indexable pre-filter. Here are scalable workarounds for each:
+These operators are post-fetch. In the typed API, they currently require explicit `.withIndex(...)` so scan scope is deliberate. Here are scalable workarounds for each:
 
 | Operator | Scalable workaround |
 |---|---|

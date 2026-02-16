@@ -31,10 +31,11 @@ test('select chain union can interleave indexed streams', async () => {
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
     const result = await ctx.orm.query.users
+      .withIndex('by_name')
       .select()
       .union([
-        { index: { name: 'by_name' }, where: { status: 'active' } },
-        { index: { name: 'by_name' }, where: { status: 'pending' } },
+        { where: { status: 'active' } },
+        { where: { status: 'pending' } },
       ])
       .interleaveBy(['name'])
       .paginate({ cursor: null, limit: 10 });

@@ -1,11 +1,9 @@
-import type { GenericId } from 'convex/values';
-
 // Shared test fixture types - used across multiple type test files
 // These represent the expected types for test data structures
 
 export type UserRow = {
-  id: GenericId<'users'>;
-  _creationTime: number;
+  id: string;
+  createdAt: number;
   name: string;
   email: string;
   height: number | null;
@@ -13,13 +11,13 @@ export type UserRow = {
   status: string | null;
   role: string | null;
   deletedAt: number | null;
-  cityId: GenericId<'cities'> | null;
-  homeCityId: GenericId<'cities'> | null;
+  cityId: string | null;
+  homeCityId: string | null;
 };
 
 export type PostRow = {
-  id: GenericId<'posts'>;
-  _creationTime: number;
+  id: string;
+  createdAt: number;
   text: string;
   numLikes: number;
   type: string;
@@ -27,20 +25,20 @@ export type PostRow = {
   title: string | null;
   content: string | null;
   publishedAt: number | null;
-  authorId: GenericId<'users'> | null;
+  authorId: string | null;
   published: boolean | null;
 };
 
 export type CityRow = {
-  id: GenericId<'cities'>;
-  _creationTime: number;
+  id: string;
+  createdAt: number;
   name: string;
 };
 
 export type CommentRow = {
-  id: GenericId<'comments'>;
-  _creationTime: number;
+  id: string;
+  createdAt: number;
   text: string;
-  postId: GenericId<'posts'>;
-  authorId: GenericId<'users'> | null;
+  postId: string;
+  authorId: string | null;
 };

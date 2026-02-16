@@ -42,7 +42,7 @@ type User = InferSelectModel<typeof users>;
 
 Expect<Equal<User, {
   _id: string;
-  _creationTime: number;
+  createdAt: number;
   name: string;
   age: number | null;
 }>>;
@@ -95,7 +95,7 @@ Use Drizzle-style 80-char separators for major sections:
 // ❌ BAD: Repeated type definition
 type Expected = Array<{
   _id: string;
-  _creationTime: number;
+  createdAt: number;
   name: string;
   // ... 10+ lines repeated 10 times
 }>;
@@ -325,7 +325,7 @@ This is the proven workflow used to achieve 88% progress toward 65% Drizzle pari
 
   Expect<Equal<Result, {
     _id: GenericId<'users'>;
-    _creationTime: number;
+    createdAt: number;
     name: string;
   }>>;
 }

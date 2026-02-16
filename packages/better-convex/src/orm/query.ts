@@ -196,7 +196,8 @@ export class GelRelationalQuery<
     private _allEdges?: EdgeMetadata[], // M6.5 Phase 2: All edges for nested loading
     private rls?: RlsContext,
     private relationLoading?: { concurrency?: number },
-    private vectorSearchProvider?: VectorSearchProvider
+    private vectorSearchProvider?: VectorSearchProvider,
+    private configuredIndex?: PredicateWhereIndexConfig<TTableConfig>
   ) {
     super();
     this.allowFullScan = (config as any).allowFullScan === true;
@@ -1759,7 +1760,7 @@ export class GelRelationalQuery<
       if (this._isPredicateWhereClause(result)) {
         if (!hasConfiguredIndex) {
           throw new Error(
-            `${context} where uses predicate(...) and requires .withIndex(...) or source.index.`
+            `${context} where uses predicate(...) and requires .withIndex(...).`
           );
         }
         return;
@@ -1776,22 +1777,7 @@ export class GelRelationalQuery<
       return;
     }
 
-    const compiler = new WhereClauseCompiler(
-      tableConfig.table.tableName,
-      getIndexes(tableConfig.table).map((index) => ({
-        indexName: index.name,
-        indexFields: index.fields,
-      }))
-    );
-    const compiled = compiler.compile(whereExpression);
-    if (
-      (compiled.strategy === 'none' || compiled.postFilters.length > 0) &&
-      !hasConfiguredIndex
-    ) {
-      throw new Error(
-        `${context} where is not fully index-compiled and requires .withIndex(...) or source.index.`
-      );
-    }
+    return;
   }
 
   private _isFilterExpressionNode(
@@ -1955,10 +1941,11 @@ export class GelRelationalQuery<
     source: FindManyUnionSource<TTableConfig>,
     fallbackOrder: 'asc' | 'desc'
   ): QueryStream<any> {
+    const configuredIndex = this.configuredIndex;
     this._assertWhereIndexRequirement({
       where: source.where,
       tableConfig: this.tableConfig,
-      hasConfiguredIndex: Boolean(source.index?.name),
+      hasConfiguredIndex: Boolean(configuredIndex?.name),
       context: 'pipeline.union source',
     });
 
@@ -1968,10 +1955,10 @@ export class GelRelationalQuery<
       schemaDefinition
     ).query(this.tableConfig.name as any);
 
-    if (source.index?.name) {
+    if (configuredIndex?.name) {
       sourceStream = sourceStream.withIndex(
-        source.index.name as any,
-        source.index.range ? (source.index.range as any) : (q: any) => q
+        configuredIndex.name as any,
+        configuredIndex.range ? (configuredIndex.range as any) : (q: any) => q
       );
     }
 
@@ -2173,9 +2160,7 @@ export class GelRelationalQuery<
     let wherePredicate: ((row: any) => boolean | Promise<boolean>) | undefined;
     let whereFilter: RelationsFilter<any, any> | undefined;
     let whereExpressionFromCallback: FilterExpression<boolean> | undefined;
-    const configuredIndex = config.index as
-      | PredicateWhereIndexConfig<TTableConfig>
-      | undefined;
+    const configuredIndex = this.configuredIndex;
 
     if (hasFunctionWhere) {
       const whereFn = config.where as WhereCallback<TTableConfig>;
@@ -2196,6 +2181,12 @@ export class GelRelationalQuery<
     }
     const strict = this.tableConfig.strict !== false;
     const allowFullScan = this.allowFullScan === true;
+
+    if (allowFullScan && configuredIndex?.name) {
+      throw new Error(
+        'allowFullScan cannot be combined with withIndex(). Remove allowFullScan or remove withIndex().'
+      );
+    }
 
     if (isCursorPaginated && this.mode !== 'many') {
       throw new Error('cursor pagination is only supported on findMany().');
@@ -2338,15 +2329,10 @@ export class GelRelationalQuery<
 
     const queryConfig = this._toConvexQuery(whereExpressionFromCallback);
     const whereRequiresExplicitIndex =
-      !searchConfig &&
-      !vectorSearchConfig &&
-      config.where !== undefined &&
-      (wherePredicate !== undefined ||
-        queryConfig.postFilters.length > 0 ||
-        queryConfig.strategy === 'none');
+      !searchConfig && !vectorSearchConfig && wherePredicate !== undefined;
     if (whereRequiresExplicitIndex && !configuredIndex?.name) {
       throw new Error(
-        'This where() requires .withIndex(name, range?). Add .withIndex(...) before findMany/findFirst.'
+        'This where() with predicate(...) requires .withIndex(name, range?). Add .withIndex(...) before findMany/findFirst.'
       );
     }
 

@@ -174,7 +174,7 @@ isNotNull(field)
 - `count/sum/avg/max/min is not on db.query.*` → Use `/docs/server/components/aggregates` (`@convex-dev/aggregate`)
 - `'include' does not exist` → Use `with` instead of `include`
 - `findMany() requires explicit sizing` → Add `limit`, use cursor pagination (`cursor` + `limit`), set schema `defaultLimit`, or opt in with `allowFullScan`
-- `.withIndex(...) required` → Non-index-compiled filters and predicate `where` need explicit index selection
+- `.withIndex(...) required` → `predicate` `where` and typed post-fetch operators need explicit index selection
 - `matched more than mutationMaxRows` → Narrow update/delete filter or raise `defaults.mutationMaxRows`
 - `update/delete pagination does not support multi-probe filters yet` → Rewrite to a single-range index filter, or run non-paginated mode with row cap
 
@@ -187,7 +187,7 @@ isNotNull(field)
 - `like('prefix%')`
 - same-field equality `OR` branches
 
-**Still non-index-compiled operators (require explicit `.withIndex(...)`):**
+**Post-fetch operators (typed API requires explicit `.withIndex(...)`):**
 - `arrayContains`, `arrayContained`, `arrayOverlaps` (use inverted/join tables)
 - `contains` (use search index or tokenized denormalized field)
 - `endsWith` (use reversed-string indexed column + `startsWith`)

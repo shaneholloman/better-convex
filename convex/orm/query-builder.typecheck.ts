@@ -50,3 +50,9 @@ void db.query.posts.withIndex('by_author').findMany({
     limit: 3,
   },
 });
+
+void db.query.users.withIndex('by_name').findMany({
+  where: (users, { eq }) => eq(users.name, 'Alice'),
+  // @ts-expect-error withIndex cannot be combined with allowFullScan on reads
+  allowFullScan: true,
+});

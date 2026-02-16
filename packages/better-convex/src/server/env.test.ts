@@ -3,6 +3,16 @@ import { createEnv } from './env';
 import { CRPCError } from './error';
 
 describe('server/env', () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    if (originalNodeEnv === undefined) {
+      delete process.env.NODE_ENV;
+      return;
+    }
+    process.env.NODE_ENV = originalNodeEnv;
+  });
+
   test('parses runtimeEnv and applies schema defaults', () => {
     const schema = z.object({
       ADMIN: z
@@ -105,6 +115,8 @@ describe('server/env', () => {
   });
 
   test('supports codegen fallback when NODE_ENV is missing', () => {
+    delete process.env.NODE_ENV;
+
     const schema = z.object({
       ADMIN: z
         .string()
@@ -128,6 +140,8 @@ describe('server/env', () => {
   });
 
   test('codegen fallback merges defaults and keeps runtimeEnv precedence', () => {
+    delete process.env.NODE_ENV;
+
     const schema = z.object({
       BC_REQUIRED_A: z.string(),
       BC_REQUIRED_B: z.string(),
