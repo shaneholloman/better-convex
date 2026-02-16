@@ -27,7 +27,7 @@ Use `.input()` to define and validate procedure arguments. The schema runs befor
 
 ```ts title="convex/functions/user.ts" showLineNumbers {2-3}
 export const getById = publicQuery
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .query(async ({ ctx, input }) => {
     return ctx.orm.query.user.findFirst({ where: { id: input.id } });
   });
@@ -68,7 +68,7 @@ First, define a procedure that validates and fetches a target user:
 
 ```ts title="convex/lib/crpc.ts" showLineNumbers {2-10}
 const userProcedure = authQuery
-  .input(z.object({ userId: zid('user') }))
+  .input(z.object({ userId: z.string() }))
   .use(async ({ ctx, input, next }) => {
     const targetUser = await ctx.orm.query.user.findFirst({
       where: { id: input.userId },
@@ -98,10 +98,10 @@ Use `.output()` to validate return values. This catches bugs where your handler 
 
 ```ts showLineNumbers {3-7}
 export const getById = publicQuery
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .output(
     z.object({
-      id: zid('user'),
+      id: z.string(),
       name: z.string(),
       email: z.string(),
     })
@@ -141,7 +141,6 @@ Use `.mutation()` for write operations. Mutations are transactional - if any par
 
 ```ts showLineNumbers {1-4,6-17}
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { eq } from 'better-convex/orm';
 import { user } from './schema';
 
@@ -152,7 +151,7 @@ export const create = publicMutation
   });
 
 export const remove = publicMutation
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .mutation(async ({ ctx, input }) => {
     await ctx.orm.delete(user).where(eq(user.id, input.id));
   });
@@ -177,13 +176,13 @@ For large datasets, use `.paginated()` for cursor-based pagination. It automatic
 
 ```ts showLineNumbers {7-8,14}
 const SessionSchema = z.object({
-  id: zid('session'),
-  userId: zid('user'),
+  id: z.string(),
+  userId: z.string(),
   token: z.string(),
 });
 
 export const list = publicQuery
-  .input(z.object({ userId: zid('user').optional() }))
+  .input(z.object({ userId: z.string().optional() }))
   .paginated({ limit: 20, item: SessionSchema })
   .query(async ({ ctx, input }) => {
 	    return ctx.orm.query.session.findMany({
@@ -227,7 +226,6 @@ Here's a full CRUD example showing all the patterns together:
 
 ```ts title="convex/functions/user.ts" showLineNumbers
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { eq } from 'better-convex/orm';
 import { publicQuery, publicMutation } from '../lib/crpc';
 import { user } from './schema';
@@ -243,14 +241,14 @@ export const list = publicQuery.query(async ({ ctx }) => {
 });
 
 export const getById = publicQuery
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .query(async ({ ctx, input }) => {
     return ctx.orm.query.user.findFirst({ where: { id: input.id } });
   });
 
 export const create = publicMutation
   .input(userSchema)
-  .output(zid('user'))
+  .output(z.string())
   .mutation(async ({ ctx, input }) => {
     const [row] = await ctx.orm
       .insert(user)
@@ -260,7 +258,7 @@ export const create = publicMutation
   });
 
 export const update = publicMutation
-  .input(userSchema.partial().extend({ id: zid('user') }))
+  .input(userSchema.partial().extend({ id: z.string() }))
   .mutation(async ({ ctx, input }) => {
     const { id, ...data } = input;
     await ctx.orm.update(user).set(data).where(eq(user.id, id));
@@ -280,10 +278,6 @@ cRPC uses Zod for validation instead of Convex's `v` validators. Here's a quick 
 | `z.object({...})` | `v.object({...})` |
 | `z.string().optional()` | `v.optional(v.string())` |
 | `zid('tablename')` | `v.id('tablename')` |
-
-<Callout icon={<InfoIcon />}>
-  **Note:** `zid` is imported from `better-convex/server` and validates Convex document IDs with full type safety.
-</Callout>
 
 ## Migrate from Convex
 
@@ -315,11 +309,10 @@ If you're coming from vanilla Convex, here's what changes.
   <CompareItem title="After (cRPC)">
     ```ts showLineNumbers {5-7}
     import { z } from 'zod';
-    import { zid } from 'better-convex/server';
     import { publicQuery } from '../lib/crpc';
 
     export const getById = publicQuery
-      .input(z.object({ id: zid('user') }))
+      .input(z.object({ id: z.string() }))
       .query(async ({ ctx, input }) => {
         return ctx.orm.query.user.findFirst({ where: { id: input.id } });
       });
@@ -331,7 +324,7 @@ Key differences:
 - Fluent builder API instead of object config
 - Zod validation instead of `v` validators
 - `{ ctx, input }` destructured params instead of `(ctx, args)`
-- Use `zid()` for document ID validation
+- Use `z.string()` for IDs at procedure boundaries (`zid()` only for explicit schema `id()` column mapping)
 
 ## Next Steps
 

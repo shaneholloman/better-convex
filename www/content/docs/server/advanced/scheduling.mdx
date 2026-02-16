@@ -164,12 +164,11 @@ Use `runAfter` to schedule a function to run after a delay (in milliseconds):
 
 ```ts title="convex/functions/orders.ts" showLineNumbers {10-13}
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { authMutation } from '../lib/crpc';
 import { internal } from './_generated/api';
 
 export const processOrder = authMutation
-  .input(z.object({ orderId: zid('orders') }))
+  .input(z.object({ orderId: z.string() }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
     await ctx.orm
@@ -193,7 +192,7 @@ Here's a powerful pattern: use `runAfter(0)` to trigger actions immediately afte
 ```ts title="convex/functions/items.ts" showLineNumbers {6-9}
 export const createItem = authMutation
   .input(z.object({ name: z.string() }))
-  .output(zid('items'))
+  .output(z.string())
   .mutation(async ({ ctx, input }) => {
     const [row] = await ctx.orm
       .insert(items)
@@ -247,8 +246,8 @@ Store the job ID to cancel later. Here's the pattern:
 
 ```ts title="convex/functions/subscriptions.ts" showLineNumbers {5-9,12-16}
 export const createSubscription = authMutation
-  .input(z.object({ planId: zid('plans') }))
-  .output(zid('subscriptions'))
+  .input(z.object({ planId: z.string() }))
+  .output(z.string())
   .mutation(async ({ ctx, input }) => {
     // Schedule expiration in 30 days
     const expirationJobId = await ctx.scheduler.runAfter(
@@ -274,7 +273,7 @@ Then cancel using `ctx.scheduler.cancel()`:
 
 ```ts title="convex/functions/subscriptions.ts" showLineNumbers {11-14}
 export const cancelSubscription = authMutation
-  .input(z.object({ subscriptionId: zid('subscriptions') }))
+  .input(z.object({ subscriptionId: z.string() }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
     const subscription = await ctx.orm.query.subscriptions.findFirst({
@@ -306,7 +305,7 @@ You can query the `_scheduled_functions` system table to check job status:
 import { publicQuery } from '../lib/crpc';
 
 export const getJobStatus = publicQuery
-  .input(z.object({ jobId: zid('_scheduled_functions') }))
+  .input(z.object({ jobId: z.string() }))
   .output(z.object({
     name: z.string(),
     scheduledTime: z.number(),
@@ -326,7 +325,7 @@ List all pending jobs:
 export const listPendingJobs = publicQuery
   .input(z.object({}))
   .output(z.array(z.object({
-    id: zid('_scheduled_functions'),
+    id: z.string(),
     name: z.string(),
     scheduledTime: z.number(),
   })))

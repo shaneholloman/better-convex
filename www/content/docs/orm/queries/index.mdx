@@ -39,11 +39,10 @@ Use `findFirst()` to retrieve a single row matching your criteria. This example 
 
 ```ts title="convex/functions/users.ts" showLineNumbers
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { publicQuery } from '../lib/crpc';
 
 export const getFirstUser = publicQuery
-  .input(z.object({ userId: zid('users') }))
+  .input(z.object({ userId: z.string() }))
   .query(async ({ ctx, input }) => {
     return ctx.orm.query.users.findFirst({
       where: { id: input.userId },

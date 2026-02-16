@@ -153,7 +153,7 @@ Throw `NOT_FOUND` when a resource doesn't exist:
 
 ```ts title="convex/functions/posts.ts" showLineNumbers {5-15}
 export const getById = authQuery
-  .input(z.object({ id: zid('posts') }))
+  .input(z.object({ id: z.string() }))
   .query(async ({ ctx, input }) => {
     const post = await ctx.orm.query.posts.findFirst({
       where: { id: input.id },

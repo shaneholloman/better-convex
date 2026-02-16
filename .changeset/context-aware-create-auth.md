@@ -64,11 +64,19 @@ import { getAuthConfigProvider } from "@convex-dev/better-auth/auth-config";
 import { getAuthConfigProvider } from "better-convex/auth-config";
 ```
 
-- Remove legacy `@convex-dev/better-auth` app dependency (and old `convex-ents` if present).
+- Remove legacy app deps: `@convex-dev/better-auth`, `convex-ents`, and `convex-helpers`.
 
 ```sh
-bun remove @convex-dev/better-auth convex-ents
+bun remove @convex-dev/better-auth convex-ents convex-helpers
 ```
+
+- `convex-helpers` primitives are no longer part of the template path.
+  Replace `zid(...)` with `z.string()`, and remove `customMutation`/`Triggers` wrappers in favor of:
+  - `initCRPC.create()` defaults
+  - trigger declarations in schema table config
+
+- ORM row shape is `id`/`createdAt` (not `_id`/`_creationTime`) at the app boundary.
+  Update UI/client code and shared types accordingly.
 
 ## Features
 

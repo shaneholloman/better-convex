@@ -81,11 +81,10 @@ Base context properties work identically:
   <CompareItem title="After (cRPC)">
     ```ts showLineNumbers {1-3,5-7}
     import { z } from 'zod';
-    import { zid } from 'better-convex/server';
     import { publicQuery } from '../lib/crpc';
 
     export const get = publicQuery
-      .input(z.object({ id: zid('user') }))
+      .input(z.object({ id: z.string() }))
       .query(async ({ ctx, input }) => {
         return ctx.db.get(input.id);
       });
@@ -158,7 +157,7 @@ Base context properties work identically:
     ```ts showLineNumbers {1-3}
     export const internal_get = publicQuery
       .internal()
-      .input(z.object({ id: zid('user') }))
+      .input(z.object({ id: z.string() }))
       .query(async ({ ctx, input }) => ctx.db.get(input.id));
     ```
   </CompareItem>
@@ -183,7 +182,7 @@ Base context properties work identically:
   <CompareItem title="After (cRPC)">
     ```ts showLineNumbers {1-5,7-8}
     const UserSchema = z.object({
-      id: zid('user'),
+      id: z.string(),
       name: z.string(),
       email: z.string(),
     });

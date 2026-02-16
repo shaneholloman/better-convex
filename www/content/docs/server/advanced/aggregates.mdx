@@ -777,7 +777,7 @@ Here's a complete real-world example:
 
 ```ts showLineNumbers {6-10,12-14,18-24,26-29}
 export const getUserStats = authQuery
-  .input(z.object({ gameId: zid('games') }))
+  .input(z.object({ gameId: z.string() }))
   .output(z.object({
     highScore: z.number(),
     averageScore: z.number(),
@@ -850,7 +850,7 @@ Handle aggregate-specific errors gracefully:
 
 ```ts showLineNumbers {4-14}
 export const deleteScore = authMutation
-  .input(z.object({ scoreId: zid('scores') }))
+  .input(z.object({ scoreId: z.string() }))
   .mutation(async ({ ctx, input }) => {
     const doc = await ctx.orm.query.scores.findFirst({ where: { id: input.scoreId } });
     if (!doc) throw new CRPCError({ code: 'NOT_FOUND', message: 'Score not found' });

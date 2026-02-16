@@ -13,13 +13,12 @@ Let's start with a mutation that deletes a user by `id`:
 
 ```ts showLineNumbers title="convex/functions/users.ts"
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { eq } from 'better-convex/orm';
 import { publicMutation } from '../lib/crpc';
 import { users } from '../schema';
 
 export const removeUser = publicMutation
-  .input(z.object({ userId: zid('users') }))
+  .input(z.object({ userId: z.string() }))
   .mutation(async ({ ctx, input }) => {
     await ctx.orm.delete(users).where(eq(users.id, input.userId));
   });

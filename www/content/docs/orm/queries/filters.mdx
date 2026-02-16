@@ -60,19 +60,18 @@ This example uses a union + interleave (internal merged-stream semantics), then 
 
 ```ts title="convex/functions/messages.ts" showLineNumbers {17-37}
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { publicQuery } from '../lib/crpc';
 
 const MessageSchema = z.object({
-  id: zid('messages'),
-  from: zid('users'),
-  to: zid('users'),
+  id: z.string(),
+  from: z.string(),
+  to: z.string(),
   body: z.string(),
   deletedAt: z.number().nullable(),
 });
 
 export const listConversation = publicQuery
-  .input(z.object({ me: zid('users'), them: zid('users') }))
+  .input(z.object({ me: z.string(), them: z.string() }))
   .paginated({ limit: 20, item: MessageSchema })
   .query(async ({ ctx, input }) => {
     return await ctx.orm.query.messages
@@ -136,7 +135,6 @@ Now let's implement a basic search query:
 
 ```ts title="convex/functions/articles.ts" showLineNumbers {7-11}
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { publicQuery } from '../lib/crpc';
 
 export const search = publicQuery
@@ -145,7 +143,7 @@ export const search = publicQuery
     limit: z.number().min(1).max(100).default(10),
   }))
   .output(z.array(z.object({
-    id: zid('articles'),
+    id: z.string(),
     title: z.string(),
     content: z.string(),
   })))
@@ -176,7 +174,7 @@ export const searchByCategory = publicQuery
     author: z.string().optional(),
   }))
   .output(z.array(z.object({
-    id: zid('articles'),
+    id: z.string(),
     title: z.string(),
     content: z.string(),
     category: z.string(),
@@ -202,7 +200,7 @@ Use `.paginated({ limit, item })` ([paginated builder](/docs/server/procedures#p
 
 ```ts title="convex/functions/articles.ts" showLineNumbers {3,9-17}
 const ArticleSchema = z.object({
-  id: zid('articles'),
+  id: z.string(),
   title: z.string(),
   content: z.string(),
   category: z.string(),
@@ -255,7 +253,7 @@ If you need to scale, prefer index-compiled filters and explicit index design.
 
 ```ts title="convex/functions/characters.ts" showLineNumbers {6-8,13-18,21-24}
 const CharacterSchema = z.object({
-  id: zid('characters'),
+  id: z.string(),
   name: z.string(),
   categories: z.array(z.string()).nullable(),
   score: z.number(),

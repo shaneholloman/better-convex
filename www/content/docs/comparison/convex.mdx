@@ -96,11 +96,10 @@ export const get = query({
 **better-convex:**
 ```ts showLineNumbers {4-6}
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { publicQuery } from '../lib/crpc';
 
 export const get = publicQuery
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .query(async ({ ctx, input }) => {
     return ctx.db.get(input.id);
   });

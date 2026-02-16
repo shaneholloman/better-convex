@@ -105,13 +105,12 @@ Now when you use `authQuery` or `authMutation`, `ctx.user` and `ctx.userId` are 
 
 ```ts title="convex/functions/session.ts" showLineNumbers {1-4,6-16}
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { authMutation } from '../lib/crpc';
 import { session } from './schema';
 
 export const create = authMutation
   .input(z.object({ token: z.string() }))
-  .output(zid('session'))
+  .output(z.string())
   .mutation(async ({ ctx, input }) => {
     // ctx.user and ctx.userId are now available and typed!
     const [row] = await ctx.orm

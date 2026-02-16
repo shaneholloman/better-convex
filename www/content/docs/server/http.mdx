@@ -195,12 +195,11 @@ Use `.params()` for URL path parameters. Define placeholders with `:paramName` i
 
 ```ts title="convex/routers/todos.ts" showLineNumbers {5-6,9}
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { publicRoute } from '../lib/crpc';
 
 export const get = publicRoute
   .get('/api/todos/:id')
-  .params(z.object({ id: zid('todos') }))
+  .params(z.object({ id: z.string() }))
   .output(todoSchema.nullable())
   .query(async ({ ctx, params }) => {
     // params.id is typed as Id<'todos'>
@@ -214,7 +213,6 @@ Use `.post()` with `.input()` and `.mutation()` for create operations.
 
 ```ts title="convex/routers/todos.ts" showLineNumbers {5-9,12-16}
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { authRoute } from '../lib/crpc';
 
 export const create = authRoute
@@ -223,7 +221,7 @@ export const create = authRoute
     title: z.string().min(1, 'Title is required'),
     description: z.string().optional(),
   }))
-  .output(z.object({ id: zid('todos') }))
+  .output(z.object({ id: z.string() }))
   .mutation(async ({ ctx, input }) => {
     // input.title and input.description are validated
     const id = await ctx.runMutation(internal.todos.create, {
@@ -240,12 +238,11 @@ Use `.patch()` for partial updates. Combine `.params()` for the resource ID and 
 
 ```ts title="convex/routers/todos.ts" showLineNumbers {5-11,14-18}
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { authRoute } from '../lib/crpc';
 
 export const update = authRoute
   .patch('/api/todos/:id')
-  .params(z.object({ id: zid('todos') }))
+  .params(z.object({ id: z.string() }))
   .input(z.object({
     title: z.string().optional(),
     completed: z.boolean().optional(),
@@ -267,12 +264,11 @@ Use `.delete()` for resource deletion. Typically only needs `.params()` for the 
 
 ```ts title="convex/routers/todos.ts" showLineNumbers {5-8,11-13}
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { authRoute } from '../lib/crpc';
 
 export const deleteTodo = authRoute
   .delete('/api/todos/:id')
-  .params(z.object({ id: zid('todos') }))
+  .params(z.object({ id: z.string() }))
   .output(z.object({ success: z.boolean() }))
   .mutation(async ({ ctx, params }) => {
     await ctx.runMutation(internal.todos.delete, { id: params.id });
@@ -297,11 +293,10 @@ Group related endpoints into routers for better organization and code splitting.
 
 ```ts title="convex/routers/todos.ts" showLineNumbers {18-24}
 import { z } from 'zod';
-import { zid } from 'better-convex/server';
 import { router, publicRoute, authRoute } from '../lib/crpc';
 
 const todoSchema = z.object({
-  id: zid('todos'),
+  id: z.string(),
   title: z.string(),
   completed: z.boolean(),
   description: z.string().optional(),
@@ -438,7 +433,7 @@ import { CRPCError } from 'better-convex/server';
 
 export const get = publicRoute
   .get('/api/todos/:id')
-  .params(z.object({ id: zid('todos') }))
+  .params(z.object({ id: z.string() }))
   .output(todoSchema)
   .query(async ({ ctx, params }) => {
     const todo = await ctx.runQuery(api.todos.get, { id: params.id });
