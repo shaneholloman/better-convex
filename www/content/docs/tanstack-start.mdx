@@ -66,8 +66,6 @@ export const authClient = createAuthClient({
 ```
 
 ```ts title="src/lib/convex/auth/auth-server.ts"
-import { api } from "@convex/api";
-import { meta } from "@convex/meta";
 import { convexBetterAuthReactStart } from "@convex-dev/better-auth/react-start";
 
 export const {
@@ -77,24 +75,25 @@ export const {
   fetchAuthMutation,
   fetchAuthAction,
 } = convexBetterAuthReactStart({
-  convexUrl: process.env.VITE_CONVEX_URL,
-  convexSiteUrl: process.env.VITE_CONVEX_SITE_URL,
+  convexUrl: process.env.VITE_CONVEX_URL!,
+  convexSiteUrl: process.env.VITE_CONVEX_SITE_URL!,
 });
 ```
 
 ## Auth API Endpoint
 
-Better Auth requires an API endpoint to handle authentication requests. In TanStack Start dev mode, create a new API route at `src/api/auth.$.ts` file:
+Better Auth requires an API endpoint to handle authentication requests. Create a
+new route file at `src/routes/api/auth/$.ts`:
 
-```ts title="src/api/auth.$.ts"
+```ts title="src/routes/api/auth/$.ts"
 import { createFileRoute } from "@tanstack/react-router";
 import { handler } from "@/lib/convex/auth/auth-server";
 
 export const Route = createFileRoute("/api/auth/$")({
   server: {
     handlers: {
-      GET: ({ request, context }) => handler(request, context),
-      POST: ({ request, context }) => handler(request, context),
+      GET: ({ request }) => handler(request),
+      POST: ({ request }) => handler(request),
     },
   },
 });
@@ -113,7 +112,7 @@ import { getToken } from "./auth/auth-server";
 
 const { createContext, createCaller } = createCallerFactory({
   api,
-  convexSiteUrl: process.env.VITE_CONVEX_SITE_URL,
+  convexSiteUrl: process.env.VITE_CONVEX_SITE_URL!,
   meta,
   auth: {
     getToken: async () => {
@@ -152,7 +151,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 export const getCurrentUser = createServerFn({ method: "GET" }).handler(
   async () => {
-    return await runServerCall((caller) => caller.users.getSessionUser({}));
+    return await runServerCall((caller) => caller.user.getSessionUser({}));
   },
 );
 ```
@@ -161,7 +160,7 @@ export const getCurrentUser = createServerFn({ method: "GET" }).handler(
 
 Now define the query-client types needed for the router context:
 
-```tsx title="src/routes/_root.tsx"
+```tsx title="src/routes/__root.tsx"
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext } from "@tanstack/react-router";
 import type { ConvexQueryClient, ConvexReactClient } from "better-convex/react";
@@ -307,14 +306,16 @@ export function useCRPCClient() {
 Here we'll focus on the auth providers. The non-auth providers are largely the
 same.
 
-Before setting up the providers, get the token on the server in your `_root.tsx`
+Before setting up the providers, get the token on the server in your `__root.tsx`
 `beforeLoad` function:
 
-```tsx title="src/routes/_root.tsx"
+```tsx title="src/routes/__root.tsx"
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext } from "@tanstack/react-router";
 import type { ConvexQueryClient, ConvexReactClient } from "better-convex/react";
 import { createSeo } from "@/lib/seo";
+import { getCurrentUser } from "@/functions/getCurrentUser";
+import { getSessionToken } from "@/functions/getSessionToken";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRouteWithContext<{
@@ -411,9 +412,10 @@ function QueryProvider({ children }: { children: React.ReactNode }) {
 }
 ```
 
-And finally, we need to use this `BetterConvexProvider` in our `_root.tsx` file:
+And finally, we need to use this `BetterConvexProvider` in our `__root.tsx`
+file:
 
-```tsx title="src/routes/_root.tsx"
+```tsx title="src/routes/__root.tsx"
 function RootComponent() {
   return (
       <BetterConvexProvider>
@@ -430,8 +432,8 @@ function RootComponent() {
 You can now call your Convex functions from both loaders and client-side
 components, with auth support.
 
-Note: You may see an error saying an environment variable starting with
-`NEXT_PUBLIC_` is not set. You can add it to your local env file and safely
+Note: You may see an error saying an environment variable starting with `VITE_`
+is not set. You can add it to your local env file and safely
 ignore it for now.
 
 And this might not be the best solution, so feel free to suggest improvements.
