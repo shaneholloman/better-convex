@@ -16,7 +16,7 @@
     "server/error-handling",
     "server/http",
     "server/server-side-calls",
-    "server/helpers",
+    "server/advanced",
     "---ORM---",
     "orm/index",
     "orm/schema",
