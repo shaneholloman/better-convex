@@ -1,4 +1,5 @@
 import {
+  type AnyColumn,
   boolean,
   convexTable,
   custom,
@@ -358,16 +359,12 @@ export const tagsTable = convexTable(
 // Comment Model
 // --------------------
 
-const resolveTodoCommentParentRef: Parameters<
-  ReturnType<typeof text>['references']
->[0] = () => todoCommentsTable.id;
-
 export const todoCommentsTable = convexTable(
   'todoComments',
   {
     createdAt: timestamp().notNull().defaultNow(),
     content: text().notNull(),
-    parentId: text().references(resolveTodoCommentParentRef, {
+    parentId: text().references((): AnyColumn => todoCommentsTable.id, {
       onDelete: 'cascade',
     }),
     todoId: text()
