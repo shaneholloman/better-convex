@@ -18,7 +18,7 @@ import { test, expect } from "vitest";
 import schema from "../schema";
 import { convexTest, runCtx } from "../setup.testing";
 
-test("example", async () => {
+test("feature", async () => {
   const t = convexTest(schema);
   await t.run(async (baseCtx) => {
     const ctx = await runCtx(baseCtx);
@@ -182,6 +182,21 @@ test("list query result shape", async () => {
 });
 ```
 
+## Compile-Time Type Suites (Example-Parity Optional)
+
+If you want parity with `example/convex` type hardening, add compile-time-only files:
+
+- `convex/lib/crpc-test.ts`:
+  - procedure-builder type coverage (`public`, `optionalAuth`, `auth`, `private`)
+  - `.paginated(...)` cursor/limit type checks
+  - `@ts-expect-error` assertions for invalid usage
+- `convex/shared/types-typecheck.ts`:
+  - `Select`/`Insert` alias integrity checks
+  - generated API input/output shape checks
+  - temporal field type assertions
+
+These files are validated by `tsc`/`bun typecheck`; they are not runtime tests.
+
 ## Keep / Drop Guidance
 
 Keep:
@@ -194,7 +209,7 @@ Drop:
 - internal ORM parity progress tracking
 - assertion counting workflows
 - package-internal generic/type torture suites
-- duplicate runtime examples with same intent
+- duplicate runtime snippets with same intent
 
 ## Practical Test Checklist
 
