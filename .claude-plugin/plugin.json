@@ -1,0 +1,11 @@
+{
+  "name": "better-convex",
+  "version": "0.6.0",
+  "description": "Better Convex development skill",
+  "author": {
+    "name": "zbeyens"
+  },
+  "repository": "https://github.com/udecode/better-convex",
+  "license": "MIT",
+  "keywords": ["convex", "crpc", "orm", "better-convex", "auth", "triggers"]
+}
