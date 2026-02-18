@@ -29,10 +29,6 @@ If you just want the default that scales:
 | Composition | `select().map/filter/flatMap/union/interleaveBy(...).paginate({ cursor, limit })` | Advanced stream-like composition before pagination | Yes | Yes | Supports union/interleave/map/filter/flatMap/distinct |
 | Key-based | `findMany({ pageByKey })` | Deterministic key boundaries and adjacency control | N/A | N/A | Returns `{ page, indexKeys, hasMore }` |
 
-<Callout icon={<InfoIcon />}>
-There is no public `db.stream()` API anymore. Advanced stream behavior is available through the `select()` composition chain.
-</Callout>
-
 ## Offset Pagination
 
 Offset pagination is the most straightforward option:
