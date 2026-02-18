@@ -1,6 +1,5 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
 import { useMutation } from '@tanstack/react-query';
 import { useInfiniteQuery, useMaybeAuth } from 'better-convex/react';
 import { Archive, CheckSquare, Plus, Square, Users } from 'lucide-react';
@@ -25,20 +24,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { useCRPC } from '@/lib/convex/crpc';
 import { cn } from '@/lib/utils';
 
-type ProjectListItem = {
-  _id: Id<'projects'>;
-  _creationTime: number;
-  name: string;
-  description?: string;
-  ownerId: Id<'user'>;
-  isPublic: boolean;
-  archived: boolean;
-  memberCount: number;
-  todoCount: number;
-  completedTodoCount: number;
-  isOwner: boolean;
-};
-
 export default function ProjectsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -51,10 +36,15 @@ export default function ProjectsPage() {
   const isAuth = useMaybeAuth();
   const crpc = useCRPC();
 
-  const { data, hasNextPage, isLoading, isFetchingNextPage, fetchNextPage } =
-    useInfiniteQuery(
-      crpc.projects.list.infiniteQueryOptions({ includeArchived })
-    );
+  const {
+    data: projects,
+    hasNextPage,
+    isLoading,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useInfiniteQuery(
+    crpc.projects.list.infiniteQueryOptions({ includeArchived })
+  );
 
   const createProject = useMutation(
     crpc.projects.create.mutationOptions({
@@ -84,7 +74,7 @@ export default function ProjectsPage() {
   };
 
   const handleArchiveToggle = async (
-    projectId: Id<'projects'>,
+    projectId: string,
     isArchived: boolean
   ) => {
     const mutation = isArchived ? restoreProject : archiveProject;
@@ -95,8 +85,6 @@ export default function ProjectsPage() {
       error: (e) => e.data?.message ?? 'Failed to update project',
     });
   };
-
-  const projects = (data || []) as ProjectListItem[];
 
   return (
     <div className="mx-auto max-w-5xl @3xl:px-8 px-6 @3xl:py-12 py-8">
@@ -210,9 +198,9 @@ export default function ProjectsPage() {
           <WithSkeleton
             className="w-full"
             isLoading={isLoading}
-            key={project._id || index}
+            key={project.id || index}
           >
-            <Link className="block" href={`/projects/${project._id}`}>
+            <Link className="block" href={`/projects/${project.id}`}>
               <div
                 className={cn(
                   'group rounded-lg bg-secondary/40 p-4 transition-colors hover:bg-secondary/60',
@@ -249,7 +237,7 @@ export default function ProjectsPage() {
                         className="h-7 px-2 text-xs"
                         onClick={(e) => {
                           e.preventDefault();
-                          handleArchiveToggle(project._id, project.archived);
+                          handleArchiveToggle(project.id, project.archived);
                         }}
                         size="sm"
                         variant="ghost"

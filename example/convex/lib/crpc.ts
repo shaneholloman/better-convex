@@ -10,17 +10,21 @@
  * import { publicQuery, authQuery, authMutation } from '../lib/crpc';
  *
  * export const getItem = publicQuery
- *   .input(z.object({ id: zid('items') }))
+ *   .input(z.object({ id: z.string() }))
  *   .output(z.object({ name: z.string() }).nullable())
  *   .query(async ({ ctx, input }) => {
- *     return ctx.table('items').get(input.id);
+ *     return ctx.orm.query.items.findFirst({ where: { id: input.id } });
  *   });
  *
  * export const createItem = authMutation
  *   .input(z.object({ name: z.string() }))
- *   .output(zid('items'))
+ *   .output(z.string())
  *   .mutation(async ({ ctx, input }) => {
- *     return ctx.table('items').insert({ name: input.name, userId: ctx.userId });
+ *     const [row] = await ctx.orm
+ *       .insert(items)
+ *       .values({ name: input.name, userId: ctx.userId })
+ *       .returning({ id: items.id });
+ *     return row.id;
  *   });
  * ```
  */
@@ -28,72 +32,49 @@
 import { getHeaders } from 'better-convex/auth';
 import { CRPCError, initCRPC } from 'better-convex/server';
 import type { Auth } from 'convex/server';
-import {
-  customCtx,
-  customMutation,
-} from 'convex-helpers/server/customFunctions';
 import { api } from '../functions/_generated/api';
-import type { DataModel, Id } from '../functions/_generated/dataModel';
+import type { DataModel } from '../functions/_generated/dataModel';
 import type {
   ActionCtx,
   MutationCtx,
   QueryCtx,
 } from '../functions/_generated/server';
-import {
-  action,
-  httpAction,
-  internalAction,
-  internalMutation,
-  internalQuery,
-  mutation,
-  query,
-} from '../functions/_generated/server';
 import { getAuth } from '../functions/auth';
 import type { SessionUser } from '../shared/auth-shared';
-import { getSessionUser, getSessionUserWriter } from './auth/auth-helpers';
-import type { Ent, EntWriter } from './ents';
-import { type CtxWithTable, getCtxWithTable } from './ents';
+import { getSessionUser } from './auth/auth-helpers';
 import { getEnv } from './get-env';
+import { type OrmCtx, withOrm } from './orm';
 import { rateLimitGuard } from './rate-limiter';
-import { registerTriggers } from './triggers';
 
 // =============================================================================
 // Context Types
 // =============================================================================
 
-export type GenericCtx = QueryCtx | MutationCtx | ActionCtx;
-
-type CtxUser<Ctx extends MutationCtx | QueryCtx = QueryCtx> = SessionUser &
-  (Ctx extends MutationCtx ? EntWriter<'user'> : Ent<'user'>);
-
 /** Context with optional auth - user/userId may be null */
 export type MaybeAuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
-  CtxWithTable<Ctx> & {
+  OrmCtx<Ctx> & {
     auth: Auth & Partial<ReturnType<typeof getAuth> & { headers: Headers }>;
-    user: CtxUser<Ctx> | null;
-    userId: Id<'user'> | null;
+    user: SessionUser | null;
+    userId: string | null;
   };
 
 /** Context with required auth - user/userId guaranteed */
 export type AuthCtx<Ctx extends MutationCtx | QueryCtx = QueryCtx> =
-  CtxWithTable<Ctx> & {
+  OrmCtx<Ctx> & {
     auth: Auth & ReturnType<typeof getAuth> & { headers: Headers };
-    user: CtxUser<Ctx>;
-    userId: Id<'user'>;
+    user: SessionUser;
+    userId: string;
   };
 
 /** Context type for authenticated actions */
 export type AuthActionCtx = ActionCtx & {
   user: SessionUser;
-  userId: Id<'user'>;
+  userId: string;
 };
 
 // =============================================================================
 // Project-Specific Setup
 // =============================================================================
-
-// Initialize triggers for mutations
-const triggers = registerTriggers();
 
 type Meta = {
   auth?: 'optional' | 'required';
@@ -106,35 +87,11 @@ type Meta = {
 const c = initCRPC
   .dataModel<DataModel>()
   .context({
-    query: (ctx) => getCtxWithTable(ctx),
-    mutation: (ctx) => getCtxWithTable(ctx),
+    query: (ctx) => withOrm(ctx),
+    mutation: (ctx) => withOrm(ctx),
   })
   .meta<Meta>()
-  .create({
-    query,
-    internalQuery,
-    // biome-ignore lint/suspicious/noExplicitAny: convex internals
-    mutation: (handler: any) =>
-      mutation({
-        ...handler,
-        handler: async (ctx: MutationCtx, args: unknown) => {
-          const wrappedCtx = triggers.wrapDB(ctx);
-          return handler.handler(wrappedCtx, args);
-        },
-      }),
-    // biome-ignore lint/suspicious/noExplicitAny: convex internals
-    internalMutation: (handler: any) =>
-      internalMutation({
-        ...handler,
-        handler: async (ctx: MutationCtx, args: unknown) => {
-          const wrappedCtx = triggers.wrapDB(ctx);
-          return handler.handler(wrappedCtx, args);
-        },
-      }),
-    action,
-    internalAction,
-    httpAction,
-  });
+  .create();
 
 // =============================================================================
 // Middleware
@@ -257,7 +214,7 @@ export const optionalAuthMutation = c.mutation
   .meta({ auth: 'optional' })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
-    const user = await getSessionUserWriter(ctx);
+    const user = await getSessionUser(ctx);
 
     return next({
       ctx: {
@@ -281,7 +238,7 @@ export const authMutation = c.mutation
   .meta({ auth: 'required' })
   .use(devMiddleware)
   .use(async ({ ctx, next }) => {
-    const user = requireAuth(await getSessionUserWriter(ctx));
+    const user = requireAuth(await getSessionUser(ctx));
 
     return next({
       ctx: {
@@ -319,13 +276,6 @@ export const authAction = c.action
     return next({ ctx: { ...ctx, user, userId: user.id } });
   });
 
-export const internalMutationWithTriggers = customMutation(
-  internalMutation,
-  customCtx(async (ctx) => ({
-    db: triggers.wrapDB(ctx).db,
-  }))
-);
-
 // =============================================================================
 // HTTP Action Procedures
 // =============================================================================
@@ -345,7 +295,7 @@ export const authRoute = c.httpAction.use(async ({ ctx, next }) => {
   return next({
     ctx: {
       ...ctx,
-      userId: identity.subject as Id<'user'>,
+      userId: identity.subject,
       user: {
         id: identity.subject,
         email: identity.email,
@@ -363,7 +313,7 @@ export const optionalAuthRoute = c.httpAction.use(async ({ ctx, next }) => {
   return next({
     ctx: {
       ...ctx,
-      userId: identity ? (identity.subject as Id<'user'>) : null,
+      userId: identity ? identity.subject : null,
       user: identity
         ? {
             id: identity.subject,

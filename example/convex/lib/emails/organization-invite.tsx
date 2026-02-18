@@ -10,6 +10,7 @@ import {
   Section,
   Text,
 } from '@react-email/components';
+import { getEnv } from '../get-env';
 
 type OrganizationInviteEmailProps = {
   acceptUrl: string;
@@ -30,8 +31,9 @@ export default function OrganizationInviteEmail({
   role = 'member',
   to = 'user@example.com',
 }: OrganizationInviteEmailProps) {
-  const siteUrl = process.env.SITE_URL ?? 'http://localhost:3000';
-  const appName = process.env.NEXT_PUBLIC_APP_NAME ?? 'App';
+  const env = getEnv();
+  const siteUrl = env.SITE_URL;
+  const appName = 'Example';
 
   const previewText = `${inviterName} has invited you to join ${organizationName}`;
 

@@ -5,6 +5,7 @@ import { Agentation } from 'agentation';
 import { Suspense } from 'react';
 import { BreadcrumbNav } from '@/components/breadcrumb-nav';
 import { Providers } from '@/components/providers';
+import { Toaster } from '@/components/ui/sonner';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -36,6 +37,7 @@ export default function RootLayout({
             <BreadcrumbNav />
           </Suspense>
           {children}
+          <Toaster />
           {process.env.NODE_ENV === 'development' && <Agentation />}
         </Providers>
       </body>

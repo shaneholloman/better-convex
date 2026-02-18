@@ -1,6 +1,6 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
+import type { ApiInputs, ApiOutputs } from '@convex/types';
 import { skipToken, useMutation, useQuery } from '@tanstack/react-query';
 import {
   Crown,
@@ -51,32 +51,17 @@ import {
 } from '@/components/ui/table';
 import { useCRPC } from '@/lib/convex/crpc';
 
-type Member = {
-  id: Id<'member'>;
-  createdAt: number;
-  organizationId: Id<'organization'>;
-  role?: string;
-  user: {
-    id: Id<'user'>;
-    email: string;
-    image?: string | null;
-    name?: string | null;
-  };
-  userId: Id<'user'>;
-};
+type OrganizationOverview = NonNullable<
+  ApiOutputs['organization']['getOrganizationOverview']
+>;
+type OrganizationMembersData = ApiOutputs['organization']['listMembers'];
+type InviteRole = NonNullable<
+  ApiInputs['organization']['inviteMember']['role']
+>;
 
 type OrganizationMembersProps = {
-  organization?: {
-    id: Id<'organization'>;
-    isPersonal: boolean;
-    role?: string;
-    slug: string;
-  } | null;
-  members?: {
-    currentUserRole?: string;
-    isPersonal: boolean;
-    members: Member[];
-  } | null;
+  organization?: OrganizationOverview | null;
+  members?: OrganizationMembersData | null;
   isLoading: boolean;
 };
 
@@ -86,7 +71,10 @@ export function OrganizationMembers({
   isLoading,
 }: OrganizationMembersProps) {
   const [showInviteDialog, setShowInviteDialog] = useState(false);
-  const [inviteData, setInviteData] = useState({
+  const [inviteData, setInviteData] = useState<{
+    email: string;
+    role: InviteRole;
+  }>({
     email: '',
     role: 'member',
   });
@@ -101,32 +89,20 @@ export function OrganizationMembers({
           skipUnauth: true,
           placeholderData: [
             {
-              id: '0' as Id<'invitation'>,
-              createdAt: new Date('2025-11-04').getTime(),
+              id: '0',
+              createdAt: new Date('2025-11-04'),
               email: 'pending@example.com',
-              expiresAt:
-                new Date('2025-11-04').getTime() + 7 * 24 * 60 * 60 * 1000,
-              organizationId: '0' as Id<'organization'>,
+              expiresAt: new Date(
+                new Date('2025-11-04').getTime() + 7 * 24 * 60 * 60 * 1000
+              ),
+              organizationId: '0',
               role: 'member',
               status: 'pending',
             },
           ],
         }
       )
-    ) as {
-      data:
-        | Array<{
-            id: Id<'invitation'>;
-            createdAt: number;
-            email: string;
-            expiresAt: number;
-            organizationId: Id<'organization'>;
-            role: string;
-            status: string;
-          }>
-        | undefined;
-      isPlaceholderData: boolean;
-    };
+    );
 
   const inviteMember = useMutation(
     crpc.organization.inviteMember.mutationOptions({
@@ -179,22 +155,19 @@ export function OrganizationMembers({
     inviteMember.mutate({
       email: inviteData.email.trim(),
       organizationId: organization.id,
-      role: inviteData.role as 'owner' | 'member',
+      role: inviteData.role,
     });
   };
 
-  const handleRemoveMember = (memberId: Id<'member'>) => {
+  const handleRemoveMember = (memberId: string) => {
     removeMember.mutate({ memberId });
   };
 
-  const handleUpdateRole = (
-    memberId: Id<'member'>,
-    role: 'owner' | 'member'
-  ) => {
+  const handleUpdateRole = (memberId: string, role: 'owner' | 'member') => {
     updateMemberRole.mutate({ memberId, role });
   };
 
-  const handleCancelInvitation = (invitationId: Id<'invitation'>) => {
+  const handleCancelInvitation = (invitationId: string) => {
     cancelInvitation.mutate({ invitationId });
   };
 
@@ -411,7 +384,10 @@ export function OrganizationMembers({
               <Label htmlFor="invite-role">Role</Label>
               <Select
                 onValueChange={(value) =>
-                  setInviteData({ ...inviteData, role: value })
+                  setInviteData({
+                    ...inviteData,
+                    role: value === 'owner' ? 'owner' : 'member',
+                  })
                 }
                 value={inviteData.role}
               >

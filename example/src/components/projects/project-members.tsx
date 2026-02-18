@@ -1,6 +1,6 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
+import type { ApiOutputs } from '@convex/types';
 import { useMutation } from '@tanstack/react-query';
 import {
   Crown,
@@ -39,19 +39,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useCRPC } from '@/lib/convex/crpc';
 
+type ProjectDetail = NonNullable<ApiOutputs['projects']['get']>;
+type ProjectOwner = NonNullable<ProjectDetail['owner']>;
+type ProjectMember = ProjectDetail['members'][number];
+
 type ProjectMembersProps = {
-  projectId: Id<'projects'>;
-  owner: {
-    _id: Id<'user'>;
-    name: string | null;
-    email: string;
-  };
-  members: Array<{
-    _id: Id<'user'>;
-    name: string | null;
-    email: string;
-    joinedAt: number;
-  }>;
+  projectId: string;
+  owner: ProjectOwner;
+  members: ProjectMember[];
   isOwner: boolean;
 };
 
@@ -107,14 +102,14 @@ export function ProjectMembers({
     });
   };
 
-  const handleRemoveMember = (userId: Id<'user'>) => {
+  const handleRemoveMember = (userId: string) => {
     removeMember.mutate({
       projectId,
       userId,
     });
   };
 
-  const handleTransferOwnership = (userId: Id<'user'>) => {
+  const handleTransferOwnership = (userId: string) => {
     if (
       // biome-ignore lint/suspicious/noAlert: demo
       confirm(
@@ -225,7 +220,7 @@ export function ProjectMembers({
         {members.map((member) => (
           <div
             className="flex items-center justify-between rounded-lg p-2 hover:bg-muted/50"
-            key={member._id}
+            key={member.id}
           >
             <div className="flex items-center gap-3">
               <Avatar>
@@ -256,14 +251,14 @@ export function ProjectMembers({
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem
-                      onClick={() => handleTransferOwnership(member._id)}
+                      onClick={() => handleTransferOwnership(member.id)}
                     >
                       <UserCheck className="h-4 w-4" />
                       Make Owner
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="text-destructive"
-                      onClick={() => handleRemoveMember(member._id)}
+                      onClick={() => handleRemoveMember(member.id)}
                     >
                       <UserMinus className="h-4 w-4" />
                       Remove Member

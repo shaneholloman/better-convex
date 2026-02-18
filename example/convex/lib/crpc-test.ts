@@ -8,10 +8,7 @@
  */
 
 /* biome-ignore-all lint: type test file with intentional expressions */
-
-import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
-import type { Id } from '../functions/_generated/dataModel';
 import type { SessionUser } from '../shared/auth-shared';
 import {
   authMutation,
@@ -41,7 +38,7 @@ const _forceError: string = publicRoute;
 // 1.1 query - no input, no output
 // publicQuery has NO user/userId - tRPC style base procedure
 export const public_query = publicQuery.query(async ({ ctx }) => {
-  ctx.table; // ✓ exists
+  ctx.orm; // ✓ exists
   // ctx.user does NOT exist - auth middleware adds it
   // ctx.userId does NOT exist - auth middleware adds it
   return null;
@@ -49,10 +46,10 @@ export const public_query = publicQuery.query(async ({ ctx }) => {
 
 // 1.2 query - with input
 export const public_query_input = publicQuery
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .query(async ({ ctx, input }) => {
-    const id: Id<'user'> = input.id;
-    return ctx.table('user').get(id);
+    const id: string = input.id;
+    return ctx.orm.query.user.findFirst({ where: { id: id } });
   });
 
 // 1.3 query - with output
@@ -68,7 +65,7 @@ export const public_query_io = publicQuery
 
 // Schema for paginated user results
 const PaginatedUserSchema = z.object({
-  _id: zid('user'),
+  id: z.string(),
   name: z.string().nullish(),
 });
 
@@ -78,9 +75,10 @@ export const public_paginated = publicQuery
   .query(async ({ ctx, input }) => {
     input.cursor; // string | null
     input.limit; // number
-    return ctx
-      .table('user')
-      .paginate({ cursor: input.cursor, numItems: input.limit });
+    return ctx.orm.query.user.findMany({
+      cursor: input.cursor,
+      limit: input.limit,
+    });
   });
 
 // 1.6 paginated().query() - with custom input (chained)
@@ -90,9 +88,10 @@ export const public_paginated_input = publicQuery
   .query(async ({ ctx, input }) => {
     const _filter: string | undefined = input.filter; // ✓ enforced
     const _cursor: string | null = input.cursor; // ✓ enforced
-    return ctx
-      .table('user')
-      .paginate({ cursor: input.cursor, numItems: input.limit });
+    return ctx.orm.query.user.findMany({
+      cursor: input.cursor,
+      limit: input.limit,
+    });
   });
 
 // 1.6b .input() with cursor/limit - manual pagination without .paginated()
@@ -107,9 +106,10 @@ export const public_manual_pagination = publicQuery
   .query(async ({ ctx, input }) => {
     const _cursor: string | null = input.cursor; // ✓ enforced
     const _limit: number | undefined = input.limit; // ✓ enforced
-    return ctx
-      .table('user')
-      .paginate({ cursor: input.cursor, numItems: input.limit ?? 10 });
+    return ctx.orm.query.user.findMany({
+      cursor: input.cursor,
+      limit: input.limit ?? 10,
+    });
   });
 
 // 1.6c .input() with cursor/limit and custom output - manual pagination
@@ -123,23 +123,24 @@ export const public_manual_pagination_output = publicQuery
   )
   .output(
     z.object({
-      continueCursor: z.string(),
+      continueCursor: z.string().nullable(),
       isDone: z.boolean(),
       page: z.array(PaginatedUserSchema),
     })
   )
   .query(async ({ ctx, input }) => {
     const _filter: string | undefined = input.filter;
-    return ctx
-      .table('user')
-      .paginate({ cursor: input.cursor, numItems: input.limit ?? 10 });
+    return ctx.orm.query.user.findMany({
+      cursor: input.cursor,
+      limit: input.limit ?? 10,
+    });
   });
 
 // 1.7 internal().query()
 export const public_internal_query = publicQuery
   .internal()
   .query(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     return null;
   });
 
@@ -149,19 +150,19 @@ export const public_internal_query = publicQuery
 
 // 2.1 mutation
 export const public_mutation = publicMutation.mutation(async ({ ctx }) => {
-  ctx.table;
+  ctx.orm;
   return null;
 });
 
 // 2.2 mutation - with input and output
 export const public_mutation_io = publicMutation
-  .input(z.object({ id: zid('user'), name: z.string() }))
+  .input(z.object({ id: z.string(), name: z.string() }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
     // Verify types are correct
-    const _id: Id<'user'> = input.id;
+    const id: string = input.id;
     const _name: string = input.name;
-    ctx.table; // table should exist
+    ctx.orm; // orm should exist
     return null;
   });
 
@@ -169,7 +170,7 @@ export const public_mutation_io = publicMutation
 export const public_internal_mutation = publicMutation
   .internal()
   .mutation(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     return null;
   });
 
@@ -198,10 +199,10 @@ export const public_internal_action = publicAction
 
 // 4.1 query - user may be null
 export const publicOrAuth_query = optionalAuthQuery.query(async ({ ctx }) => {
-  ctx.table;
+  ctx.orm;
   // Explicit type annotations catch any-pollution
   const user: SessionUser | null = ctx.user;
-  const userId: Id<'user'> | null = ctx.userId;
+  const userId: string | null = ctx.userId;
   // Must check for null before accessing
   if (user) {
     user.id; // OK after null check
@@ -211,10 +212,10 @@ export const publicOrAuth_query = optionalAuthQuery.query(async ({ ctx }) => {
 
 // 4.2 query with input
 export const publicOrAuth_query_input = optionalAuthQuery
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .query(async ({ ctx, input }) => {
-    const id: Id<'user'> = input.id;
-    return ctx.table('user').get(id);
+    const id: string = input.id;
+    return ctx.orm.query.user.findFirst({ where: { id: id } });
   });
 
 // 4.3 paginated().query()
@@ -223,16 +224,17 @@ export const publicOrAuth_paginated = optionalAuthQuery
   .query(async ({ ctx, input }) => {
     input.cursor;
     input.limit;
-    return ctx
-      .table('user')
-      .paginate({ cursor: input.cursor, numItems: input.limit });
+    return ctx.orm.query.user.findMany({
+      cursor: input.cursor,
+      limit: input.limit,
+    });
   });
 
 // 4.4 internal().query()
 export const publicOrAuth_internal_query = optionalAuthQuery
   .internal()
   .query(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     return null;
   });
 
@@ -243,7 +245,7 @@ export const publicOrAuth_internal_query = optionalAuthQuery
 // 5.1 mutation
 export const publicOrAuth_mutation = optionalAuthMutation.mutation(
   async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     const user: SessionUser | null = ctx.user;
     return user;
   }
@@ -253,7 +255,7 @@ export const publicOrAuth_mutation = optionalAuthMutation.mutation(
 export const publicOrAuth_internal_mutation = optionalAuthMutation
   .internal()
   .mutation(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     return null;
   });
 
@@ -263,10 +265,10 @@ export const publicOrAuth_internal_mutation = optionalAuthMutation
 
 // 6.1 query - user guaranteed non-null
 export const auth_query = authQuery.query(async ({ ctx }) => {
-  ctx.table;
+  ctx.orm;
   // Explicit type annotations catch any-pollution and verify non-null
   const user: SessionUser = ctx.user;
-  const userId: Id<'user'> = ctx.userId;
+  const userId: string = ctx.userId;
   user.id; // No optional chaining needed - guaranteed non-null
   return { user, userId };
 });
@@ -274,10 +276,10 @@ export const auth_query = authQuery.query(async ({ ctx }) => {
 // 6.2 query with input and output
 export const auth_query_io = authQuery
   .input(z.object({ limit: z.number() }))
-  .output(z.array(z.object({ id: zid('user'), name: z.string() })))
+  .output(z.array(z.object({ id: z.string(), name: z.string() })))
   .query(async ({ ctx, input }) => {
-    const users = await ctx.table('user').take(input.limit);
-    return users.map((u) => ({ id: u._id, name: u.name ?? '' }));
+    const users = await ctx.orm.query.user.findMany({ limit: input.limit });
+    return users.map((u) => ({ id: u.id, name: u.name ?? '' }));
   });
 
 // 6.3 paginated().query()
@@ -286,16 +288,17 @@ export const auth_paginated = authQuery
   .query(async ({ ctx, input }) => {
     input.cursor;
     input.limit;
-    return ctx
-      .table('user')
-      .paginate({ cursor: input.cursor, numItems: input.limit });
+    return ctx.orm.query.user.findMany({
+      cursor: input.cursor,
+      limit: input.limit,
+    });
   });
 
 // 6.4 internal().query()
 export const auth_internal_query = authQuery
   .internal()
   .query(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     const user: SessionUser = ctx.user;
     return user;
   });
@@ -306,20 +309,20 @@ export const auth_internal_query = authQuery
 
 // 7.1 mutation
 export const auth_mutation = authMutation.mutation(async ({ ctx }) => {
-  ctx.table;
+  ctx.orm;
   const user: SessionUser = ctx.user;
-  const userId: Id<'user'> = ctx.userId;
+  const userId: string = ctx.userId;
   return { user, userId };
 });
 
 // 7.2 mutation with input - verifying types
 export const auth_mutation_input = authMutation
-  .input(z.object({ id: zid('user'), name: z.string() }))
+  .input(z.object({ id: z.string(), name: z.string() }))
   .mutation(async ({ ctx, input }) => {
     // Verify types are correct
-    const _id: Id<'user'> = input.id;
+    const id: string = input.id;
     const _name: string = input.name;
-    ctx.table; // table should exist
+    ctx.orm; // orm should exist
     return null;
   });
 
@@ -327,7 +330,7 @@ export const auth_mutation_input = authMutation
 export const auth_internal_mutation = authMutation
   .internal()
   .mutation(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     const user: SessionUser = ctx.user;
     return user;
   });
@@ -340,19 +343,21 @@ export const auth_internal_mutation = authMutation
 export const admin_query = authQuery
   .meta({ role: 'admin' })
   .query(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     const user: SessionUser = ctx.user;
-    const userId: Id<'user'> = ctx.userId;
+    const userId: string = ctx.userId;
     return { user, userId };
   });
 
 // 8.2 admin query with input and output
 export const admin_query_io = authQuery
   .meta({ role: 'admin' })
-  .input(z.object({ userId: zid('user') }))
+  .input(z.object({ userId: z.string() }))
   .output(z.object({ banned: z.boolean() }).nullable())
   .query(async ({ ctx, input }) => {
-    const user = await ctx.table('user').get(input.userId);
+    const user = await ctx.orm.query.user.findFirst({
+      where: { id: input.userId },
+    });
     return user ? { banned: user.banned ?? false } : null;
   });
 
@@ -363,9 +368,10 @@ export const admin_paginated = authQuery
   .query(async ({ ctx, input }) => {
     input.cursor;
     input.limit;
-    return ctx
-      .table('user')
-      .paginate({ cursor: input.cursor, numItems: input.limit });
+    return ctx.orm.query.user.findMany({
+      cursor: input.cursor,
+      limit: input.limit,
+    });
   });
 
 // 8.4 admin internal().query()
@@ -373,7 +379,7 @@ export const admin_internal_query = authQuery
   .meta({ role: 'admin' })
   .internal()
   .query(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     return null;
   });
 
@@ -458,33 +464,32 @@ export const paginated_has_opts = publicQuery
 // 9.10 Return type inference with output schema
 // TypeScript catches missing properties at function signature level (good!)
 export const error_return_mismatch = publicQuery
-  .output(z.object({ id: zid('user'), active: z.boolean() }))
+  .output(z.object({ id: z.string(), active: z.boolean() }))
   // @ts-expect-error - handler missing 'active' property required by output
-  .query(async () => ({ id: '0' as Id<'user'> }));
+  .query(async () => ({ id: '0' }));
 
 // ============================================================================
 // Section 10: Context Property Assertions
 // ============================================================================
 
-// 10.1 publicQuery ctx has table method
+// 10.1 publicQuery ctx has orm property
 export const ctx_public_table = publicQuery.query(async ({ ctx }) => {
-  // table should be callable
-  const users = await ctx.table('user').take(10);
+  const users = await ctx.orm.query.user.findMany({ limit: 10 });
   return users.length;
 });
 
 // 10.2 authQuery ctx.user - guaranteed non-null after requireAuth
 export const ctx_auth_user_props = authQuery.query(async ({ ctx }) => {
   const user: SessionUser = ctx.user;
-  const userId: Id<'user'> = ctx.userId;
+  const userId: string = ctx.userId;
   // Direct access - no optional chaining needed
-  const id: Id<'user'> = user.id;
+  const id: string = user.id;
   return { id, userId };
 });
 
 // 10.3 Verify ctx.userId type
 export const ctx_userId_type = authQuery.query(async ({ ctx }) => {
-  const userId: Id<'user'> = ctx.userId;
+  const userId: string = ctx.userId;
   return userId;
 });
 
@@ -496,7 +501,7 @@ export const ctx_userId_type = authQuery.query(async ({ ctx }) => {
 export const complex_input = publicQuery
   .input(
     z.object({
-      id: zid('user'),
+      id: z.string(),
       filters: z.object({
         status: z.enum(['active', 'inactive']),
         limit: z.number().optional(),
@@ -505,7 +510,7 @@ export const complex_input = publicQuery
     })
   )
   .query(async ({ input }) => {
-    const id: Id<'user'> = input.id;
+    const id: string = input.id;
     const status: 'active' | 'inactive' = input.filters.status;
     const limit: number | undefined = input.filters.limit;
     const tags: string[] = input.tags;
@@ -514,11 +519,11 @@ export const complex_input = publicQuery
 
 // 11.2 Complex output schema - using publicQuery to avoid auth narrowing issues
 export const complex_output = publicQuery
-  .input(z.object({ userId: zid('user') }))
+  .input(z.object({ userId: z.string() }))
   .output(
     z.object({
       user: z.object({
-        id: zid('user'),
+        id: z.string(),
         name: z.string(),
       }),
       metadata: z.object({
@@ -528,7 +533,9 @@ export const complex_output = publicQuery
     })
   )
   .query(async ({ ctx, input }) => {
-    const user = await ctx.table('user').get(input.userId);
+    const user = await ctx.orm.query.user.findFirst({
+      where: { id: input.userId },
+    });
     return {
       user: {
         id: input.userId,
@@ -542,19 +549,21 @@ export const complex_output = publicQuery
 
 // 11.3 Nullable output
 export const nullable_output = publicQuery
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .output(z.object({ name: z.string() }).nullable())
   .query(async ({ ctx, input }) => {
-    const user = await ctx.table('user').get(input.id);
+    const user = await ctx.orm.query.user.findFirst({
+      where: { id: input.id },
+    });
     return user ? { name: user.name ?? '' } : null;
   });
 
 // 11.4 Array output
 export const array_output = publicQuery
-  .output(z.array(z.object({ id: zid('user'), name: z.string() })))
+  .output(z.array(z.object({ id: z.string(), name: z.string() })))
   .query(async ({ ctx }) => {
-    const users = await ctx.table('user').take(10);
-    return users.map((u) => ({ id: u._id, name: u.name ?? '' }));
+    const users = await ctx.orm.query.user.findMany({ limit: 10 });
+    return users.map((u) => ({ id: u.id, name: u.name ?? '' }));
   });
 
 // ============================================================================
@@ -563,21 +572,23 @@ export const array_output = publicQuery
 
 // 12.1 input -> output -> query
 export const chain_input_output_query = publicQuery
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .output(z.string())
   .query(async ({ ctx, input }) => {
-    const user = await ctx.table('user').get(input.id);
+    const user = await ctx.orm.query.user.findFirst({
+      where: { id: input.id },
+    });
     return user?.name ?? 'unknown';
   });
 
 // 12.2 output -> input -> mutation
 export const chain_output_input_mutation = publicMutation
   .output(z.string())
-  .input(z.object({ name: z.string(), userId: zid('user') }))
+  .input(z.object({ name: z.string(), userId: z.string() }))
   .mutation(async ({ ctx, input }) => {
     // Verify types are correct
     const _name: string = input.name;
-    ctx.table; // table should exist
+    ctx.orm; // orm should exist
     return input.userId;
   });
 
@@ -594,18 +605,18 @@ export const empty_input = publicQuery.query(async ({ input }) => {
 
 // 13.2 No output schema - return type is inferred
 export const inferred_return = publicQuery.query(async ({ ctx }) => {
-  const users = await ctx.table('user').take(5);
-  return users.map((u) => u._id); // Return type inferred as Id<'user'>[]
+  const users = await ctx.orm.query.user.findMany({ limit: 5 });
+  return users.map((u) => u.id); // Return type inferred to string[]
 });
 
 // 13.3 Void return with z.null()
 export const void_return = publicMutation
   .output(z.null())
-  .input(z.object({ userId: zid('user') }))
+  .input(z.object({ userId: z.string() }))
   .mutation(async ({ ctx, input }) => {
     // Verify types are correct
-    const _userId: Id<'user'> = input.userId;
-    ctx.table; // table should exist
+    const _userId: string = input.userId;
+    ctx.orm; // orm should exist
     return null;
   });
 
@@ -617,7 +628,7 @@ export const void_return = publicMutation
 export const meta_query = publicQuery
   .meta({ rateLimit: 'api/heavy' })
   .query(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     return null;
   });
 
@@ -625,7 +636,7 @@ export const meta_query = publicQuery
 export const meta_mutation = publicMutation
   .meta({ rateLimit: 'api/create' })
   .mutation(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     return null;
   });
 
@@ -640,10 +651,12 @@ export const meta_action = publicAction
 // 14.4 .meta() with input and output
 export const meta_io = publicQuery
   .meta({ rateLimit: 'api/read' })
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .output(z.string().nullable())
   .query(async ({ ctx, input }) => {
-    const user = await ctx.table('user').get(input.id);
+    const user = await ctx.orm.query.user.findFirst({
+      where: { id: input.id },
+    });
     return user?.name ?? null;
   });
 
@@ -651,7 +664,7 @@ export const meta_io = publicQuery
 export const meta_middleware = authQuery
   .meta({ role: 'admin', rateLimit: 'api/admin' })
   .query(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     return null;
   });
 
@@ -666,9 +679,10 @@ export const meta_paginated = publicQuery
   .meta({ rateLimit: 'api/list' })
   .paginated({ limit: 10, item: PaginatedUserSchema })
   .query(async ({ ctx, input }) => {
-    return ctx
-      .table('user')
-      .paginate({ cursor: input.cursor, numItems: input.limit });
+    return ctx.orm.query.user.findMany({
+      cursor: input.cursor,
+      limit: input.limit,
+    });
   });
 
 // 14.8 .meta() with internal
@@ -676,7 +690,7 @@ export const meta_internal = publicQuery
   .meta({ rateLimit: 'internal/batch' })
   .internal()
   .query(async ({ ctx }) => {
-    ctx.table;
+    ctx.orm;
     return null;
   });
 
@@ -728,9 +742,9 @@ export const http_io = publicRoute
 // 15.5 httpAction - path params
 export const http_params = publicRoute
   .get('/api/users/:id')
-  .params(z.object({ id: zid('user') }))
+  .params(z.object({ id: z.string() }))
   .query(async ({ ctx, params }) => {
-    const id: Id<'user'> = params.id;
+    const id: string = params.id;
     return { id };
   });
 
@@ -749,10 +763,10 @@ export const http_query = publicRoute
 // 15.7 httpAction - path params + query params
 export const http_params_query = publicRoute
   .get('/api/users/:id/posts')
-  .params(z.object({ id: zid('user') }))
+  .params(z.object({ id: z.string() }))
   .searchParams(z.object({ page: z.coerce.number().optional() }))
   .query(async ({ params, searchParams }) => {
-    const userId: Id<'user'> = params.id;
+    const userId: string = params.id;
     const page: number | undefined = searchParams.page;
     return { userId, page };
   });
@@ -790,8 +804,8 @@ export const http_auth_basic = authRoute
   .query(async ({ ctx }) => {
     // ctx.user is the type returned by api.user.getSessionUser - verify key properties exist
     const user = ctx.user;
-    const userId: Id<'user'> = ctx.userId;
-    user.id; // Id<'user'>
+    const userId: string = ctx.userId;
+    user.id; // string
     return { user, userId };
   });
 
@@ -800,7 +814,7 @@ export const http_auth_input = authRoute
   .put('/api/profile')
   .input(z.object({ name: z.string() }))
   .mutation(async ({ ctx, input }) => {
-    const userId: Id<'user'> = ctx.userId;
+    const userId: string = ctx.userId;
     const name: string = input.name;
     return { userId, name };
   });
@@ -808,9 +822,9 @@ export const http_auth_input = authRoute
 // 16.3 authRoute - with params and storage
 export const http_auth_params = authRoute
   .get('/api/projects/:id')
-  .params(z.object({ id: zid('projects') }))
+  .params(z.object({ id: z.string() }))
   .query(async ({ ctx, params, c }) => {
-    const projectId: Id<'projects'> = params.id;
+    const projectId: string = params.id;
     // Test that ctx has storage
     ctx.storage;
     return c.json({ id: projectId });
@@ -848,7 +862,7 @@ export const error_http_input_wrong_prop = publicRoute
 // 17.4 Wrong params property
 export const error_http_params_wrong_prop = publicRoute
   .get('/api/users/:id')
-  .params(z.object({ id: zid('user') }))
+  .params(z.object({ id: z.string() }))
   .query(async ({ params }) => {
     // @ts-expect-error - params.nonexistent does not exist
     return params.nonexistent;
@@ -888,10 +902,10 @@ export const http_response_return = publicRoute
 // 18.1 httpAction - PUT method
 export const http_put = publicRoute
   .put('/api/users/:id')
-  .params(z.object({ id: zid('user') }))
+  .params(z.object({ id: z.string() }))
   .input(z.object({ name: z.string() }))
   .mutation(async ({ params, input }) => {
-    const id: Id<'user'> = params.id;
+    const id: string = params.id;
     const name: string = input.name;
     return { id, name, method: 'PUT' };
   });
@@ -899,10 +913,10 @@ export const http_put = publicRoute
 // 18.2 httpAction - PATCH method
 export const http_patch = publicRoute
   .patch('/api/users/:id')
-  .params(z.object({ id: zid('user') }))
+  .params(z.object({ id: z.string() }))
   .input(z.object({ name: z.string().optional() }))
   .mutation(async ({ params, input }) => {
-    const id: Id<'user'> = params.id;
+    const id: string = params.id;
     const name: string | undefined = input.name;
     return { id, name, method: 'PATCH' };
   });
@@ -910,21 +924,21 @@ export const http_patch = publicRoute
 // 18.3 httpAction - DELETE method
 export const http_delete = publicRoute
   .delete('/api/users/:id')
-  .params(z.object({ id: zid('user') }))
+  .params(z.object({ id: z.string() }))
   .mutation(async ({ params }) => {
-    const id: Id<'user'> = params.id;
+    const id: string = params.id;
     return { deleted: id, method: 'DELETE' };
   });
 
 // 18.4 httpAction - input + params + query combined
 export const http_all_schemas = publicRoute
   .post('/api/projects/:projectId/tasks')
-  .params(z.object({ projectId: zid('projects') }))
+  .params(z.object({ projectId: z.string() }))
   .searchParams(z.object({ notify: z.coerce.boolean().optional() }))
   .input(z.object({ title: z.string(), description: z.string().optional() }))
-  .output(z.object({ taskId: z.string(), projectId: zid('projects') }))
+  .output(z.object({ taskId: z.string(), projectId: z.string() }))
   .mutation(async ({ params, searchParams, input }) => {
-    const projectId: Id<'projects'> = params.projectId;
+    const projectId: string = params.projectId;
     const notify: boolean | undefined = searchParams.notify;
     const title: string = input.title;
     const description: string | undefined = input.description;
@@ -985,7 +999,7 @@ export const http_auth_use = authRoute
   .get('/api/auth-middleware')
   .query(async ({ ctx }) => {
     const permissions: string[] = ctx.permissions;
-    const userId: Id<'user'> = ctx.userId;
+    const userId: string = ctx.userId;
     return { permissions, userId };
   });
 
@@ -1023,22 +1037,6 @@ export const http_no_input = publicRoute
 
 import { type InferHttpInput, type InferHttpOutput } from 'better-convex/crpc';
 
-// Mock httpRoutes type for testing (normally from codegen)
-const mockHttpRoutes = {
-  http_post_input: { path: '/api/users', method: 'POST' },
-  http_params: { path: '/api/users/:id', method: 'GET' },
-  http_params_query: { path: '/api/users/:id/posts', method: 'GET' },
-  http_output: { path: '/api/status', method: 'GET' },
-} as const;
-
-// Create a mock router type from the exported procedures
-type MockHttpRouter = {
-  http_post_input: typeof http_post_input;
-  http_params: typeof http_params;
-  http_params_query: typeof http_params_query;
-  http_output: typeof http_output;
-};
-
 // 20.1 InferHttpInput - POST with body
 type _InputPostInput = InferHttpInput<typeof http_post_input>;
 // Should be: { name: string; email: string }
@@ -1049,14 +1047,14 @@ const _testPostInput: _InputPostInput = {
 
 // 20.2 InferHttpInput - GET with path params
 type _InputParams = InferHttpInput<typeof http_params>;
-// Should be: { id: Id<'user'> }
-const _testParams: _InputParams = { id: 'test' as Id<'user'> };
+// Should be: { id: string }
+const _testParams: _InputParams = { id: 'test' };
 
 // 20.3 InferHttpInput - GET with path params + query params (merged)
 type _InputParamsQuery = InferHttpInput<typeof http_params_query>;
-// Should be: { id: Id<'user'>; page?: number }
+// Should be: { id: string; page?: number }
 const _testParamsQuery: _InputParamsQuery = {
-  id: 'test' as Id<'user'>,
+  id: 'test',
   page: 1,
 };
 
@@ -1107,7 +1105,7 @@ export const http_c_raw = publicRoute
 export const http_optional_auth = optionalAuthRoute
   .get('/api/optional-auth')
   .query(async ({ ctx }) => {
-    const userId: Id<'user'> | null = ctx.userId;
+    const userId: string | null = ctx.userId;
     return { userId };
   });
 
@@ -1116,7 +1114,7 @@ export const error_optional_auth_no_check = optionalAuthRoute
   .get('/api/test')
   .query(async ({ ctx }) => {
     // @ts-expect-error - userId may be null, can't use directly as non-null
-    const userId: Id<'user'> = ctx.userId;
+    const userId: string = ctx.userId;
     return { userId };
   });
 
@@ -1131,18 +1129,18 @@ export const middleware_before_input = publicQuery
     const _unknownInput: unknown = input;
     return next();
   })
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .query(async ({ input }) => {
-    const id: Id<'user'> = input.id;
+    const id: string = input.id;
     return { id };
   });
 
 // 22.2 Middleware after .input() - input is typed
 export const middleware_after_input = publicQuery
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .use(async ({ input, next }) => {
-    // input.id is typed as Id<'user'>
-    const id: Id<'user'> = input.id;
+    // input.id is typed string
+    const id: string = input.id;
     return next();
   })
   .query(async ({ input }) => {
@@ -1181,7 +1179,7 @@ export const middleware_getRawInput = publicQuery
 
 // 22.5 next() can pass modified input (with ctx to satisfy type constraint)
 export const middleware_next_input = publicQuery
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .use(async ({ ctx, input, next }) => {
     return next({ ctx, input: { ...input, enriched: true } });
   })
@@ -1202,16 +1200,16 @@ export const middleware_no_input_destructure = publicQuery
 
 // 22.7 Middleware context + input both work
 export const middleware_ctx_and_input = authQuery
-  .input(z.object({ projectId: zid('projects') }))
+  .input(z.object({ projectId: z.string() }))
   .use(async ({ ctx, input, next }) => {
     // ctx has user/userId from auth middleware
-    const userId: Id<'user'> = ctx.userId;
+    const userId: string = ctx.userId;
     // input is typed
-    const projectId: Id<'projects'> = input.projectId;
+    const projectId: string = input.projectId;
     return next({ ctx: { ...ctx, projectId } });
   })
   .query(async ({ ctx, input }) => {
-    const projectId: Id<'projects'> = ctx.projectId;
+    const projectId: string = ctx.projectId;
     return { userId: ctx.userId, projectId: input.projectId };
   });
 
@@ -1244,7 +1242,7 @@ export const error_middleware_input_before_schema = publicQuery
     input.id;
     return next();
   })
-  .input(z.object({ id: zid('user') }))
+  .input(z.object({ id: z.string() }))
   .query(async () => null);
 
 // 22.11 Error: Accessing wrong property after .input()
@@ -1279,18 +1277,18 @@ export const middleware_chained_use = publicQuery
 export const middleware_chained_use_auth = authQuery
   .use(async ({ ctx, next }) => {
     // Auth context (user, userId) should be available
-    const userId: Id<'user'> = ctx.userId;
+    const userId: string = ctx.userId;
     return next({ ctx: { ...ctx, step1: true } });
   })
   .use(async ({ ctx, next }) => {
     // Both auth context and step1 should be available
-    const userId: Id<'user'> = ctx.userId;
+    const userId: string = ctx.userId;
     const step1: boolean = ctx.step1;
     return next({ ctx: { ...ctx, step2: 'done' } });
   })
   .query(async ({ ctx }) => {
     // All context properties should be available
-    const userId: Id<'user'> = ctx.userId;
+    const userId: string = ctx.userId;
     const user: SessionUser = ctx.user;
     const step1: boolean = ctx.step1;
     const step2: string = ctx.step2;

@@ -4,32 +4,30 @@ import {
   memberAc,
   ownerAc,
 } from 'better-auth/plugins/organization/access';
-import type { Doc, Id } from '../functions/_generated/dataModel';
+import type { Doc } from '../functions/_generated/dataModel';
 // biome-ignore lint/style/noRestrictedImports: types
-import type { createAuth } from '../functions/auth';
+import type { getAuth } from '../functions/auth';
+import type { Select } from './types';
 
-export type Auth = ReturnType<typeof createAuth>;
+export type Auth = ReturnType<typeof getAuth>;
 
-export type SessionUser = Omit<Doc<'user'>, '_creationTime' | '_id'> & {
-  id: Id<'user'>;
+export type SessionUser = Select<'user'> & {
   activeOrganization:
-    | (Omit<Doc<'organization'>, '_id'> & {
-        id: Id<'organization'>;
-        role: Doc<'member'>['role'];
+    | (Select<'organization'> & {
+        role: Select<'member'>['role'];
       })
     | null;
   isAdmin: boolean;
+  // Native Better Auth session document (used for auth header/session plumbing).
   session: Doc<'session'>;
-  impersonatedBy?: string;
+  impersonatedBy?: string | null;
   plan?: 'premium' | 'team';
 };
 
-const statement = {
+export const ac = createAccessControl({
   ...defaultStatements,
   projects: ['create', 'update', 'delete'],
-} as const;
-
-export const ac = createAccessControl(statement);
+});
 
 const member = ac.newRole({
   ...memberAc.statements,

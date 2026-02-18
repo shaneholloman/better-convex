@@ -74,7 +74,6 @@ export const meta = {
     getCommentThread: { type: 'query' },
     getTodoComments: { auth: 'optional', limit: 20, type: 'query' },
     getUserComments: { auth: 'optional', limit: 20, type: 'query' },
-    toggleReaction: { auth: 'required', rateLimit: 'todoComment/reaction', type: 'mutation' },
     updateComment: { auth: 'required', rateLimit: 'todoComment/update', type: 'mutation' },
   },
   todos: {
@@ -83,7 +82,6 @@ export const meta = {
     deleteTodo: { auth: 'required', rateLimit: 'todo/delete', type: 'mutation' },
     get: { auth: 'required', type: 'query' },
     list: { auth: 'optional', limit: 20, type: 'query' },
-    reorder: { auth: 'required', rateLimit: 'todo/update', type: 'mutation' },
     restore: { auth: 'required', rateLimit: 'todo/update', type: 'mutation' },
     search: { auth: 'optional', limit: 20, type: 'query' },
     toggleComplete: { auth: 'required', rateLimit: 'todo/update', type: 'mutation' },

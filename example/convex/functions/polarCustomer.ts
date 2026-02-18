@@ -1,10 +1,11 @@
 import '../lib/polar-polyfills';
 
+import { eq } from 'better-convex/orm';
 import { CRPCError } from 'better-convex/server';
-import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
 import { privateAction, privateMutation } from '../lib/crpc';
 import { getPolarClient } from '../lib/polar-client';
+import { userTable } from './schema';
 
 // Create Polar customer (called from user.onCreate trigger)
 export const createCustomer = privateAction
@@ -12,7 +13,7 @@ export const createCustomer = privateAction
     z.object({
       email: z.string().email(),
       name: z.string().optional(),
-      userId: zid('user'),
+      userId: z.string(),
     })
   )
   .output(z.null())
@@ -22,7 +23,7 @@ export const createCustomer = privateAction
     try {
       await polar.customers.create({
         email: args.email,
-        externalId: args.userId, // IMPORTANT: Use userId as externalId
+        externalId: args.userId,
         name: args.name,
       });
     } catch (error) {
@@ -38,25 +39,30 @@ export const updateUserPolarCustomerId = privateMutation
   .input(
     z.object({
       customerId: z.string(),
-      userId: zid('user'),
+      userId: z.string(),
     })
   )
   .output(z.null())
   .mutation(async ({ ctx, input: args }) => {
-    const user = await ctx.table('user').getX(args.userId);
+    const user = await ctx.orm.query.user.findFirstOrThrow({
+      where: { id: args.userId },
+    });
 
     // Check for duplicate customer IDs
-    const existingUser = await ctx
-      .table('user')
-      .get('customerId', args.customerId);
+    const existingUser = await ctx.orm.query.user.findFirst({
+      where: { customerId: args.customerId },
+    });
 
-    if (existingUser && existingUser._id !== args.userId) {
+    if (existingUser && existingUser.id !== args.userId) {
       throw new CRPCError({
         code: 'CONFLICT',
         message: `Another user already has Polar customer ID ${args.customerId}`,
       });
     }
 
-    await user.patch({ customerId: args.customerId });
+    await ctx.orm
+      .update(userTable)
+      .set({ customerId: args.customerId })
+      .where(eq(userTable.id, user.id));
     return null;
   });

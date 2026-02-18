@@ -1,13 +1,12 @@
-import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
 import { api, internal } from '../functions/_generated/api';
 import { authRoute, publicRoute, router } from '../lib/crpc';
 
 const todoOutput = z.object({
-  _id: zid('todos'),
+  id: z.string(),
   title: z.string(),
   completed: z.boolean(),
-  description: z.string().optional(),
+  description: z.string().nullish(),
 });
 
 // To-do router - groups todo-related endpoints
@@ -21,8 +20,10 @@ export const todosRouter = router({
       const result = await ctx.runQuery(api.todos.list, {
         limit: searchParams.limit ?? 10,
       });
-      return result.page.map((t) => ({
-        _id: t._id,
+      const todos = result.page;
+
+      return todos.map((t) => ({
+        id: t.id,
         title: t.title,
         completed: t.completed,
         description: t.description,
@@ -32,13 +33,13 @@ export const todosRouter = router({
   // GET /api/todos/:id - Get single todo by ID (path params)
   get: publicRoute
     .get('/api/todos/:id')
-    .params(z.object({ id: zid('todos') }))
+    .params(z.object({ id: z.string() }))
     .output(todoOutput.nullable())
     .query(async ({ ctx, params }) => {
       const todo = await ctx.runQuery(api.todos.get, { id: params.id });
       if (!todo) return null;
       return {
-        _id: todo._id,
+        id: todo.id,
         title: todo.title,
         completed: todo.completed,
         description: todo.description,
@@ -55,7 +56,7 @@ export const todosRouter = router({
         priority: z.enum(['low', 'medium', 'high']).optional(),
       })
     )
-    .output(z.object({ id: zid('todos') }))
+    .output(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const id = await ctx.runMutation(internal.todoInternal.create, {
         userId: ctx.userId,
@@ -67,7 +68,7 @@ export const todosRouter = router({
   // PATCH /api/todos/:id - Update todo (auth required)
   update: authRoute
     .patch('/api/todos/:id')
-    .params(z.object({ id: zid('todos') }))
+    .params(z.object({ id: z.string() }))
     .input(
       z.object({
         title: z.string().min(1).optional(),
@@ -88,7 +89,7 @@ export const todosRouter = router({
   // DELETE /api/todos/:id - Delete todo (auth required)
   delete: authRoute
     .delete('/api/todos/:id')
-    .params(z.object({ id: zid('todos') }))
+    .params(z.object({ id: z.string() }))
     .output(z.object({ success: z.boolean() }))
     .mutation(async ({ ctx, params }) => {
       await ctx.runMutation(internal.todoInternal.deleteTodo, {
@@ -116,7 +117,7 @@ export const todosRouter = router({
         const csv = [
           'id,title,completed,description',
           ...todos.map(
-            (t) => `${t._id},${t.title},${t.completed},${t.description ?? ''}`
+            (t) => `${t.id},${t.title},${t.completed},${t.description ?? ''}`
           ),
         ].join('\n');
         return c.text(csv);

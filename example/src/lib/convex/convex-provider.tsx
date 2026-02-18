@@ -12,11 +12,12 @@ import { useRouter } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 
+import { env } from '@/env';
 import { authClient } from '@/lib/convex/auth-client';
 import { CRPCProvider } from '@/lib/convex/crpc';
 import { createQueryClient } from '@/lib/convex/query-client';
 
-const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+const convex = new ConvexReactClient(env.NEXT_PUBLIC_CONVEX_URL);
 
 export function BetterConvexProvider({
   children,

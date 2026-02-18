@@ -1,13 +1,13 @@
 /** biome-ignore-all lint/suspicious/noExplicitAny: dev */
+import { eq } from 'better-convex/orm';
 import { CRPCError } from 'better-convex/server';
 import { z } from 'zod';
 import { privateAction, privateMutation, privateQuery } from '../lib/crpc';
-import type { Ent } from '../lib/ents';
 import { getEnv } from '../lib/get-env';
 import { deletePolarCustomers } from '../lib/polar-helpers';
 import { internal } from './_generated/api';
 import type { TableNames } from './_generated/dataModel';
-import schema from './schema';
+import schema, { tables } from './schema';
 
 const DELETE_BATCH_SIZE = 64;
 
@@ -53,18 +53,30 @@ export const deletePage = privateMutation
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
     assertDevOnly();
-    // Use ctx.table for proper trigger handling
-    const results = await ctx
-      .table(input.tableName as any)
-      .paginate({ cursor: input.cursor, numItems: DELETE_BATCH_SIZE });
+    const table = (tables as Record<string, any>)[input.tableName];
+    if (!table) {
+      throw new CRPCError({
+        code: 'BAD_REQUEST',
+        message: `Unknown table: ${input.tableName}`,
+      });
+    }
+
+    const query = (ctx.orm.query as Record<string, any>)[input.tableName];
+    if (!query || typeof query.findMany !== 'function') {
+      throw new CRPCError({
+        code: 'BAD_REQUEST',
+        message: `Unknown query table: ${input.tableName}`,
+      });
+    }
+
+    const results = await query.findMany({
+      cursor: input.cursor,
+      limit: DELETE_BATCH_SIZE,
+    });
 
     for (const row of results.page) {
       try {
-        // Use ctx.table to delete, which will properly trigger aggregates
-        await ctx
-          .table(input.tableName as any)
-          .getX(row._id)
-          .delete();
+        await ctx.orm.delete(table).where(eq(table.id, (row as any).id));
       } catch {
         // Document might have been deleted by a trigger or concurrent process
       }
@@ -91,20 +103,15 @@ export const getAdminUsers = privateQuery
   .query(async ({ ctx }) => {
     assertDevOnly();
     const adminEmails = getEnv().ADMIN;
+    if (!adminEmails.length) return [];
 
-    // Get all admin users by their emails
-    const adminUsers: Ent<'user'>[] = [];
+    const admins = await ctx.orm.query.user.findMany({
+      where: { email: { in: adminEmails } },
+      limit: adminEmails.length,
+      columns: { customerId: true },
+    });
 
-    for (const email of adminEmails) {
-      const user = await ctx.table('user').get('email', email);
-
-      if (user) {
-        adminUsers.push(user);
-      }
-    }
-
-    // Filter and return only users with customer IDs
-    return adminUsers
-      .filter((user) => user.customerId)
-      .map((user) => ({ customerId: user.customerId! }));
+    return admins
+      .filter((u): u is typeof u & { customerId: string } => !!u.customerId)
+      .map((u) => ({ customerId: u.customerId }));
   });

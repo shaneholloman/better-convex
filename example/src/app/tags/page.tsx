@@ -1,6 +1,5 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Edit2,
@@ -36,53 +35,46 @@ import { WithSkeleton } from '@/components/ui/skeleton';
 import { useCRPC } from '@/lib/convex/crpc';
 import { cn } from '@/lib/utils';
 
-type Tag = {
-  _id: Id<'tags'>;
-  _creationTime?: number;
+type EditableTag = {
+  id: string;
   name: string;
   color: string;
-  usageCount: number;
-  isOwn?: boolean;
 };
 
 export default function TagsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showMergeDialog, setShowMergeDialog] = useState(false);
-  const [selectedTag, setSelectedTag] = useState<{
-    _id: Id<'tags'>;
-    name: string;
-    color: string;
-  } | null>(null);
+  const [selectedTag, setSelectedTag] = useState<EditableTag | null>(null);
   const [newTag, setNewTag] = useState({ name: '', color: '' });
   const [editTag, setEditTag] = useState({ name: '', color: '' });
-  const [mergeTarget, setMergeTarget] = useState<Id<'tags'> | null>(null);
+  const [mergeTarget, setMergeTarget] = useState<string | null>(null);
 
   const crpc = useCRPC();
 
-  const { data: tags, isPlaceholderData: isLoading } = useQuery(
+  const { data: tags = [], isPlaceholderData: isLoading } = useQuery(
     crpc.tags.list.queryOptions(
       {},
       {
         skipUnauth: true,
         placeholderData: [
           {
-            _id: '0' as Id<'tags'>,
-            _creationTime: new Date('2025-11-04').getTime(),
+            id: '0',
+            createdAt: new Date('2025-11-04'),
             name: 'Work',
             color: '#3B82F6',
             usageCount: 5,
           },
           {
-            _id: '2' as Id<'tags'>,
-            _creationTime: new Date('2025-11-04').getTime(),
+            id: '2',
+            createdAt: new Date('2025-11-04'),
             name: 'Personal',
             color: '#10B981',
             usageCount: 3,
           },
           {
-            _id: '3' as Id<'tags'>,
-            _creationTime: new Date('2025-11-04').getTime(),
+            id: '3',
+            createdAt: new Date('2025-11-04'),
             name: 'Urgent',
             color: '#EF4444',
             usageCount: 2,
@@ -92,7 +84,7 @@ export default function TagsPage() {
     )
   );
 
-  const { data: popularTags } = useQuery(
+  const { data: popularTags = [] } = useQuery(
     crpc.tags.popular.queryOptions({ limit: 5 }, { skipUnauth: true })
   );
 
@@ -158,13 +150,13 @@ export default function TagsPage() {
     }
 
     updateTag.mutate({
-      tagId: selectedTag._id,
+      tagId: selectedTag.id,
       name: editTag.name.trim(),
       color: editTag.color || undefined,
     });
   };
 
-  const handleDeleteTag = (tagId: Id<'tags'>) => {
+  const handleDeleteTag = (tagId: string) => {
     if (
       // biome-ignore lint/suspicious/noAlert: demo
       confirm(
@@ -182,26 +174,18 @@ export default function TagsPage() {
     }
 
     mergeTag.mutate({
-      sourceTagId: selectedTag._id,
+      sourceTagId: selectedTag.id,
       targetTagId: mergeTarget,
     });
   };
 
-  const openEditDialog = (tag: {
-    _id: Id<'tags'>;
-    name: string;
-    color: string;
-  }) => {
+  const openEditDialog = (tag: EditableTag) => {
     setSelectedTag(tag);
     setEditTag({ name: tag.name, color: tag.color });
     setShowEditDialog(true);
   };
 
-  const openMergeDialog = (tag: {
-    _id: Id<'tags'>;
-    name: string;
-    color: string;
-  }) => {
+  const openMergeDialog = (tag: EditableTag) => {
     setSelectedTag(tag);
     setMergeTarget(null);
     setShowMergeDialog(true);
@@ -292,10 +276,10 @@ export default function TagsPage() {
             Popular Tags
           </h2>
           <div className="flex flex-wrap gap-2">
-            {popularTags.map((tag: Tag) => (
+            {popularTags.map((tag) => (
               <Badge
                 className="px-3 py-1"
-                key={tag._id}
+                key={tag.id}
                 style={{
                   backgroundColor: `${tag.color}15`,
                   color: tag.color,
@@ -323,11 +307,11 @@ export default function TagsPage() {
 
         {tags && tags.length > 0 && (
           <div className="rounded-lg bg-secondary/30">
-            {tags.map((tag: Tag, index: number) => (
+            {tags.map((tag, index: number) => (
               <WithSkeleton
                 className="w-full"
                 isLoading={isLoading}
-                key={tag._id || index}
+                key={tag.id || index}
               >
                 <div
                   className={cn(
@@ -371,7 +355,7 @@ export default function TagsPage() {
                       )}
                       <DropdownMenuItem
                         className="text-destructive"
-                        onClick={() => handleDeleteTag(tag._id)}
+                        onClick={() => handleDeleteTag(tag.id)}
                       >
                         <Trash2 className="h-4 w-4" />
                         Delete
@@ -467,16 +451,16 @@ export default function TagsPage() {
               <Label>Select target tag</Label>
               <div className="grid gap-1">
                 {tags
-                  ?.filter((t: Tag) => t._id !== selectedTag?._id)
-                  .map((tag: Tag) => (
+                  ?.filter((t) => t.id !== selectedTag?.id)
+                  .map((tag) => (
                     <div
                       className={cn(
                         'flex cursor-pointer items-center gap-3 rounded-md px-3 py-2.5 transition-colors hover:bg-secondary/50',
-                        mergeTarget === tag._id &&
+                        mergeTarget === tag.id &&
                           'bg-secondary ring-2 ring-primary'
                       )}
-                      key={tag._id}
-                      onClick={() => setMergeTarget(tag._id)}
+                      key={tag.id}
+                      onClick={() => setMergeTarget(tag.id)}
                       role="button"
                     >
                       <div

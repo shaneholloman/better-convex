@@ -1,7 +1,5 @@
 import type { Subscription } from '@polar-sh/sdk/models/components/subscription.js';
-import type { WithoutSystemFields } from 'convex/server';
-
-import type { Doc, Id } from '../functions/_generated/dataModel';
+import { CRPCError } from 'better-convex/server';
 import { getPolarClient } from './polar-client';
 
 /**
@@ -12,17 +10,15 @@ import { getPolarClient } from './polar-client';
  * ID (string), not the internal database user ID. The userId must be provided
  * separately.
  */
-export const convertToDatabaseSubscription = (
-  subscription: Subscription
-): WithoutSystemFields<Doc<'subscriptions'>> => {
+export const convertToDatabaseSubscription = (subscription: Subscription) => {
   // Extract organizationId from subscription metadata (referenceId)
-  const organizationId = subscription.metadata
-    ?.referenceId as Id<'organization'>;
+  const organizationId = subscription.metadata?.referenceId;
 
-  if (!organizationId) {
-    throw new Error(
-      'Subscription missing organizationId in metadata.referenceId'
-    );
+  if (typeof organizationId !== 'string' || organizationId.length === 0) {
+    throw new CRPCError({
+      code: 'BAD_REQUEST',
+      message: 'Subscription missing organizationId in metadata.referenceId',
+    });
   }
 
   return {
@@ -39,18 +35,19 @@ export const convertToDatabaseSubscription = (
     metadata: subscription.metadata,
     modifiedAt: subscription.modifiedAt?.toISOString() ?? null,
     organizationId,
+    priceId: subscription.prices[0]?.id,
     productId: subscription.productId,
-    recurringInterval: subscription.recurringInterval as
-      | 'month'
-      | 'year'
-      | null
-      | undefined,
+    recurringInterval: subscription.recurringInterval,
     startedAt: subscription.startedAt?.toISOString() ?? null,
     status: subscription.status,
     subscriptionId: subscription.id,
-    userId: subscription.customer.externalId as Id<'user'>,
+    userId: subscription.customer.externalId!,
   };
 };
+
+export type DatabaseSubscription = ReturnType<
+  typeof convertToDatabaseSubscription
+>;
 
 /**
  * Delete all Polar customers (for reset/cleanup functionality)

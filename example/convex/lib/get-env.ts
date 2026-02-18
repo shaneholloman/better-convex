@@ -1,3 +1,4 @@
+import { createEnv } from 'better-convex/server';
 import { z } from 'zod';
 
 // Define the environment schema
@@ -12,12 +13,14 @@ const envSchema = z.object({
   GITHUB_CLIENT_SECRET: z.string(),
   GOOGLE_CLIENT_ID: z.string(),
   GOOGLE_CLIENT_SECRET: z.string(),
+  JWKS: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
 
   // Polar (new payment provider)
   POLAR_ACCESS_TOKEN: z.string().optional(),
   POLAR_PRODUCT_CREDITS: z.string().optional(),
-  POLAR_PRODUCT_PREMIUM: z.string().optional(),
+  POLAR_PRODUCT_PREMIUM: z.string().default('premium'),
+  POLAR_SERVER: z.enum(['production', 'sandbox']).default('sandbox'),
   POLAR_WEBHOOK_SECRET: z.string().optional(),
 
   // Superadmin emails
@@ -27,16 +30,6 @@ const envSchema = z.object({
     .pipe(z.array(z.string())),
 });
 
-export const getEnv = () => {
-  // Parse and validate environment variables
-  const parsed = envSchema.safeParse(process.env);
-
-  if (!parsed.success) {
-    throw new Error('Invalid environment variables');
-  }
-
-  return parsed.data;
-};
-
-// Type-safe environment variable access
-export type EnvConvex = z.infer<typeof envSchema>;
+export const getEnv = createEnv({
+  schema: envSchema,
+});

@@ -1,6 +1,5 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Building2,
@@ -64,8 +63,8 @@ export function OrganizationSwitcher() {
           canCreateOrganization: true,
           organizations: [
             {
-              id: '0' as Id<'organization'>,
-              createdAt: new Date('2025-11-04').getTime(),
+              id: '0',
+              createdAt: new Date('2025-11-04'),
               isPersonal: true,
               logo: null,
               name: 'Personal',
@@ -73,8 +72,8 @@ export function OrganizationSwitcher() {
               slug: 'personal',
             },
             {
-              id: '2' as Id<'organization'>,
-              createdAt: new Date('2025-11-04').getTime(),
+              id: '2',
+              createdAt: new Date('2025-11-04'),
               isPersonal: false,
               logo: null,
               name: 'Team Organization',
@@ -160,7 +159,7 @@ export function OrganizationSwitcher() {
   const pendingInvitationsCount = invitations?.length ?? 0;
 
   const handleSelectOrganization = (
-    organizationId: Id<'organization'>,
+    organizationId: string,
     organizationSlug: string
   ) => {
     if (organizationId === currentOrg.id) {

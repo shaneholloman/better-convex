@@ -24,7 +24,7 @@ export declare const api: {
     checkUserAdminStatus: FunctionReference<
       "query",
       "public",
-      { userId: Id<"user"> },
+      { userId: string },
       { isAdmin: boolean; role?: string | null }
     >;
     getAllUsers: FunctionReference<
@@ -37,14 +37,14 @@ export declare const api: {
         search?: string;
       },
       {
-        continueCursor: string;
+        continueCursor: string | null;
         isDone: boolean;
         page: Array<{
-          _creationTime: number;
-          _id: Id<"user">;
-          banExpiresAt?: number | null;
+          banExpiresAt?: any | null;
           banReason?: string | null;
+          createdAt: any;
           email: string;
+          id: string;
           image?: string | null;
           isBanned?: boolean | null;
           name?: string;
@@ -58,8 +58,8 @@ export declare const api: {
       {},
       {
         recentUsers: Array<{
-          _creationTime: number;
-          _id: Id<"user">;
+          createdAt: any;
+          id: string;
           image?: string | null;
           name?: string;
         }>;
@@ -72,12 +72,12 @@ export declare const api: {
       "mutation",
       "public",
       { email: string; role: "admin" },
-      { success: boolean; userId?: Id<"user"> }
+      { success: boolean; userId?: string }
     >;
     updateUserRole: FunctionReference<
       "mutation",
       "public",
-      { role: "user" | "admin"; userId: Id<"user"> },
+      { role: "user" | "admin"; userId: string },
       boolean
     >;
   };
@@ -91,19 +91,19 @@ export declare const api: {
     acceptInvitation: FunctionReference<
       "mutation",
       "public",
-      { invitationId: Id<"invitation"> },
+      { invitationId: string },
       null
     >;
     addMember: FunctionReference<
       "mutation",
       "public",
-      { role: "owner" | "member"; userId: Id<"user"> },
+      { role: "owner" | "member"; userId: string },
       null
     >;
     cancelInvitation: FunctionReference<
       "mutation",
       "public",
-      { invitationId: Id<"invitation"> },
+      { invitationId: string },
       null
     >;
     checkSlug: FunctionReference<
@@ -116,22 +116,27 @@ export declare const api: {
       "mutation",
       "public",
       { name: string },
-      { id: Id<"organization">; slug: string }
+      { id: string; slug: string }
     >;
-    deleteOrganization: FunctionReference<"mutation", "public", {}, null>;
+    deleteOrganization: FunctionReference<
+      "mutation",
+      "public",
+      { organizationId: string },
+      null
+    >;
     getActiveMember: FunctionReference<
       "query",
       "public",
       {},
-      { createdAt: number; id: Id<"member">; role: string } | null
+      { createdAt: any; id: string; role: string } | null
     >;
     getOrganization: FunctionReference<
       "query",
       "public",
       { slug: string },
       {
-        createdAt: number;
-        id: Id<"organization">;
+        createdAt: any;
+        id: string;
         isActive: boolean;
         isPersonal: boolean;
         logo?: string | null;
@@ -145,19 +150,19 @@ export declare const api: {
     getOrganizationOverview: FunctionReference<
       "query",
       "public",
-      { inviteId?: Id<"invitation">; slug: string },
+      { inviteId?: string; slug: string },
       {
-        createdAt: number;
-        id: Id<"organization">;
+        createdAt: any;
+        id: string;
         invitation: {
           email: string;
-          expiresAt: number;
-          id: Id<"invitation">;
+          expiresAt: any;
+          id: string;
           inviterEmail: string;
-          inviterId: Id<"user">;
+          inviterId: string;
           inviterName: string;
           inviterUsername: string | null;
-          organizationId: Id<"organization">;
+          organizationId: string;
           organizationName: string;
           organizationSlug: string;
           role: string;
@@ -176,10 +181,15 @@ export declare const api: {
     inviteMember: FunctionReference<
       "mutation",
       "public",
-      { email: string; role: "owner" | "member" },
+      { email: string; organizationId: string; role: "owner" | "member" },
       null
     >;
-    leaveOrganization: FunctionReference<"mutation", "public", {}, null>;
+    leaveOrganization: FunctionReference<
+      "mutation",
+      "public",
+      { organizationId: string },
+      null
+    >;
     listMembers: FunctionReference<
       "query",
       "public",
@@ -188,17 +198,17 @@ export declare const api: {
         currentUserRole?: string;
         isPersonal: boolean;
         members: Array<{
-          createdAt: number;
-          id: Id<"member">;
-          organizationId: Id<"organization">;
+          createdAt: any;
+          id: string;
+          organizationId: string;
           role?: string;
           user: {
             email: string;
-            id: Id<"user">;
+            id: string;
             image?: string | null;
             name: string | null;
           };
-          userId: Id<"user">;
+          userId: string;
         }>;
       }
     >;
@@ -209,8 +219,8 @@ export declare const api: {
       {
         canCreateOrganization: boolean;
         organizations: Array<{
-          createdAt: number;
-          id: Id<"organization">;
+          createdAt: any;
+          id: string;
           isPersonal: boolean;
           logo?: string | null;
           name: string;
@@ -224,11 +234,11 @@ export declare const api: {
       "public",
       { slug: string },
       Array<{
-        createdAt: number;
+        createdAt: any;
         email: string;
-        expiresAt: number;
-        id: Id<"invitation">;
-        organizationId: Id<"organization">;
+        expiresAt: any;
+        id: string;
+        organizationId: string;
         role: string;
         status: string;
       }>
@@ -238,8 +248,8 @@ export declare const api: {
       "public",
       {},
       Array<{
-        expiresAt: number;
-        id: Id<"invitation">;
+        expiresAt: any;
+        id: string;
         inviterName: string | null;
         organizationName: string;
         organizationSlug: string;
@@ -249,31 +259,31 @@ export declare const api: {
     rejectInvitation: FunctionReference<
       "mutation",
       "public",
-      { invitationId: Id<"invitation"> },
+      { invitationId: string },
       null
     >;
     removeMember: FunctionReference<
       "mutation",
       "public",
-      { memberId: Id<"member"> },
+      { memberId: string },
       null
     >;
     setActiveOrganization: FunctionReference<
       "mutation",
       "public",
-      { organizationId: Id<"organization"> },
+      { organizationId: string },
       null
     >;
     updateMemberRole: FunctionReference<
       "mutation",
       "public",
-      { memberId: Id<"member">; role: "owner" | "member" },
+      { memberId: string; role: "owner" | "member" },
       null
     >;
     updateOrganization: FunctionReference<
       "mutation",
       "public",
-      { logo?: string; name?: string; slug?: string },
+      { logo?: string; name?: string; organizationId: string; slug?: string },
       null
     >;
   };
@@ -287,7 +297,7 @@ export declare const api: {
     getOrganizationSubscription: FunctionReference<
       "query",
       "public",
-      { organizationId: Id<"organization"> },
+      { organizationId: string },
       {
         cancelAtPeriodEnd: boolean;
         currentPeriodEnd?: string | null;
@@ -306,68 +316,63 @@ export declare const api: {
     addMember: FunctionReference<
       "mutation",
       "public",
-      { projectId: Id<"projects">; userEmail: string },
+      { projectId: string; userEmail: string },
       null
     >;
     archive: FunctionReference<
       "mutation",
       "public",
-      { projectId: Id<"projects"> },
+      { projectId: string },
       null
     >;
     create: FunctionReference<
       "mutation",
       "public",
       { description?: string; isPublic?: boolean; name: string },
-      Id<"projects">
+      string
     >;
     get: FunctionReference<
       "query",
       "public",
-      { projectId: Id<"projects"> },
+      { projectId: string },
       {
-        _creationTime: number;
-        _id: Id<"projects">;
         archived: boolean;
         completedTodoCount: number;
-        description?: string;
+        createdAt: any;
+        description?: string | null;
+        id: string;
         isPublic: boolean;
         members: Array<{
-          _id: Id<"user">;
           email: string;
-          joinedAt: number;
+          id: string;
+          joinedAt: any;
           name: string | null;
         }>;
         name: string;
-        owner: { _id: Id<"user">; email: string; name: string | null };
-        ownerId: Id<"user">;
+        owner: { email: string; id: string; name: string | null };
+        ownerId: string;
         todoCount: number;
       } | null
     >;
-    leave: FunctionReference<
-      "mutation",
-      "public",
-      { projectId: Id<"projects"> },
-      null
-    >;
+    leave: FunctionReference<"mutation", "public", { projectId: string }, null>;
     list: FunctionReference<
       "query",
       "public",
       { cursor?: string | null; includeArchived?: boolean; limit?: number },
       {
-        continueCursor: string;
+        continueCursor: string | null;
         isDone: boolean;
         page: Array<{
-          _creationTime: number;
-          _id: Id<"projects">;
           archived: boolean;
           completedTodoCount: number;
-          description?: string;
+          createdAt: any;
+          description?: string | null;
+          id: string;
           isOwner: boolean;
           isPublic: boolean;
           memberCount: number;
           name: string;
-          ownerId: Id<"user">;
+          ownerId: string;
           todoCount: number;
         }>;
       }
@@ -376,24 +381,24 @@ export declare const api: {
       "query",
       "public",
       {},
-      Array<{ _id: Id<"projects">; isOwner: boolean; name: string }>
+      Array<{ id: string; isOwner: boolean; name: string }>
     >;
     removeMember: FunctionReference<
       "mutation",
       "public",
-      { projectId: Id<"projects">; userId: Id<"user"> },
+      { projectId: string; userId: string },
       null
     >;
     restore: FunctionReference<
       "mutation",
       "public",
-      { projectId: Id<"projects"> },
+      { projectId: string },
       null
     >;
     transfer: FunctionReference<
       "mutation",
       "public",
-      { newOwnerId: Id<"user">; projectId: Id<"projects"> },
+      { newOwnerId: string; projectId: string },
       null
     >;
     update: FunctionReference<
@@ -403,7 +408,7 @@ export declare const api: {
         description?: string | null;
         isPublic?: boolean;
         name?: string;
-        projectId: Id<"projects">;
+        projectId: string;
       },
       null
     >;
@@ -424,22 +429,17 @@ export declare const api: {
       "mutation",
       "public",
       { color?: string; name: string },
-      Id<"tags">
+      string
     >;
-    deleteTag: FunctionReference<
-      "mutation",
-      "public",
-      { tagId: Id<"tags"> },
-      null
-    >;
+    deleteTag: FunctionReference<"mutation", "public", { tagId: string }, null>;
     list: FunctionReference<
       "query",
       "public",
       {},
       Array<{
-        _creationTime: number;
-        _id: Id<"tags">;
         color: string;
+        createdAt: any;
+        id: string;
         name: string;
         usageCount: number;
       }>
@@ -447,7 +447,7 @@ export declare const api: {
     merge: FunctionReference<
       "mutation",
       "public",
-      { sourceTagId: Id<"tags">; targetTagId: Id<"tags"> },
+      { sourceTagId: string; targetTagId: string },
       null
     >;
     popular: FunctionReference<
@@ -455,8 +455,8 @@ export declare const api: {
       "public",
       { limit?: number },
       Array<{
-        _id: Id<"tags">;
         color: string;
+        id: string;
         isOwn: boolean;
         name: string;
         usageCount: number;
@@ -465,7 +465,7 @@ export declare const api: {
     update: FunctionReference<
       "mutation",
       "public",
-      { color?: string; name?: string; tagId: Id<"tags"> },
+      { color?: string; name?: string; tagId: string },
       null
     >;
   };
@@ -473,42 +473,38 @@ export declare const api: {
     addComment: FunctionReference<
       "mutation",
       "public",
-      { content: string; parentId?: Id<"todoComments">; todoId: Id<"todos"> },
-      Id<"todoComments">
+      { content: string; parentId?: string; todoId: string },
+      string
     >;
     deleteComment: FunctionReference<
       "mutation",
       "public",
-      { commentId: Id<"todoComments"> },
+      { commentId: string },
       null
     >;
     getCommentThread: FunctionReference<
       "query",
       "public",
-      { commentId: Id<"todoComments">; maxDepth?: number },
+      { commentId: string; maxDepth?: number },
       {
         comment: {
-          _id: Id<"todoComments">;
           ancestors: Array<{
-            _id: Id<"todoComments">;
             content: string;
+            id: string;
             user: { name?: string } | null;
           }>;
           content: string;
-          createdAt: number;
+          createdAt: any;
+          id: string;
           parent: {
-            _id: Id<"todoComments">;
             content: string;
+            id: string;
             user: { name?: string } | null;
           } | null;
           replies: Array<any>;
           todo: { completed: boolean; title: string };
-          todoId: Id<"todos">;
-          user: {
-            _id: Id<"user">;
-            image?: string | null;
-            name?: string;
-          } | null;
+          todoId: string;
+          user: { id: string; image?: string | null; name?: string } | null;
         };
       } | null
     >;
@@ -520,22 +516,18 @@ export declare const api: {
         includeReplies?: boolean;
         limit?: number;
         maxReplyDepth?: number;
-        todoId: Id<"todos">;
+        todoId: string;
       },
       {
-        continueCursor: string;
+        continueCursor: string | null;
         isDone: boolean;
         page: Array<{
-          _id: Id<"todoComments">;
           content: string;
-          createdAt: number;
+          createdAt: any;
+          id: string;
           replies: Array<any>;
           replyCount: number;
-          user: {
-            _id: Id<"user">;
-            image?: string | null;
-            name?: string;
-          } | null;
+          user: { id: string; image?: string | null; name?: string } | null;
         }>;
       }
     >;
@@ -546,34 +538,25 @@ export declare const api: {
         cursor?: string | null;
         includeTodo?: boolean;
         limit?: number;
-        userId: Id<"user">;
+        userId: string;
       },
       {
-        continueCursor: string;
+        continueCursor: string | null;
         isDone: boolean;
         page: Array<{
-          _id: Id<"todoComments">;
           content: string;
-          createdAt: number;
+          createdAt: any;
+          id: string;
           isReply: boolean;
           parentPreview?: { content: string; userName?: string };
-          todo?: { _id: Id<"todos">; completed: boolean; title: string } | null;
+          todo?: { completed: boolean; id: string; title: string } | null;
         }>;
       }
-    >;
-    toggleReaction: FunctionReference<
-      "mutation",
-      "public",
-      {
-        commentId: Id<"todoComments">;
-        emoji: "👍" | "❤️" | "😂" | "🎉" | "😕" | "👎";
-      },
-      { added: boolean; counts: Record<string, number> }
     >;
     updateComment: FunctionReference<
       "mutation",
       "public",
-      { commentId: Id<"todoComments">; content: string },
+      { commentId: string; content: string },
       null
     >;
   };
@@ -581,7 +564,7 @@ export declare const api: {
     bulkDelete: FunctionReference<
       "mutation",
       "public",
-      { ids: Array<Id<"todos">> },
+      { ids: Array<string> },
       { deleted: number; errors: Array<string> }
     >;
     create: FunctionReference<
@@ -589,58 +572,53 @@ export declare const api: {
       "public",
       {
         description?: string;
-        dueDate?: number;
+        dueDate?: any;
         priority?: "low" | "medium" | "high";
-        projectId?: Id<"projects">;
-        tagIds?: Array<Id<"tags">>;
+        projectId?: string;
+        tagIds?: Array<string>;
         title: string;
       },
-      Id<"todos">
+      string
     >;
-    deleteTodo: FunctionReference<
-      "mutation",
-      "public",
-      { id: Id<"todos"> },
-      null
-    >;
+    deleteTodo: FunctionReference<"mutation", "public", { id: string }, null>;
     get: FunctionReference<
       "query",
       "public",
-      { id: Id<"todos"> },
+      { id: string },
       {
-        _creationTime: number;
-        _id: Id<"todos">;
         completed: boolean;
-        deletionTime?: number;
-        description?: string;
-        dueDate?: number;
-        priority?: "low" | "medium" | "high";
+        createdAt: any;
+        deletionTime?: any | null;
+        description?: string | null;
+        dueDate?: any | null;
+        id: string;
+        priority?: "low" | "medium" | "high" | null;
         project: {
-          _creationTime: number;
-          _id: Id<"projects">;
           archived: boolean;
-          description?: string;
+          createdAt: any;
+          description?: string | null;
+          id: string;
           isPublic: boolean;
           name: string;
-          ownerId: Id<"user">;
+          ownerId: string;
         } | null;
-        projectId?: Id<"projects">;
+        projectId?: string | null;
         tags: Array<{
-          _creationTime: number;
-          _id: Id<"tags">;
           color: string;
-          createdBy: Id<"user">;
+          createdAt: any;
+          createdBy: string;
+          id: string;
           name: string;
         }>;
         title: string;
         user: {
-          _creationTime: number;
-          _id: Id<"user">;
+          createdAt: any;
           email: string;
+          id: string;
           image?: string | null;
           name?: string;
         };
-        userId: Id<"user">;
+        userId: string;
       } | null
     >;
     list: FunctionReference<
@@ -651,48 +629,43 @@ export declare const api: {
         cursor?: string | null;
         limit?: number;
         priority?: "low" | "medium" | "high";
-        projectId?: Id<"projects">;
+        projectId?: string;
+        showDeleted?: boolean;
       },
       {
-        continueCursor: string;
+        continueCursor: string | null;
         isDone: boolean;
         page: Array<{
-          _creationTime: number;
-          _id: Id<"todos">;
           completed: boolean;
-          deletionTime?: number;
-          description?: string;
-          dueDate?: number;
-          priority?: "low" | "medium" | "high";
+          createdAt: any;
+          deletionTime?: any | null;
+          description?: string | null;
+          dueDate?: any | null;
+          id: string;
+          priority?: "low" | "medium" | "high" | null;
           project: {
-            _creationTime: number;
-            _id: Id<"projects">;
             archived: boolean;
-            description?: string;
+            createdAt: any;
+            description?: string | null;
+            id: string;
             isPublic: boolean;
             name: string;
-            ownerId: Id<"user">;
+            ownerId: string;
           } | null;
-          projectId?: Id<"projects">;
+          projectId?: string | null;
           tags: Array<{
-            _creationTime: number;
-            _id: Id<"tags">;
             color: string;
-            createdBy: Id<"user">;
+            createdAt: any;
+            createdBy: string;
+            id: string;
             name: string;
           }>;
           title: string;
-          userId: Id<"user">;
+          userId: string;
         }>;
       }
     >;
-    reorder: FunctionReference<
-      "mutation",
-      "public",
-      { projectId?: Id<"projects">; targetIndex: number; todoId: Id<"todos"> },
-      null
-    >;
-    restore: FunctionReference<"mutation", "public", { id: Id<"todos"> }, null>;
+    restore: FunctionReference<"mutation", "public", { id: string }, null>;
     search: FunctionReference<
       "query",
       "public",
@@ -700,46 +673,47 @@ export declare const api: {
         completed?: boolean;
         cursor?: string | null;
         limit?: number;
-        projectId?: Id<"projects">;
+        projectId?: string;
         query: string;
+        showDeleted?: boolean;
       },
       {
-        continueCursor: string;
+        continueCursor: string | null;
         isDone: boolean;
         page: Array<{
-          _creationTime: number;
-          _id: Id<"todos">;
           completed: boolean;
-          deletionTime?: number;
-          description?: string;
-          dueDate?: number;
-          priority?: "low" | "medium" | "high";
+          createdAt: any;
+          deletionTime?: any | null;
+          description?: string | null;
+          dueDate?: any | null;
+          id: string;
+          priority?: "low" | "medium" | "high" | null;
           project: {
-            _creationTime: number;
-            _id: Id<"projects">;
             archived: boolean;
-            description?: string;
+            createdAt: any;
+            description?: string | null;
+            id: string;
             isPublic: boolean;
             name: string;
-            ownerId: Id<"user">;
+            ownerId: string;
           } | null;
-          projectId?: Id<"projects">;
+          projectId?: string | null;
           tags: Array<{
-            _creationTime: number;
-            _id: Id<"tags">;
             color: string;
-            createdBy: Id<"user">;
+            createdAt: any;
+            createdBy: string;
+            id: string;
             name: string;
           }>;
           title: string;
-          userId: Id<"user">;
+          userId: string;
         }>;
       }
     >;
     toggleComplete: FunctionReference<
       "mutation",
       "public",
-      { id: Id<"todos"> },
+      { id: string },
       boolean
     >;
     update: FunctionReference<
@@ -747,11 +721,11 @@ export declare const api: {
       "public",
       {
         description?: string;
-        dueDate?: number | null;
-        id: Id<"todos">;
+        dueDate?: any | null;
+        id: string;
         priority?: "low" | "medium" | "high" | null;
-        projectId?: Id<"projects"> | null;
-        tagIds?: Array<Id<"tags">>;
+        projectId?: string | null;
+        tagIds?: Array<string>;
         title?: string;
       },
       null
@@ -764,17 +738,17 @@ export declare const api: {
       {},
       {
         activeOrganization: {
-          id: Id<"organization">;
+          id: string;
           logo?: string | null;
           name: string;
           role: string;
           slug: string;
         } | null;
-        id: Id<"user">;
+        id: string;
         image?: string | null;
         isAdmin: boolean;
         name?: string;
-        personalOrganizationId?: Id<"organization">;
+        personalOrganizationId?: string | null;
         plan?: string;
       } | null
     >;
@@ -785,17 +759,17 @@ export declare const api: {
       {},
       {
         activeOrganization: {
-          id: Id<"organization">;
+          id: string;
           logo?: string | null;
           name: string;
           role: string;
           slug: string;
         } | null;
-        id: Id<"user">;
+        id: string;
         image?: string | null;
         isAdmin: boolean;
         name?: string;
-        personalOrganizationId?: Id<"organization">;
+        personalOrganizationId?: string | null;
         plan?: string;
       } | null
     >;
@@ -1023,13 +997,13 @@ export declare const internal: {
     createCustomer: FunctionReference<
       "action",
       "internal",
-      { email: string; name?: string; userId: Id<"user"> },
+      { email: string; name?: string; userId: string },
       null
     >;
     updateUserPolarCustomerId: FunctionReference<
       "mutation",
       "internal",
-      { customerId: string; userId: Id<"user"> },
+      { customerId: string; userId: string },
       null
     >;
   };
@@ -1051,14 +1025,14 @@ export declare const internal: {
           endedAt?: string | null;
           metadata: Record<string, any>;
           modifiedAt?: string | null;
-          organizationId: Id<"organization">;
+          organizationId: string;
           priceId?: string;
           productId: string;
           recurringInterval?: string | null;
           startedAt?: string | null;
           status: string;
           subscriptionId: string;
-          userId: Id<"user">;
+          userId: string;
         };
       },
       null
@@ -1066,7 +1040,7 @@ export declare const internal: {
     getActiveSubscription: FunctionReference<
       "query",
       "internal",
-      { userId: Id<"user"> },
+      { userId: string },
       {
         cancelAtPeriodEnd: boolean;
         currentPeriodEnd?: string | null;
@@ -1090,14 +1064,14 @@ export declare const internal: {
           endedAt?: string | null;
           metadata: Record<string, any>;
           modifiedAt?: string | null;
-          organizationId: Id<"organization">;
+          organizationId: string;
           priceId?: string;
           productId: string;
           recurringInterval?: string | null;
           startedAt?: string | null;
           status: string;
           subscriptionId: string;
-          userId: Id<"user">;
+          userId: string;
         };
       },
       { periodChanged: boolean; subscriptionEnded: boolean; updated: boolean }
@@ -1123,11 +1097,11 @@ export declare const internal: {
     generateSamplesBatch: FunctionReference<
       "mutation",
       "internal",
-      { batchIndex: number; count: number; userId: Id<"user"> },
+      { batchIndex: number; count: number; userId: string },
       { created: number; todosCreated: number }
     >;
     seed: FunctionReference<"mutation", "internal", {}, null>;
-    seedUsers: FunctionReference<"mutation", "internal", {}, Array<Id<"user">>>;
+    seedUsers: FunctionReference<"mutation", "internal", {}, Array<string>>;
   };
   todoComments: {
     cleanupOrphanedComments: FunctionReference<
@@ -1151,20 +1125,20 @@ export declare const internal: {
         description?: string;
         priority?: "low" | "medium" | "high";
         title: string;
-        userId: Id<"user">;
+        userId: string;
       },
-      Id<"todos">
+      string
     >;
     deleteTodo: FunctionReference<
       "mutation",
       "internal",
-      { id: Id<"todos">; userId: Id<"user"> },
+      { id: string; userId: string },
       null
     >;
     generateWeeklyReport: FunctionReference<
       "action",
       "internal",
-      { userId: Id<"user"> },
+      { userId: string },
       {
         insights: Array<string>;
         stats: {
@@ -1204,18 +1178,18 @@ export declare const internal: {
         email: string;
         name?: string;
         overdueTodos: Array<{
-          _id: Id<"todos">;
           daysOverdue: number;
-          dueDate: number;
+          dueDate: any;
+          id: string;
           title: string;
         }>;
-        userId: Id<"user">;
+        userId: string;
       }>
     >;
     getUserWeeklyActivity: FunctionReference<
       "query",
       "internal",
-      { userId: Id<"user">; weekStart: number },
+      { userId: string; weekStart: number },
       { all: Array<any>; completed: Array<any>; created: Array<any> }
     >;
     processDailySummaries: FunctionReference<
@@ -1227,7 +1201,7 @@ export declare const internal: {
     recalculateUserStats: FunctionReference<
       "mutation",
       "internal",
-      { userId: Id<"user"> },
+      { userId: string },
       { completedTodos: number; streak: number; totalTodos: number }
     >;
     update: FunctionReference<
@@ -1236,9 +1210,9 @@ export declare const internal: {
       {
         completed?: boolean;
         description?: string;
-        id: Id<"todos">;
+        id: string;
         title?: string;
-        userId: Id<"user">;
+        userId: string;
       },
       null
     >;
@@ -2652,6 +2626,192 @@ export declare const components: {
     };
   };
   aggregateCommentsByTodo: {
+    btree: {
+      aggregateBetween: FunctionReference<
+        "query",
+        "internal",
+        { k1?: any; k2?: any; namespace?: any },
+        { count: number; sum: number }
+      >;
+      aggregateBetweenBatch: FunctionReference<
+        "query",
+        "internal",
+        { queries: Array<{ k1?: any; k2?: any; namespace?: any }> },
+        Array<{ count: number; sum: number }>
+      >;
+      atNegativeOffset: FunctionReference<
+        "query",
+        "internal",
+        { k1?: any; k2?: any; namespace?: any; offset: number },
+        { k: any; s: number; v: any }
+      >;
+      atOffset: FunctionReference<
+        "query",
+        "internal",
+        { k1?: any; k2?: any; namespace?: any; offset: number },
+        { k: any; s: number; v: any }
+      >;
+      atOffsetBatch: FunctionReference<
+        "query",
+        "internal",
+        {
+          queries: Array<{
+            k1?: any;
+            k2?: any;
+            namespace?: any;
+            offset: number;
+          }>;
+        },
+        Array<{ k: any; s: number; v: any }>
+      >;
+      get: FunctionReference<
+        "query",
+        "internal",
+        { key: any; namespace?: any },
+        null | { k: any; s: number; v: any }
+      >;
+      offset: FunctionReference<
+        "query",
+        "internal",
+        { k1?: any; key: any; namespace?: any },
+        number
+      >;
+      offsetUntil: FunctionReference<
+        "query",
+        "internal",
+        { k2?: any; key: any; namespace?: any },
+        number
+      >;
+      paginate: FunctionReference<
+        "query",
+        "internal",
+        {
+          cursor?: string;
+          k1?: any;
+          k2?: any;
+          limit: number;
+          namespace?: any;
+          order: "asc" | "desc";
+        },
+        {
+          cursor: string;
+          isDone: boolean;
+          page: Array<{ k: any; s: number; v: any }>;
+        }
+      >;
+      paginateNamespaces: FunctionReference<
+        "query",
+        "internal",
+        { cursor?: string; limit: number },
+        { cursor: string; isDone: boolean; page: Array<any> }
+      >;
+      validate: FunctionReference<
+        "query",
+        "internal",
+        { namespace?: any },
+        any
+      >;
+    };
+    inspect: {
+      display: FunctionReference<"query", "internal", { namespace?: any }, any>;
+      dump: FunctionReference<"query", "internal", { namespace?: any }, string>;
+      inspectNode: FunctionReference<
+        "query",
+        "internal",
+        { namespace?: any; node?: string },
+        null
+      >;
+      listTreeNodes: FunctionReference<
+        "query",
+        "internal",
+        { take?: number },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          aggregate?: { count: number; sum: number };
+          items: Array<{ k: any; s: number; v: any }>;
+          subtrees: Array<string>;
+        }>
+      >;
+      listTrees: FunctionReference<
+        "query",
+        "internal",
+        { take?: number },
+        Array<{
+          _creationTime: number;
+          _id: string;
+          maxNodeSize: number;
+          namespace?: any;
+          root: string;
+        }>
+      >;
+    };
+    public: {
+      clear: FunctionReference<
+        "mutation",
+        "internal",
+        { maxNodeSize?: number; namespace?: any; rootLazy?: boolean },
+        null
+      >;
+      delete_: FunctionReference<
+        "mutation",
+        "internal",
+        { key: any; namespace?: any },
+        null
+      >;
+      deleteIfExists: FunctionReference<
+        "mutation",
+        "internal",
+        { key: any; namespace?: any },
+        any
+      >;
+      init: FunctionReference<
+        "mutation",
+        "internal",
+        { maxNodeSize?: number; namespace?: any; rootLazy?: boolean },
+        null
+      >;
+      insert: FunctionReference<
+        "mutation",
+        "internal",
+        { key: any; namespace?: any; summand?: number; value: any },
+        null
+      >;
+      makeRootLazy: FunctionReference<
+        "mutation",
+        "internal",
+        { namespace?: any },
+        null
+      >;
+      replace: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          currentKey: any;
+          namespace?: any;
+          newKey: any;
+          newNamespace?: any;
+          summand?: number;
+          value: any;
+        },
+        null
+      >;
+      replaceOrInsert: FunctionReference<
+        "mutation",
+        "internal",
+        {
+          currentKey: any;
+          namespace?: any;
+          newKey: any;
+          newNamespace?: any;
+          summand?: number;
+          value: any;
+        },
+        any
+      >;
+    };
+  };
+  aggregateRepliesByParent: {
     btree: {
       aggregateBetween: FunctionReference<
         "query",

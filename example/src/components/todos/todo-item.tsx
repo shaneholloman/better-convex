@@ -1,6 +1,6 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
+import type { ApiOutputs } from '@convex/types';
 import { useMutation } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { Calendar, Edit, MoreHorizontal, RotateCcw, Trash } from 'lucide-react';
@@ -19,26 +19,10 @@ import {
 import { useCRPC } from '@/lib/convex/crpc';
 import { cn } from '@/lib/utils';
 
+type TodoItemData = ApiOutputs['todos']['list']['page'][number];
+
 type TodoItemProps = {
-  todo: {
-    _id: Id<'todos'>;
-    _creationTime: number;
-    title: string;
-    description?: string;
-    completed: boolean;
-    priority?: 'low' | 'medium' | 'high';
-    dueDate?: number;
-    deletionTime?: number;
-    tags?: Array<{
-      _id: Id<'tags'>;
-      name: string;
-      color: string;
-    }>;
-    project?: {
-      _id: Id<'projects'>;
-      name: string;
-    } | null;
-  };
+  todo: TodoItemData;
   onEdit?: () => void;
 };
 
@@ -55,7 +39,7 @@ export function TodoItem({ todo, onEdit }: TodoItemProps) {
   const handleToggleComplete = async () => {
     setIsUpdating(true);
     try {
-      await toggleComplete.mutateAsync({ id: todo._id });
+      await toggleComplete.mutateAsync({ id: todo.id });
     } catch (_error) {
       toast.error('Failed to update todo');
     } finally {
@@ -64,7 +48,7 @@ export function TodoItem({ todo, onEdit }: TodoItemProps) {
   };
 
   const handleDelete = async () => {
-    toast.promise(deleteTodo.mutateAsync({ id: todo._id }), {
+    toast.promise(deleteTodo.mutateAsync({ id: todo.id }), {
       loading: 'Deleting todo...',
       success: 'Todo deleted',
       error: (e) => e.data?.message ?? 'Failed to delete todo',
@@ -72,22 +56,31 @@ export function TodoItem({ todo, onEdit }: TodoItemProps) {
   };
 
   const handleRestore = async () => {
-    toast.promise(restoreTodo.mutateAsync({ id: todo._id }), {
+    toast.promise(restoreTodo.mutateAsync({ id: todo.id }), {
       loading: 'Restoring todo...',
       success: 'Todo restored',
       error: (e) => e.data?.message ?? 'Failed to restore todo',
     });
   };
 
-  const isOverdue =
-    !!todo.dueDate && todo.dueDate < Date.now() && !todo.completed;
-  const isDeleted = !!todo.deletionTime;
+  const dueDateMs =
+    todo.dueDate instanceof Date ? todo.dueDate.getTime() : todo.dueDate;
+  const deletionTimeMs =
+    todo.deletionTime instanceof Date
+      ? todo.deletionTime.getTime()
+      : todo.deletionTime;
+  const isOverdue = !!dueDateMs && dueDateMs < Date.now() && !todo.completed;
+  const isDeleted = !!deletionTimeMs;
 
   const priorityColors = {
     low: 'bg-gray-100 text-gray-800',
     medium: 'bg-yellow-100 text-yellow-800',
     high: 'bg-red-100 text-red-800',
   };
+  const priorityColor =
+    todo.priority && typeof todo.priority === 'string'
+      ? priorityColors[todo.priority as keyof typeof priorityColors]
+      : undefined;
 
   return (
     <div
@@ -155,15 +148,12 @@ export function TodoItem({ todo, onEdit }: TodoItemProps) {
 
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {todo.priority && (
-            <Badge
-              className={cn('text-xs', priorityColors[todo.priority])}
-              variant="secondary"
-            >
+            <Badge className={cn('text-xs', priorityColor)} variant="secondary">
               {todo.priority}
             </Badge>
           )}
 
-          {todo.dueDate && (
+          {dueDateMs && (
             <Badge
               className={cn(
                 'text-xs',
@@ -172,7 +162,7 @@ export function TodoItem({ todo, onEdit }: TodoItemProps) {
               variant="outline"
             >
               <Calendar className="mr-1 h-3 w-3" />
-              {format(todo.dueDate, 'MMM d, yyyy')}
+              {format(dueDateMs, 'MMM d, yyyy')}
             </Badge>
           )}
 
@@ -185,7 +175,7 @@ export function TodoItem({ todo, onEdit }: TodoItemProps) {
           {todo.tags?.map((tag) => (
             <Badge
               className="text-xs"
-              key={tag._id}
+              key={tag.id}
               style={{
                 backgroundColor: `${tag.color}20`,
                 borderColor: tag.color,

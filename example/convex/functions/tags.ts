@@ -1,16 +1,17 @@
+import { eq } from 'better-convex/orm';
 import { CRPCError } from 'better-convex/server';
-import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
 import { authMutation, authQuery } from '../lib/crpc';
-import type { EntWriter } from '../lib/ents';
+import { aggregateTagUsage } from './aggregates';
+import { tagsTable, todoTagsTable } from './schema';
 
 // List user's tags with usage count
 export const list = authQuery
   .output(
     z.array(
       z.object({
-        _id: zid('tags'),
-        _creationTime: z.number(),
+        id: z.string(),
+        createdAt: z.date(),
         name: z.string(),
         color: z.string(),
         usageCount: z.number(),
@@ -18,16 +19,22 @@ export const list = authQuery
     )
   )
   .query(async ({ ctx }) => {
-    const tags = await ctx
-      .table('tags', 'createdBy', (q) => q.eq('createdBy', ctx.userId))
-      .order('asc');
+    const tags = await ctx.orm.query.tags.findMany({
+      where: { createdBy: ctx.userId },
+      orderBy: { createdAt: 'asc' },
+    });
 
-    return await Promise.all(
-      tags.map(async (tag) => ({
-        ...tag.doc(),
-        usageCount: (await tag.edge('todos')).length,
-      }))
+    if (!tags.length) return [];
+
+    const usageCounts = await aggregateTagUsage.countBatch(
+      ctx,
+      tags.map((tag) => ({ namespace: tag.id, bounds: {} }))
     );
+
+    return tags.map((tag, idx) => ({
+      ...tag,
+      usageCount: usageCounts[idx] ?? 0,
+    }));
   });
 
 // Create a new tag
@@ -42,13 +49,12 @@ export const create = authMutation
         .optional(),
     })
   )
-  .output(zid('tags'))
+  .output(z.string())
   .mutation(async ({ ctx, input }) => {
     // Check if tag with same name already exists for this user
-    const existingTag = await ctx
-      .table('tags', 'createdBy', (q) => q.eq('createdBy', ctx.userId))
-      .filter((q) => q.eq(q.field('name'), input.name))
-      .first();
+    const existingTag = await ctx.orm.query.tags.findFirst({
+      where: { createdBy: ctx.userId, name: input.name },
+    });
 
     if (existingTag) {
       throw new CRPCError({
@@ -57,13 +63,16 @@ export const create = authMutation
       });
     }
 
-    const tagId = await ctx.table('tags').insert({
-      name: input.name,
-      color: input.color || generateRandomColor(),
-      createdBy: ctx.userId,
-    });
+    const [tag] = await ctx.orm
+      .insert(tagsTable)
+      .values({
+        name: input.name,
+        color: input.color || generateRandomColor(),
+        createdBy: ctx.userId,
+      })
+      .returning();
 
-    return tagId;
+    return tag.id;
   });
 
 // Update tag name or color
@@ -71,7 +80,7 @@ export const update = authMutation
   .meta({ rateLimit: 'tag/update' })
   .input(
     z.object({
-      tagId: zid('tags'),
+      tagId: z.string(),
       name: z.string().min(1).max(50).optional(),
       color: z
         .string()
@@ -81,23 +90,17 @@ export const update = authMutation
   )
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const tag = await ctx.table('tags').getX(input.tagId);
-
-    if (tag.createdBy !== ctx.userId) {
-      throw new CRPCError({
-        code: 'NOT_FOUND',
-        message: 'Tag not found',
-      });
-    }
+    const tag = await ctx.orm.query.tags.findFirstOrThrow({
+      where: { id: input.tagId, createdBy: ctx.userId },
+    });
 
     // Check for duplicate name if updating name
     if (input.name && input.name !== tag.name) {
-      const existingTag = await ctx
-        .table('tags', 'createdBy', (q) => q.eq('createdBy', ctx.userId))
-        .filter((q) => q.eq(q.field('name'), input.name))
-        .first();
+      const existingTag = await ctx.orm.query.tags.findFirst({
+        where: { createdBy: ctx.userId, name: input.name },
+      });
 
-      if (existingTag) {
+      if (existingTag && existingTag.id !== input.tagId) {
         throw new CRPCError({
           code: 'CONFLICT',
           message: 'A tag with this name already exists',
@@ -105,17 +108,10 @@ export const update = authMutation
       }
     }
 
-    const updates: Partial<EntWriter<'tags'>> = {};
-    if (input.name !== undefined) {
-      updates.name = input.name;
-    }
-    if (input.color !== undefined) {
-      updates.color = input.color;
-    }
-
-    if (Object.keys(updates).length > 0) {
-      await ctx.table('tags').getX(input.tagId).patch(updates);
-    }
+    await ctx.orm
+      .update(tagsTable)
+      .set({ name: input.name, color: input.color })
+      .where(eq(tagsTable.id, input.tagId));
 
     return null;
   });
@@ -125,22 +121,16 @@ export const deleteTag = authMutation
   .meta({ rateLimit: 'tag/delete' })
   .input(
     z.object({
-      tagId: zid('tags'),
+      tagId: z.string(),
     })
   )
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const tag = await ctx.table('tags').getX(input.tagId);
+    await ctx.orm.query.tags.findFirstOrThrow({
+      where: { id: input.tagId, createdBy: ctx.userId },
+    });
 
-    if (tag.createdBy !== ctx.userId) {
-      throw new CRPCError({
-        code: 'NOT_FOUND',
-        message: 'Tag not found',
-      });
-    }
-
-    // Delete the tag - Convex Ents will handle removing from todos automatically
-    await ctx.table('tags').getX(input.tagId).delete();
+    await ctx.orm.delete(tagsTable).where(eq(tagsTable.id, input.tagId));
 
     return null;
   });
@@ -150,8 +140,8 @@ export const merge = authMutation
   .meta({ rateLimit: 'tag/update' })
   .input(
     z.object({
-      sourceTagId: zid('tags'),
-      targetTagId: zid('tags'),
+      sourceTagId: z.string(),
+      targetTagId: z.string(),
     })
   )
   .output(z.null())
@@ -163,41 +153,40 @@ export const merge = authMutation
       });
     }
 
-    const sourceTag = await ctx.table('tags').getX(input.sourceTagId);
-    const targetTag = await ctx.table('tags').getX(input.targetTagId);
+    await Promise.all([
+      ctx.orm.query.tags.findFirstOrThrow({
+        where: { id: input.sourceTagId, createdBy: ctx.userId },
+      }),
+      ctx.orm.query.tags.findFirstOrThrow({
+        where: { id: input.targetTagId, createdBy: ctx.userId },
+      }),
+    ]);
 
-    if (sourceTag.createdBy !== ctx.userId) {
-      throw new CRPCError({
-        code: 'NOT_FOUND',
-        message: 'Source tag not found',
-      });
-    }
+    const joins = await ctx.orm.query.todoTags.findMany({
+      where: { tagId: input.sourceTagId },
+    });
 
-    if (targetTag.createdBy !== ctx.userId) {
-      throw new CRPCError({
-        code: 'NOT_FOUND',
-        message: 'Target tag not found',
-      });
-    }
+    const targetJoins = await ctx.orm.query.todoTags.findMany({
+      where: { tagId: input.targetTagId },
+      limit: 1000,
+      columns: { todoId: true },
+    });
+    const targetTodoIds = new Set(targetJoins.map((j) => j.todoId));
 
-    // Get all todos with source tag
-    const todosWithSourceTag = await sourceTag.edge('todos');
-
-    // Add target tag to todos that have source tag (avoiding duplicates)
-    for (const todo of todosWithSourceTag) {
-      const currentTags = await todo.edge('tags').map((t) => t._id);
-      if (!currentTags.includes(input.targetTagId)) {
-        await ctx
-          .table('todos')
-          .getX(todo._id)
-          .patch({
-            tags: { add: [input.targetTagId] },
-          });
+    for (const join of joins) {
+      if (!targetTodoIds.has(join.todoId)) {
+        await ctx.orm.insert(todoTagsTable).values({
+          todoId: join.todoId,
+          tagId: input.targetTagId,
+        });
+        targetTodoIds.add(join.todoId);
       }
+
+      await ctx.orm.delete(todoTagsTable).where(eq(todoTagsTable.id, join.id));
     }
 
     // Delete source tag
-    await ctx.table('tags').getX(input.sourceTagId).delete();
+    await ctx.orm.delete(tagsTable).where(eq(tagsTable.id, input.sourceTagId));
 
     return null;
   });
@@ -212,7 +201,7 @@ export const popular = authQuery
   .output(
     z.array(
       z.object({
-        _id: zid('tags'),
+        id: z.string(),
         name: z.string(),
         color: z.string(),
         usageCount: z.number(),
@@ -224,15 +213,20 @@ export const popular = authQuery
     const limit = input.limit || 10;
 
     // Get all tags with usage counts
-    const allTags = await ctx.table('tags').take(100);
+    const allTags = await ctx.orm.query.tags.findMany({ limit: 100 });
 
-    const tagsWithCounts = await Promise.all(
-      allTags.map(async (tag) => ({
-        ...tag.doc(),
-        usageCount: (await tag.edge('todos')).length,
-        isOwn: tag.createdBy === ctx.userId,
-      }))
+    if (!allTags.length) return [];
+
+    const usageCounts = await aggregateTagUsage.countBatch(
+      ctx,
+      allTags.map((tag) => ({ namespace: tag.id, bounds: {} }))
     );
+
+    const tagsWithCounts = allTags.map((tag, idx) => ({
+      ...tag,
+      usageCount: usageCounts[idx] ?? 0,
+      isOwn: tag.createdBy === ctx.userId,
+    }));
 
     // Sort by usage count and return top N
     return tagsWithCounts
