@@ -1,11 +1,16 @@
-import { zid } from 'convex-helpers/server/zod4';
+import { eq } from 'better-convex/orm';
 import { z } from 'zod';
 import { createUser } from '../lib/auth/auth-helpers';
 import { authAction, privateMutation } from '../lib/crpc';
-import type { EntWriter } from '../lib/ents';
 import { getEnv } from '../lib/get-env';
 import { internal } from './_generated/api';
-import type { Id } from './_generated/dataModel';
+import {
+  projectsTable,
+  tagsTable,
+  todosTable,
+  todoTagsTable,
+  userTable,
+} from './schema';
 
 // Admin configuration - moved inside functions to avoid module-level execution
 const getAdminConfig = () => {
@@ -66,42 +71,38 @@ export const cleanupSeedData = privateMutation
 
 // Seed users
 export const seedUsers = privateMutation
-  .output(z.array(zid('user')))
+  .output(z.array(z.string()))
   .mutation(async ({ ctx }) => {
-    const userIds: Id<'user'>[] = [];
+    const userIds: string[] = [];
 
     // First, get the admin user if it exists
     const adminEmail = getAdminConfig().adminEmail;
-    const adminUser = await ctx.table('user').get('email', adminEmail);
+    const adminUser = await ctx.orm.query.user.findFirst({
+      where: { email: adminEmail },
+    });
 
     if (adminUser) {
-      userIds.push(adminUser._id);
+      userIds.push(adminUser.id);
     }
 
     const usersData = getUsersData();
 
     for (const userData of usersData) {
       // Check if user exists by email
-      const existing = await ctx
-        .table('user')
-        .filter((q) => q.eq(q.field('email'), userData.email))
-        .unique();
+      const existing = await ctx.orm.query.user.findFirst({
+        where: { email: userData.email },
+      });
 
       if (existing) {
-        // Update existing user (preserve session-related fields)
-        const updateData: Partial<EntWriter<'user'>> = {
-          name: userData.name,
-        };
-
-        if (userData.bio !== undefined) {
-          updateData.bio = userData.bio;
-        }
-        if (userData.image !== undefined) {
-          updateData.image = userData.image;
-        }
-
-        await ctx.table('user').getX(existing._id).patch(updateData);
-        userIds.push(existing._id);
+        await ctx.orm
+          .update(userTable)
+          .set({
+            name: userData.name,
+            bio: userData.bio,
+            image: userData.image,
+          })
+          .where(eq(userTable.id, existing.id));
+        userIds.push(existing.id);
       } else {
         const userId = await createUser(ctx, {
           bio: userData.bio,
@@ -166,7 +167,7 @@ export const generateSamplesBatch = privateMutation
   .input(
     z.object({
       count: z.number(),
-      userId: zid('user'),
+      userId: z.string(),
       batchIndex: z.number(),
     })
   )
@@ -178,9 +179,10 @@ export const generateSamplesBatch = privateMutation
   )
   .mutation(async ({ ctx, input }) => {
     // First, ensure we have tags (create some if none exist)
-    const existingTags = await ctx
-      .table('tags', 'createdBy', (q) => q.eq('createdBy', input.userId))
-      .take(1);
+    const existingTags = await ctx.orm.query.tags.findMany({
+      where: { createdBy: input.userId },
+      limit: 1,
+    });
 
     if (existingTags.length === 0) {
       // Create some basic tags one by one to avoid triggers
@@ -193,7 +195,7 @@ export const generateSamplesBatch = privateMutation
       ];
 
       for (const tag of basicTags) {
-        await ctx.table('tags').insert({
+        await ctx.orm.insert(tagsTable).values({
           name: tag.name,
           color: tag.color,
           createdBy: input.userId,
@@ -202,9 +204,10 @@ export const generateSamplesBatch = privateMutation
     }
 
     // Get user's tags for todo assignment (limit to prevent excessive data read)
-    const tags = await ctx
-      .table('tags', 'createdBy', (q) => q.eq('createdBy', input.userId))
-      .take(10); // Reduced from 50 to minimize memory usage
+    const tags = await ctx.orm.query.tags.findMany({
+      where: { createdBy: input.userId },
+      limit: 10,
+    }); // Reduced from 50 to minimize memory usage
 
     // Sample project names and descriptions
     const projectTemplates = [
@@ -314,7 +317,7 @@ export const generateSamplesBatch = privateMutation
     ];
 
     // Pre-compute tag IDs for efficient selection
-    const tagIds = tags.map((t) => t._id);
+    const tagIds = tags.map((t) => t.id);
     const getRandomTags = (maxCount: number) => {
       if (tagIds.length === 0) {
         return [];
@@ -370,13 +373,16 @@ export const generateSamplesBatch = privateMutation
       const isPublic = Math.random() > 0.7; // 30% public
       const isArchived = Math.random() > 0.9; // 10% archived
 
-      const projectId = await ctx.table('projects').insert({
-        name,
-        description,
-        ownerId: input.userId,
-        isPublic,
-        archived: isArchived,
-      });
+      const [{ id: projectId }] = await ctx.orm
+        .insert(projectsTable)
+        .values({
+          name,
+          description,
+          ownerId: input.userId,
+          isPublic,
+          archived: isArchived,
+        })
+        .returning({ id: projectsTable.id });
 
       created++;
 
@@ -397,21 +403,29 @@ export const generateSamplesBatch = privateMutation
           const selectedTags = getRandomTags(1);
 
           // Insert todo immediately to avoid accumulating in memory
-          await ctx.table('todos').insert({
-            title: `${todoTitle} - ${name}`,
-            description:
-              Math.random() > 0.7 ? undefined : `Task for ${name} project`, // Less descriptions
-            completed: isCompleted,
-            priority,
-            projectId,
-            userId: input.userId,
-            tags: selectedTags,
-            dueDate:
-              Math.random() > 0.7 // Less due dates (30% instead of 60%)
-                ? Date.now() +
-                  Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000) // 0-30 days instead of 60
-                : undefined,
-          });
+          const [{ id: todoId }] = await ctx.orm
+            .insert(todosTable)
+            .values({
+              title: `${todoTitle} - ${name}`,
+              description:
+                Math.random() > 0.7 ? undefined : `Task for ${name} project`, // Less descriptions
+              completed: isCompleted,
+              priority,
+              projectId,
+              userId: input.userId,
+              dueDate:
+                Math.random() > 0.7 // Less due dates (30% instead of 60%)
+                  ? new Date(
+                      Date.now() +
+                        Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000)
+                    ) // 0-30 days instead of 60
+                  : undefined,
+            })
+            .returning({ id: todosTable.id });
+
+          for (const tagId of selectedTags) {
+            await ctx.orm.insert(todoTagsTable).values({ todoId, tagId });
+          }
 
           todosCreated++;
         }

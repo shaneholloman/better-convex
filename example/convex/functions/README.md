@@ -7,7 +7,7 @@ A query function that takes two arguments looks like:
 
 ```ts
 // convex/myFunctions.ts
-import { query } from "convex/server";
+import { query } from "./_generated/server";
 import { v } from "convex/values";
 
 export const myQueryFunction = query({
@@ -19,9 +19,7 @@ export const myQueryFunction = query({
 
   // Function implementation.
   handler: async (ctx, args) => {
-    // Read the database as many times as you need here.
-    // See https://docs.convex.dev/database/reading-data.
-    const documents = await ctx.orm.query.tablename.findMany({ limit: 100 });
+    const documents = await ctx.db.query("tablename").collect();
 
     // Arguments passed from the client are properties of the args object.
     console.log(args.first, args.second);
@@ -46,7 +44,7 @@ A mutation function looks like:
 
 ```ts
 // convex/myFunctions.ts
-import { mutation } from "convex/server";
+import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 export const myMutationFunction = mutation({
@@ -62,13 +60,10 @@ export const myMutationFunction = mutation({
     // Mutations can also read from the database like queries.
     // See https://docs.convex.dev/database/writing-data.
     const message = { body: args.first, author: args.second };
-    const [row] = await ctx.orm
-      .insert(messages)
-      .values(message)
-      .returning();
+    const id = await ctx.db.insert("messages", message);
 
     // Optionally, return a value from your mutation.
-    return row;
+    return await ctx.db.get("messages", id);
   },
 });
 ```
@@ -83,7 +78,7 @@ function handleButtonPress() {
   // OR
   // use the result once the mutation has completed
   mutation({ first: "Hello!", second: "me" }).then((result) =>
-    console.log(result),
+    console.log(result)
   );
 }
 ```

@@ -1,6 +1,5 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Building2,
@@ -28,7 +27,7 @@ export default function OrganizationPage() {
   const searchParams = useSearchParams();
   const rawSlug = Array.isArray(params.slug)
     ? params.slug[0]
-    : (params.slug as string);
+    : (params.slug ?? '');
   const slug = (() => {
     try {
       return decodeURIComponent(rawSlug);
@@ -37,9 +36,7 @@ export default function OrganizationPage() {
     }
   })();
   const inviteIdParam = searchParams.get('invite');
-  const inviteId = inviteIdParam
-    ? (inviteIdParam as Id<'invitation'>)
-    : undefined;
+  const inviteId = inviteIdParam || undefined;
   const [activeTab, setActiveTab] = useState('overview');
   const router = useRouter();
 
@@ -62,8 +59,8 @@ export default function OrganizationPage() {
       {
         skipUnauth: true,
         placeholderData: {
-          id: '0' as Id<'organization'>,
-          createdAt: new Date('2025-11-04').getTime(),
+          id: '0',
+          createdAt: new Date('2025-11-04'),
           invitation: null,
           isActive: false,
           isPersonal: false,
@@ -90,30 +87,30 @@ export default function OrganizationPage() {
           isPersonal: false,
           members: [
             {
-              id: '0' as Id<'member'>,
-              createdAt: new Date('2025-11-04').getTime(),
-              organizationId: '0' as Id<'organization'>,
+              id: '0',
+              createdAt: new Date('2025-11-04'),
+              organizationId: '0',
               role: 'owner',
               user: {
-                id: '0' as Id<'user'>,
+                id: '0',
                 email: 'owner@example.com',
                 image: null,
                 name: 'Organization Owner',
               },
-              userId: '0' as Id<'user'>,
+              userId: '0',
             },
             {
-              id: '2' as Id<'member'>,
-              createdAt: new Date('2025-11-04').getTime(),
-              organizationId: '0' as Id<'organization'>,
+              id: '2',
+              createdAt: new Date('2025-11-04'),
+              organizationId: '0',
               role: 'member',
               user: {
-                id: '2' as Id<'user'>,
+                id: '2',
                 email: 'member@example.com',
                 image: null,
                 name: 'Team Member',
               },
-              userId: '2' as Id<'user'>,
+              userId: '2',
             },
           ],
         },
@@ -138,16 +135,7 @@ export default function OrganizationPage() {
   return (
     <div className="mx-auto max-w-5xl @3xl:px-8 px-6 @3xl:py-12 py-8">
       {organization?.invitation && (
-        <InvitationBanner
-          invitation={{
-            id: organization.invitation.id,
-            expiresAt: organization.invitation.expiresAt,
-            inviterName: organization.invitation.inviterName,
-            organizationName: organization.invitation.organizationName,
-            organizationSlug: organization.invitation.organizationSlug,
-            role: organization.invitation.role,
-          }}
-        />
+        <InvitationBanner invitation={organization.invitation} />
       )}
       <WithSkeleton className="w-full" isLoading={isLoading}>
         <header className="mb-10">

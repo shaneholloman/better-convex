@@ -1,6 +1,6 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
+import type { ApiInputs, ApiOutputs } from '@convex/types';
 import { skipToken } from '@tanstack/react-query';
 import { useInfiniteQuery } from 'better-convex/react';
 import { Archive, Loader2 } from 'lucide-react';
@@ -20,32 +20,35 @@ import { TodoForm } from './todo-form';
 import { TodoItem } from './todo-item';
 import { TodoSearch } from './todo-search';
 
+type TodoPriority = NonNullable<ApiInputs['todos']['create']['priority']>;
+type TodoListItem = ApiOutputs['todos']['list']['page'][number];
+
 type TodoListProps = {
-  projectId?: Id<'projects'>;
+  projectId?: string;
   showFilters?: boolean;
 };
 
-const placeholderTodos = [
+const placeholderTodos: TodoListItem[] = [
   {
-    _id: '0' as Id<'todos'>,
-    _creationTime: new Date('2025-11-04').getTime(),
+    id: '0',
+    createdAt: new Date('2025-11-04'),
     title: 'Example Todo 1',
     description: 'This is a placeholder todo item',
     completed: false,
-    priority: 'medium' as const,
-    dueDate: new Date('2025-11-05').getTime(),
-    userId: 'user1' as Id<'user'>,
+    priority: 'medium',
+    dueDate: new Date('2025-11-05'),
+    userId: 'user1',
     tags: [],
     project: null,
   },
   {
-    _id: '2' as Id<'todos'>,
-    _creationTime: new Date('2025-11-04').getTime(),
+    id: '2',
+    createdAt: new Date('2025-11-04'),
     title: 'Example Todo 2',
     description: 'Another placeholder todo item',
     completed: true,
-    priority: 'low' as const,
-    userId: 'user1' as Id<'user'>,
+    priority: 'low',
+    userId: 'user1',
     tags: [],
     project: null,
   },
@@ -54,7 +57,7 @@ const placeholderTodos = [
 export function TodoList({ projectId, showFilters = true }: TodoListProps) {
   const [completedFilter, setCompletedFilter] = useState<boolean | undefined>();
   const [priorityFilter, setPriorityFilter] = useState<
-    'low' | 'medium' | 'high' | undefined
+    TodoPriority | undefined
   >();
   const [showDeleted, setShowDeleted] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -95,7 +98,7 @@ export function TodoList({ projectId, showFilters = true }: TodoListProps) {
     fetchNextPage,
   } = searchQuery ? searchResult : listResult;
 
-  const allTodos = data || [];
+  const allTodos = data ?? [];
   const todos = showDeleted
     ? allTodos.filter((todo) => todo.deletionTime)
     : allTodos.filter((todo) => !todo.deletionTime);
@@ -148,9 +151,7 @@ export function TodoList({ projectId, showFilters = true }: TodoListProps) {
             <Select
               onValueChange={(value) =>
                 setPriorityFilter(
-                  value === 'all'
-                    ? undefined
-                    : (value as 'low' | 'medium' | 'high')
+                  value === 'all' ? undefined : (value as TodoPriority)
                 )
               }
               value={priorityFilter || 'all'}
@@ -192,7 +193,7 @@ export function TodoList({ projectId, showFilters = true }: TodoListProps) {
               <WithSkeleton
                 className="w-full"
                 isLoading={isLoading}
-                key={todo._id || index}
+                key={todo.id || index}
               >
                 <TodoItem todo={todo} />
               </WithSkeleton>

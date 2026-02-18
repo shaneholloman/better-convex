@@ -25,6 +25,7 @@ export {
 } from './bytes';
 // Base classes
 export {
+  type AnyColumn,
   ColumnBuilder,
   type ColumnBuilderBaseConfig,
   type ColumnBuilderRuntimeConfig,

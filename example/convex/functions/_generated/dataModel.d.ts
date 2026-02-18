@@ -32,7 +32,7 @@ export type DataModel = {
       accessToken?: null | string;
       accessTokenExpiresAt?: null | number;
       accountId: string;
-      createdAt: number;
+      createdAt?: number;
       idToken?: null | string;
       password?: null | string;
       providerId: string;
@@ -40,7 +40,7 @@ export type DataModel = {
       refreshTokenExpiresAt?: null | number;
       scope?: null | string;
       updatedAt: number;
-      userId: Id<"user">;
+      userId: string;
       _id: Id<"account">;
       _creationTime: number;
     };
@@ -72,12 +72,13 @@ export type DataModel = {
   };
   commentReplies: {
     document: {
-      parentId: Id<"todoComments">;
-      replyId: Id<"todoComments">;
+      createdAt?: number;
+      parentId: string;
+      replyId: string;
       _id: Id<"commentReplies">;
       _creationTime: number;
     };
-    fieldPaths: "_creationTime" | "_id" | "parentId" | "replyId";
+    fieldPaths: "_creationTime" | "_id" | "createdAt" | "parentId" | "replyId";
     indexes: {
       by_id: ["_id"];
       by_creation_time: ["_creationTime"];
@@ -91,11 +92,11 @@ export type DataModel = {
   };
   invitation: {
     document: {
-      createdAt: number;
+      createdAt?: number;
       email: string;
       expiresAt: number;
-      inviterId: Id<"user">;
-      organizationId: Id<"organization">;
+      inviterId: string;
+      organizationId: string;
       role?: null | string;
       status: string;
       _id: Id<"invitation">;
@@ -123,7 +124,6 @@ export type DataModel = {
       ];
       email_status: ["email", "status", "_creationTime"];
       inviterId: ["inviterId", "_creationTime"];
-      organizationId: ["organizationId", "_creationTime"];
       organizationId_email: ["organizationId", "email", "_creationTime"];
       organizationId_email_status: [
         "organizationId",
@@ -139,7 +139,7 @@ export type DataModel = {
   };
   jwks: {
     document: {
-      createdAt: number;
+      createdAt?: number;
       privateKey: string;
       publicKey: string;
       _id: Id<"jwks">;
@@ -160,10 +160,10 @@ export type DataModel = {
   };
   member: {
     document: {
-      createdAt: number;
-      organizationId: Id<"organization">;
+      createdAt?: number;
+      organizationId: string;
       role: string;
-      userId: Id<"user">;
+      userId: string;
       _id: Id<"member">;
       _creationTime: number;
     };
@@ -177,7 +177,6 @@ export type DataModel = {
     indexes: {
       by_id: ["_id"];
       by_creation_time: ["_creationTime"];
-      organizationId: ["organizationId", "_creationTime"];
       organizationId_role: ["organizationId", "role", "_creationTime"];
       organizationId_userId: ["organizationId", "userId", "_creationTime"];
       role: ["role", "_creationTime"];
@@ -188,7 +187,7 @@ export type DataModel = {
   };
   organization: {
     document: {
-      createdAt: number;
+      createdAt?: number;
       logo?: null | string;
       metadata?: null | string;
       monthlyCredits: number;
@@ -217,12 +216,13 @@ export type DataModel = {
   };
   projectMembers: {
     document: {
-      projectId: Id<"projects">;
-      userId: Id<"user">;
+      createdAt?: number;
+      projectId: string;
+      userId: string;
       _id: Id<"projectMembers">;
       _creationTime: number;
     };
-    fieldPaths: "_creationTime" | "_id" | "projectId" | "userId";
+    fieldPaths: "_creationTime" | "_id" | "createdAt" | "projectId" | "userId";
     indexes: {
       by_id: ["_id"];
       by_creation_time: ["_creationTime"];
@@ -237,10 +237,11 @@ export type DataModel = {
   projects: {
     document: {
       archived: boolean;
-      description?: string;
+      createdAt?: number;
+      description?: null | string;
       isPublic: boolean;
       name: string;
-      ownerId: Id<"user">;
+      ownerId: string;
       _id: Id<"projects">;
       _creationTime: number;
     };
@@ -248,6 +249,7 @@ export type DataModel = {
       | "_creationTime"
       | "_id"
       | "archived"
+      | "createdAt"
       | "description"
       | "isPublic"
       | "name"
@@ -270,14 +272,14 @@ export type DataModel = {
   session: {
     document: {
       activeOrganizationId?: null | string;
-      createdAt: number;
+      createdAt?: number;
       expiresAt: number;
       impersonatedBy?: null | string;
       ipAddress?: null | string;
       token: string;
       updatedAt: number;
       userAgent?: null | string;
-      userId: Id<"user">;
+      userId: string;
       _id: Id<"session">;
       _creationTime: number;
     };
@@ -306,26 +308,26 @@ export type DataModel = {
   };
   subscriptions: {
     document: {
-      amount?: number | null;
+      amount?: null | number;
       cancelAtPeriodEnd: boolean;
-      checkoutId?: string | null;
+      checkoutId?: null | string;
       createdAt: string;
-      currency?: string | null;
-      currentPeriodEnd?: string | null;
+      currency?: null | string;
+      currentPeriodEnd?: null | string;
       currentPeriodStart: string;
-      customerCancellationComment?: string | null;
-      customerCancellationReason?: string | null;
-      endedAt?: string | null;
+      customerCancellationComment?: null | string;
+      customerCancellationReason?: null | string;
+      endedAt?: null | string;
       metadata: Record<string, any>;
-      modifiedAt?: string | null;
-      organizationId: Id<"organization">;
-      priceId?: string;
+      modifiedAt?: null | string;
+      organizationId: string;
+      priceId?: null | string;
       productId: string;
-      recurringInterval?: string | null;
-      startedAt?: string | null;
+      recurringInterval?: null | string;
+      startedAt?: null | string;
       status: string;
       subscriptionId: string;
-      userId: Id<"user">;
+      userId: string;
       _id: Id<"subscriptions">;
       _creationTime: number;
     };
@@ -356,10 +358,8 @@ export type DataModel = {
     indexes: {
       by_id: ["_id"];
       by_creation_time: ["_creationTime"];
-      organizationId: ["organizationId", "_creationTime"];
       organizationId_status: ["organizationId", "status", "_creationTime"];
       subscriptionId: ["subscriptionId", "_creationTime"];
-      userId: ["userId", "_creationTime"];
       userId_endedAt: ["userId", "endedAt", "_creationTime"];
       userId_organizationId_status: [
         "userId",
@@ -374,12 +374,19 @@ export type DataModel = {
   tags: {
     document: {
       color: string;
-      createdBy: Id<"user">;
+      createdAt?: number;
+      createdBy: string;
       name: string;
       _id: Id<"tags">;
       _creationTime: number;
     };
-    fieldPaths: "_creationTime" | "_id" | "color" | "createdBy" | "name";
+    fieldPaths:
+      | "_creationTime"
+      | "_id"
+      | "color"
+      | "createdAt"
+      | "createdBy"
+      | "name";
     indexes: {
       by_id: ["_id"];
       by_creation_time: ["_creationTime"];
@@ -392,9 +399,10 @@ export type DataModel = {
   todoComments: {
     document: {
       content: string;
-      parentId?: Id<"todoComments">;
-      todoId: Id<"todos">;
-      userId: Id<"user">;
+      createdAt?: number;
+      parentId?: null | string;
+      todoId: string;
+      userId: string;
       _id: Id<"todoComments">;
       _creationTime: number;
     };
@@ -402,6 +410,7 @@ export type DataModel = {
       | "_creationTime"
       | "_id"
       | "content"
+      | "createdAt"
       | "parentId"
       | "todoId"
       | "userId";
@@ -418,13 +427,14 @@ export type DataModel = {
   todos: {
     document: {
       completed: boolean;
-      deletionTime?: number;
-      description?: string;
-      dueDate?: number;
-      priority?: "low" | "medium" | "high";
-      projectId?: Id<"projects">;
+      createdAt?: number;
+      deletionTime?: null | number;
+      description?: null | string;
+      dueDate?: null | number;
+      priority?: null | "low" | "medium" | "high";
+      projectId?: null | string;
       title: string;
-      userId: Id<"user">;
+      userId: string;
       _id: Id<"todos">;
       _creationTime: number;
     };
@@ -432,6 +442,7 @@ export type DataModel = {
       | "_creationTime"
       | "_id"
       | "completed"
+      | "createdAt"
       | "deletionTime"
       | "description"
       | "dueDate"
@@ -459,12 +470,13 @@ export type DataModel = {
   };
   todoTags: {
     document: {
-      tagId: Id<"tags">;
-      todoId: Id<"todos">;
+      createdAt?: number;
+      tagId: string;
+      todoId: string;
       _id: Id<"todoTags">;
       _creationTime: number;
     };
-    fieldPaths: "_creationTime" | "_id" | "tagId" | "todoId";
+    fieldPaths: "_creationTime" | "_id" | "createdAt" | "tagId" | "todoId";
     indexes: {
       by_id: ["_id"];
       by_creation_time: ["_creationTime"];
@@ -482,20 +494,20 @@ export type DataModel = {
       banReason?: null | string;
       banned?: null | boolean;
       bio?: null | string;
-      createdAt: number;
-      customerId?: string;
-      deletedAt?: number;
+      createdAt?: number;
+      customerId?: null | string;
+      deletedAt?: null | number;
       email: string;
       emailVerified: boolean;
       firstName?: null | string;
       github?: null | string;
       image?: null | string;
-      lastActiveOrganizationId?: Id<"organization">;
+      lastActiveOrganizationId?: null | string;
       lastName?: null | string;
       linkedin?: null | string;
       location?: null | string;
       name: string;
-      personalOrganizationId?: Id<"organization">;
+      personalOrganizationId?: null | string;
       role?: null | string;
       updatedAt: number;
       username?: null | string;
@@ -546,7 +558,7 @@ export type DataModel = {
   };
   verification: {
     document: {
-      createdAt: number;
+      createdAt?: number;
       expiresAt: number;
       identifier: string;
       updatedAt: number;

@@ -133,6 +133,16 @@ export interface ColumnBuilderBase<
 }
 
 /**
+ * Use as the return type for self-referencing `.references()` callbacks.
+ *
+ * @example
+ * ```ts
+ * parentId: text().references((): AnyColumn => commentsTable.id, { onDelete: 'cascade' })
+ * ```
+ */
+export type AnyColumn = ColumnBuilderBase;
+
+/**
  * Base ColumnBuilder abstract class
  *
  * All column builders inherit from this class.

@@ -5,7 +5,7 @@
 import { z } from 'zod';
 
 const env = {
-  POLAR_PRODUCT_PREMIUM: process.env.POLAR_PRODUCT_PREMIUM! || 'premium',
+  POLAR_PRODUCT_PREMIUM: process.env.POLAR_PRODUCT_PREMIUM ?? 'premium',
 } as const;
 
 // Simplified product schema for template
@@ -100,22 +100,12 @@ export type SubscriptionPlan =
 
 export const productToPlan = (productId?: string) => {
   if (productId === env.POLAR_PRODUCT_PREMIUM) {
-    return 'premium';
+    return 'premium' as const;
   }
 };
 
-// Simplified plan details for UI
-export type PlanDetails = {
-  key: SubscriptionPlan;
-  credits: number;
-  description: string;
-  name: string;
-  price: number; // Monthly price in dollars
-  productId?: string;
-};
-
 // Build plans for UI
-export const PLANS: Record<string, PlanDetails> = {
+export const PLANS = {
   [SubscriptionPlan.Free]: {
     key: SubscriptionPlan.Free,
     credits: 0,
@@ -131,7 +121,9 @@ export const PLANS: Record<string, PlanDetails> = {
     price: 20, // $20/month
     productId: env.POLAR_PRODUCT_PREMIUM,
   },
-};
+} as const;
+
+export type PlanDetails = (typeof PLANS)[keyof typeof PLANS];
 
 // Constants
 export const FREE_PLAN_CREDITS = 0; // No free credits by default (can be customized)

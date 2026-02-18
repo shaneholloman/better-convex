@@ -1,4 +1,4 @@
-import { zid } from 'convex-helpers/server/zod4';
+import { eq } from 'better-convex/orm';
 import { z } from 'zod';
 import {
   authMutation,
@@ -6,16 +6,17 @@ import {
   optionalAuthQuery,
   publicQuery,
 } from '../lib/crpc';
+import { userTable } from './schema';
 
 /** Get session user - used by AuthSync and authAction */
 export const getSessionUser = optionalAuthQuery
   .output(
     z.union([
       z.object({
-        id: zid('user'),
+        id: z.string(),
         activeOrganization: z
           .object({
-            id: zid('organization'),
+            id: z.string(),
             logo: z.string().nullish(),
             name: z.string(),
             role: z.string(),
@@ -25,7 +26,7 @@ export const getSessionUser = optionalAuthQuery
         image: z.string().nullish(),
         isAdmin: z.boolean(),
         name: z.string().optional(),
-        personalOrganizationId: zid('organization').optional(),
+        personalOrganizationId: z.string().nullish(),
         plan: z.string().optional(),
       }),
       z.null(),
@@ -58,10 +59,10 @@ export const getCurrentUser = authQuery
   .output(
     z.union([
       z.object({
-        id: zid('user'),
+        id: z.string(),
         activeOrganization: z
           .object({
-            id: zid('organization'),
+            id: z.string(),
             logo: z.string().nullish(),
             name: z.string(),
             role: z.string(),
@@ -71,7 +72,7 @@ export const getCurrentUser = authQuery
         image: z.string().nullish(),
         isAdmin: z.boolean(),
         name: z.string().optional(),
-        personalOrganizationId: zid('organization').optional(),
+        personalOrganizationId: z.string().nullish(),
         plan: z.string().optional(),
       }),
       z.null(),
@@ -104,16 +105,10 @@ export const updateSettings = authMutation
     const { userId } = ctx;
     const { bio, name } = input;
 
-    const updateData: Record<string, string> = {};
-
-    if (bio !== undefined) {
-      updateData.bio = bio;
-    }
-    if (name !== undefined) {
-      updateData.name = name;
-    }
-
-    await ctx.db.patch(userId, updateData);
+    await ctx.orm
+      .update(userTable)
+      .set({ bio, name })
+      .where(eq(userTable.id, userId));
 
     return { success: true };
   });

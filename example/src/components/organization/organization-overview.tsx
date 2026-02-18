@@ -146,7 +146,7 @@ export function OrganizationOverview({
   const isOwner = organization.role === 'owner';
   const canEdit = isOwner && !organization.isPersonal;
   const daysActive = Math.floor(
-    (now - organization.createdAt) / (1000 * 60 * 60 * 24)
+    (now - organization.createdAt.getTime()) / (1000 * 60 * 60 * 24)
   );
 
   const handleManageSubscription = async () => {

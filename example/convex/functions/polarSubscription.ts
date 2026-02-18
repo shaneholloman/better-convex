@@ -1,7 +1,7 @@
 import '../lib/polar-polyfills';
 
+import { eq } from 'better-convex/orm';
 import { CRPCError } from 'better-convex/server';
-import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
 import {
   authAction,
@@ -11,6 +11,7 @@ import {
 } from '../lib/crpc';
 import { getPolarClient } from '../lib/polar-client';
 import { internal } from './_generated/api';
+import { subscriptionsTable } from './schema';
 
 const subscriptionSchema = z.object({
   amount: z.number().nullish(),
@@ -25,14 +26,14 @@ const subscriptionSchema = z.object({
   endedAt: z.string().nullish(),
   metadata: z.record(z.string(), z.unknown()),
   modifiedAt: z.string().nullish(),
-  organizationId: zid('organization'),
+  organizationId: z.string(),
   priceId: z.optional(z.string()),
   productId: z.string(),
   recurringInterval: z.string().nullish(),
   startedAt: z.string().nullish(),
   status: z.string(),
   subscriptionId: z.string(),
-  userId: zid('user'),
+  userId: z.string(),
 });
 
 // Create organization subscription (called from webhook)
@@ -41,9 +42,9 @@ export const createSubscription = privateMutation
   .output(z.null())
   .mutation(async ({ ctx, input: args }) => {
     // Check if subscription already exists
-    const existing = await ctx
-      .table('subscriptions')
-      .get('subscriptionId', args.subscription.subscriptionId);
+    const existing = await ctx.orm.query.subscriptions.findFirst({
+      where: { subscriptionId: args.subscription.subscriptionId },
+    });
 
     if (existing) {
       throw new CRPCError({
@@ -61,13 +62,14 @@ export const createSubscription = privateMutation
     }
 
     // Check for existing active subscription
-    const existingOrgSubscription = await ctx
-      .table('subscriptions', 'organizationId_status', (q) =>
-        q
-          .eq('organizationId', args.subscription.organizationId)
-          .eq('status', 'active')
-      )
-      .first();
+    const existingOrgSubscription = await ctx.orm.query.subscriptions.findFirst(
+      {
+        where: {
+          organizationId: args.subscription.organizationId,
+          status: 'active',
+        },
+      }
+    );
 
     if (existingOrgSubscription) {
       throw new CRPCError({
@@ -76,7 +78,7 @@ export const createSubscription = privateMutation
       });
     }
 
-    await ctx.table('subscriptions').insert(args.subscription);
+    await ctx.orm.insert(subscriptionsTable).values(args.subscription);
     return null;
   });
 
@@ -91,9 +93,9 @@ export const updateSubscription = privateMutation
     })
   )
   .mutation(async ({ ctx, input: args }) => {
-    const existing = await ctx
-      .table('subscriptions')
-      .get('subscriptionId', args.subscription.subscriptionId);
+    const existing = await ctx.orm.query.subscriptions.findFirst({
+      where: { subscriptionId: args.subscription.subscriptionId },
+    });
 
     if (!existing) {
       return { periodChanged: false, subscriptionEnded: false, updated: false };
@@ -103,14 +105,17 @@ export const updateSubscription = privateMutation
       existing.currentPeriodEnd !== args.subscription.currentPeriodEnd;
     const subscriptionEnded = !!args.subscription.endedAt && !existing.endedAt;
 
-    await existing.patch(args.subscription);
+    await ctx.orm
+      .update(subscriptionsTable)
+      .set(args.subscription)
+      .where(eq(subscriptionsTable.id, existing.id));
 
     return { periodChanged, subscriptionEnded, updated: true };
   });
 
 // Get active subscription for user
 export const getActiveSubscription = privateQuery
-  .input(z.object({ userId: zid('user') }))
+  .input(z.object({ userId: z.string() }))
   .output(
     z
       .object({
@@ -121,11 +126,9 @@ export const getActiveSubscription = privateQuery
       .nullable()
   )
   .query(async ({ ctx, input: args }) => {
-    const subscription = await ctx
-      .table('subscriptions')
-      .filter((q) => q.eq(q.field('userId'), args.userId))
-      .filter((q) => q.eq(q.field('status'), 'active'))
-      .first();
+    const subscription = await ctx.orm.query.subscriptions.findFirst({
+      where: { userId: args.userId, status: 'active' },
+    });
 
     if (!subscription) return null;
 
@@ -138,7 +141,7 @@ export const getActiveSubscription = privateQuery
 
 // Get organization subscription (for UI)
 export const getOrganizationSubscription = authQuery
-  .input(z.object({ organizationId: zid('organization') }))
+  .input(z.object({ organizationId: z.string() }))
   .output(
     z
       .object({
@@ -150,11 +153,9 @@ export const getOrganizationSubscription = authQuery
       .nullable()
   )
   .query(async ({ ctx, input: args }) => {
-    const subscription = await ctx
-      .table('subscriptions', 'organizationId_status', (q) =>
-        q.eq('organizationId', args.organizationId).eq('status', 'active')
-      )
-      .first();
+    const subscription = await ctx.orm.query.subscriptions.findFirst({
+      where: { organizationId: args.organizationId, status: 'active' },
+    });
 
     if (!subscription) return null;
 

@@ -1,6 +1,6 @@
 import { TableAggregate } from '@convex-dev/aggregate';
 import { components } from './_generated/api';
-import type { DataModel, Id } from './_generated/dataModel';
+import type { DataModel } from './_generated/dataModel';
 
 // Aggregate for users
 export const aggregateUsers = new TableAggregate<{
@@ -17,7 +17,7 @@ export const aggregateUsers = new TableAggregate<{
 export const aggregateTodosByUser = new TableAggregate<{
   DataModel: DataModel;
   Key: [string, boolean, boolean]; // [priority, completed, isDeleted]
-  Namespace: Id<'user'>;
+  Namespace: string;
   TableName: 'todos';
 }>(components.aggregateTodosByUser, {
   namespace: (doc) => doc.userId,
@@ -32,7 +32,7 @@ export const aggregateTodosByUser = new TableAggregate<{
 export const aggregateTodosByProject = new TableAggregate<{
   DataModel: DataModel;
   Key: [boolean, number, boolean]; // [completed, creationTime, isDeleted]
-  Namespace: Id<'projects'> | 'no-project';
+  Namespace: string | 'no-project';
   TableName: 'todos';
 }>(components.aggregateTodosByProject, {
   namespace: (doc) => doc.projectId ?? 'no-project',
@@ -65,19 +65,19 @@ export const aggregateTodosByStatus = new TableAggregate<{
 export const aggregateTagUsage = new TableAggregate<{
   DataModel: DataModel;
   Key: number; // usage count (updated via trigger)
-  Namespace: Id<'tags'>;
+  Namespace: string;
   TableName: 'todoTags';
 }>(components.aggregateTagUsage, {
   namespace: (doc) => doc.tagId,
-  sortKey: () => 1, // Each join counts as 1
-  sumValue: () => 1, // Sum to get total usage
+  sortKey: () => 1,
+  sumValue: () => 1,
 });
 
 // Project member counts
 export const aggregateProjectMembers = new TableAggregate<{
   DataModel: DataModel;
   Key: number; // join time
-  Namespace: Id<'projects'>;
+  Namespace: string;
   TableName: 'projectMembers';
 }>(components.aggregateProjectMembers, {
   namespace: (doc) => doc.projectId,
@@ -88,7 +88,7 @@ export const aggregateProjectMembers = new TableAggregate<{
 export const aggregateCommentsByTodo = new TableAggregate<{
   DataModel: DataModel;
   Key: number; // creation time
-  Namespace: Id<'todos'>;
+  Namespace: string;
   TableName: 'todoComments';
 }>(components.aggregateCommentsByTodo, {
   namespace: (doc) => doc.todoId,
@@ -99,7 +99,7 @@ export const aggregateCommentsByTodo = new TableAggregate<{
 export const aggregateRepliesByParent = new TableAggregate<{
   DataModel: DataModel;
   Key: number; // creation time
-  Namespace: Id<'todoComments'> | 'top-level';
+  Namespace: string | 'top-level';
   TableName: 'todoComments';
 }>(components.aggregateRepliesByParent, {
   namespace: (doc) => doc.parentId ?? 'top-level',

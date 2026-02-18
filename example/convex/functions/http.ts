@@ -4,24 +4,25 @@ import { createHttpRouter } from 'better-convex/server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { router } from '../lib/crpc';
+import { getEnv } from '../lib/get-env';
 import { examplesRouter } from '../routers/examples';
 import { health } from '../routers/health';
 import { todosRouter } from '../routers/todos';
-import { createAuth } from './auth';
+import { getAuth } from './auth';
 
 const app = new Hono();
 
 app.use(
   '/api/*',
   cors({
-    origin: process.env.SITE_URL!,
+    origin: getEnv().SITE_URL,
     allowHeaders: ['Content-Type', 'Authorization', 'Better-Auth-Cookie'],
     exposeHeaders: ['Set-Better-Auth-Cookie'],
     credentials: true,
   })
 );
 
-app.use(authMiddleware(createAuth));
+app.use(authMiddleware(getAuth));
 
 export const appRouter = router({
   health,

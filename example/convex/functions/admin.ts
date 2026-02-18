@@ -1,9 +1,10 @@
+import { eq } from 'better-convex/orm';
 import { CRPCError } from 'better-convex/server';
-import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
 
 import { authMutation, authQuery } from '../lib/crpc';
 import { aggregateUsers } from './aggregates';
+import { userTable } from './schema';
 
 // Admin operations that work with our application's user role system
 // Better Auth's admin plugin handles banning, sessions, etc. through the client
@@ -11,7 +12,7 @@ import { aggregateUsers } from './aggregates';
 // Check if a user has admin privileges in our system
 export const checkUserAdminStatus = authQuery
   .meta({ role: 'admin' })
-  .input(z.object({ userId: zid('user') }))
+  .input(z.object({ userId: z.string() }))
   .output(
     z.object({
       isAdmin: z.boolean(),
@@ -19,7 +20,10 @@ export const checkUserAdminStatus = authQuery
     })
   )
   .query(async ({ ctx, input }) => {
-    const user = await ctx.table('user').getX(input.userId);
+    const userId = input.userId;
+    const user = await ctx.orm.query.user.findFirstOrThrow({
+      where: { id: userId },
+    });
 
     return {
       isAdmin: user.role === 'admin',
@@ -33,11 +37,12 @@ export const updateUserRole = authMutation
   .input(
     z.object({
       role: z.enum(['user', 'admin']),
-      userId: zid('user'),
+      userId: z.string(),
     })
   )
   .output(z.boolean())
   .mutation(async ({ ctx, input }) => {
+    const userId = input.userId;
     // Only admin can promote to admin
     if (input.role === 'admin' && !ctx.user.isAdmin) {
       throw new CRPCError({
@@ -46,7 +51,9 @@ export const updateUserRole = authMutation
       });
     }
 
-    const targetUser = await ctx.table('user').getX(input.userId);
+    const targetUser = await ctx.orm.query.user.findFirstOrThrow({
+      where: { id: userId },
+    });
 
     // Can't demote admin unless you are admin
     if (targetUser.role === 'admin' && !ctx.user.isAdmin) {
@@ -56,9 +63,10 @@ export const updateUserRole = authMutation
       });
     }
 
-    await targetUser.patch({
-      role: input.role.toLowerCase(),
-    });
+    await ctx.orm
+      .update(userTable)
+      .set({ role: input.role.toLowerCase() })
+      .where(eq(userTable.id, targetUser.id));
 
     return true;
   });
@@ -75,11 +83,13 @@ export const grantAdminByEmail = authMutation
   .output(
     z.object({
       success: z.boolean(),
-      userId: zid('user').optional(),
+      userId: z.string().optional(),
     })
   )
   .mutation(async ({ ctx, input }) => {
-    const user = await ctx.table('user').get('email', input.email);
+    const user = await ctx.orm.query.user.findFirst({
+      where: { email: input.email },
+    });
 
     if (!user) {
       return {
@@ -87,28 +97,30 @@ export const grantAdminByEmail = authMutation
       };
     }
 
-    await user.patch({
-      role: input.role.toLowerCase(),
-    });
+    await ctx.orm
+      .update(userTable)
+      .set({ role: input.role.toLowerCase() })
+      .where(eq(userTable.id, user.id));
 
     return {
       success: true,
-      userId: user._id,
+      userId: user.id,
     };
   });
 
 // Schema for user list items
 const UserListItemSchema = z.object({
-  _id: zid('user'),
-  _creationTime: z.number(),
+  id: z.string(),
+  createdAt: z.date(),
   name: z.string().optional(),
   email: z.string(),
   image: z.string().nullish(),
   role: z.string(),
   isBanned: z.boolean().nullish(),
   banReason: z.string().nullish(),
-  banExpiresAt: z.number().nullish(),
+  banExpiresAt: z.date().nullish(),
 });
+type UserListItem = z.infer<typeof UserListItemSchema>;
 
 // Get all users with pagination for admin dashboard
 export const getAllUsers = authQuery
@@ -120,9 +132,7 @@ export const getAllUsers = authQuery
   )
   .paginated({ limit: 20, item: UserListItemSchema.nullable() })
   .query(async ({ ctx, input }) => {
-    const paginationOpts = { cursor: input.cursor, numItems: input.limit };
-    // Build query
-    const query = ctx.table('user');
+    const query = ctx.orm.query.user;
 
     // Filter by search term if provided
     if (input.search) {
@@ -130,10 +140,13 @@ export const getAllUsers = authQuery
 
       // For now, just paginate and filter in memory
       // You can add a search index later for better performance
-      const result = await query.paginate(paginationOpts);
+      const result = await query.findMany({
+        cursor: input.cursor,
+        limit: input.limit,
+      });
 
-      const enrichedPage = await Promise.all(
-        result.page.map(async (user) => {
+      const enrichedPage = result.page
+        .map((user): UserListItem | null => {
           const email = user?.email || '';
 
           // Check if any field matches search
@@ -147,7 +160,7 @@ export const getAllUsers = authQuery
           }
 
           return {
-            ...user.doc(),
+            ...user,
             banExpiresAt: user?.banExpires,
             banReason: user?.banReason,
             email,
@@ -155,21 +168,24 @@ export const getAllUsers = authQuery
             role: user?.role || 'user',
           };
         })
-      );
+        .filter((row): row is UserListItem => row !== null);
 
       return {
         ...result,
-        page: enrichedPage.filter(Boolean),
+        page: enrichedPage,
       };
     }
 
     // Regular pagination without search
-    const result = await query.paginate(paginationOpts);
+    const result = await query.findMany({
+      cursor: input.cursor,
+      limit: input.limit,
+    });
 
-    const enrichedPage = await Promise.all(
-      result.page.map(async (user) => {
-        const userData = {
-          ...user.doc(),
+    const enrichedPage = result.page
+      .map((user): UserListItem | null => {
+        const userData: UserListItem = {
+          ...user,
           banExpiresAt: user?.banExpires,
           banReason: user?.banReason,
           email: user?.email || '',
@@ -188,11 +204,11 @@ export const getAllUsers = authQuery
 
         return userData;
       })
-    );
+      .filter((row): row is UserListItem => row !== null);
 
     return {
       ...result,
-      page: enrichedPage.filter(Boolean),
+      page: enrichedPage,
     };
   });
 
@@ -203,8 +219,8 @@ export const getDashboardStats = authQuery
     z.object({
       recentUsers: z.array(
         z.object({
-          _id: zid('user'),
-          _creationTime: z.number(),
+          id: z.string(),
+          createdAt: z.date(),
           image: z.string().nullish(),
           name: z.string().optional(),
         })
@@ -220,24 +236,29 @@ export const getDashboardStats = authQuery
     })
   )
   .query(async ({ ctx }) => {
+    const toRows = <TRow>(result: TRow[] | { page: TRow[] }): TRow[] =>
+      Array.isArray(result) ? result : result.page;
+
     // Get recent users
-    const recentUsers = await ctx
-      .table('user')
-      .order('desc')
-      .take(5)
-      .map(async (user) => ({
-        _id: user._id,
-        _creationTime: user._creationTime,
-        image: user.image,
-        name: user.name,
-      }));
+    const recentUsersResult = await ctx.orm.query.user.findMany({
+      limit: 5,
+      orderBy: { createdAt: 'desc' },
+      columns: {
+        id: true,
+        createdAt: true,
+        image: true,
+        name: true,
+      },
+    });
+    const recentUsers = toRows(recentUsersResult);
 
     // Get users from last 7 days for growth calculation
-    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const usersLast7Days = await ctx
-      .table('user')
-      .filter((q) => q.gte(q.field('_creationTime'), sevenDaysAgo))
-      .take(1000); // Reasonable limit for 7 days of users
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const usersLast7DaysResult = await ctx.orm.query.user.findMany({
+      where: { createdAt: { gte: sevenDaysAgo } },
+      limit: 1000,
+    });
+    const usersLast7Days = toRows(usersLast7DaysResult);
 
     // Calculate user growth for last 7 days
     const now = Date.now();
@@ -251,7 +272,8 @@ export const getDashboardStats = authQuery
 
       const count = usersLast7Days.filter(
         (user) =>
-          user._creationTime >= startOfDay && user._creationTime <= endOfDay
+          user.createdAt.getTime() >= startOfDay &&
+          user.createdAt.getTime() <= endOfDay
       ).length;
 
       userGrowth.push({
@@ -261,7 +283,9 @@ export const getDashboardStats = authQuery
     }
 
     // Count admins from last 100 users (representative sample)
-    const sampleUsers = await ctx.table('user').take(100);
+    const sampleUsers = toRows(
+      await ctx.orm.query.user.findMany({ limit: 100 })
+    );
     let adminCount = 0;
 
     for (const user of sampleUsers) {

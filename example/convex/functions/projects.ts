@@ -1,20 +1,18 @@
+import { and, eq, unsetToken } from 'better-convex/orm';
 import { CRPCError } from 'better-convex/server';
-import { asyncMap } from 'convex-helpers';
-import { stream } from 'convex-helpers/server/stream';
-import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
 import { authMutation, authQuery, optionalAuthQuery } from '../lib/crpc';
-import type { EntWriter } from '../lib/ents';
-import { aggregateTodosByProject } from './aggregates';
-import schema from './schema';
+import type { Insert, Select } from '../shared/types';
+import { aggregateProjectMembers, aggregateTodosByProject } from './aggregates';
+import { projectMembersTable, projectsTable } from './schema';
 
 // Schema for project list items
 const ProjectListItemSchema = z.object({
-  _id: zid('projects'),
-  _creationTime: z.number(),
+  id: z.string(),
+  createdAt: z.date(),
   name: z.string(),
-  description: z.string().optional(),
-  ownerId: zid('user'),
+  description: z.string().nullish(),
+  ownerId: z.string(),
   isPublic: z.boolean(),
   archived: z.boolean(),
   memberCount: z.number(),
@@ -22,6 +20,8 @@ const ProjectListItemSchema = z.object({
   completedTodoCount: z.number(),
   isOwner: z.boolean(),
 });
+
+type ProjectRow = Select<'projects'>;
 
 // List projects - shows user's projects when authenticated, public projects when not
 export const list = optionalAuthQuery
@@ -32,125 +32,154 @@ export const list = optionalAuthQuery
   )
   .paginated({ limit: 20, item: ProjectListItemSchema })
   .query(async ({ ctx, input }) => {
-    const paginationOpts = { cursor: input.cursor, numItems: input.limit };
+    const getProjectStats = async (projectIds: string[]) => {
+      if (!projectIds.length) {
+        return {
+          memberCounts: [],
+          todoCounts: [],
+          completedTodoCounts: [],
+        };
+      }
+
+      const [memberCounts, todoCounts, completedTodoCounts] = await Promise.all(
+        [
+          aggregateProjectMembers.countBatch(
+            ctx,
+            projectIds.map((projectId) => ({ namespace: projectId }))
+          ),
+          aggregateTodosByProject.countBatch(
+            ctx,
+            projectIds.map((projectId) => ({ namespace: projectId }))
+          ),
+          aggregateTodosByProject.countBatch(
+            ctx,
+            projectIds.map((projectId) => ({
+              namespace: projectId,
+              bounds: { prefix: [true] },
+            }))
+          ),
+        ]
+      );
+
+      return { memberCounts, todoCounts, completedTodoCounts };
+    };
+
+    const withProjectStats = ({
+      projects,
+      stats,
+      currentUserId,
+    }: {
+      projects: ProjectRow[];
+      stats: {
+        memberCounts: number[];
+        todoCounts: number[];
+        completedTodoCounts: number[];
+      };
+      currentUserId: string | null;
+    }) =>
+      projects.map((project, idx) => ({
+        id: project.id,
+        createdAt: project.createdAt,
+        name: project.name,
+        description: project.description,
+        ownerId: project.ownerId,
+        isPublic: project.isPublic,
+        archived: project.archived,
+        memberCount: stats.memberCounts[idx] ?? 0,
+        todoCount: stats.todoCounts[idx] ?? 0,
+        completedTodoCount: stats.completedTodoCounts[idx] ?? 0,
+        isOwner: currentUserId === project.ownerId,
+      }));
+
     const userId = ctx.userId;
 
     // If not authenticated, show only public non-archived projects
     if (!userId) {
-      const results = await stream(ctx.db, schema)
-        .query('projects')
-        .filterWith(async (project) => {
-          // Only show public projects when not authenticated
-          if (!project.isPublic) {
-            return false;
-          }
+      const results = await ctx.orm.query.projects.findMany({
+        where: { isPublic: true, archived: false },
+        orderBy: { createdAt: 'desc' },
+        cursor: input.cursor,
+        limit: input.limit,
+      });
 
-          // Apply archive filter (archived projects are never shown publicly)
-          return !project.archived;
-        })
-        .paginate(paginationOpts);
+      const projectIds = results.page.map((p) => p.id);
+      const stats = await getProjectStats(projectIds);
 
-      // Transform results with public data
       return {
         ...results,
-        page: await asyncMap(results.page, async (project) => ({
-          ...project,
-          memberCount: (
-            await ctx.table('projectMembers', 'projectId', (q) =>
-              q.eq('projectId', project._id)
-            )
-          ).length,
-          todoCount: await aggregateTodosByProject.count(ctx, {
-            namespace: project._id,
-            bounds: {},
-          }),
-          completedTodoCount: (
-            await ctx
-              .table('todos', 'projectId', (q) =>
-                q.eq('projectId', project._id)
-              )
-              .filter((q) => q.eq(q.field('completed'), true))
-          ).length,
-          isOwner: false,
-        })),
+        page: withProjectStats({
+          projects: results.page,
+          stats,
+          currentUserId: null,
+        }),
       };
     }
 
-    // Get member project IDs for authenticated user
-    const memberProjectIds = await ctx
-      .table('projectMembers', 'userId', (q) => q.eq('userId', userId))
-      .map(async (member) => member.projectId);
+    const memberships = await ctx.orm.query.projectMembers.findMany({
+      where: { userId },
+      limit: 1000,
+    });
+    const memberProjectIds = new Set(memberships.map((m) => m.projectId));
 
-    // Use streams to filter and paginate all projects
-    const results = await stream(ctx.db, schema)
-      .query('projects')
-      .filterWith(async (project) => {
-        // Include if user is owner or member
+    const results = await ctx.orm.query.projects
+      .select()
+      .orderBy({ createdAt: 'desc' })
+      .filter(async (project: ProjectRow) => {
         const isOwner = project.ownerId === userId;
-        const isMember = memberProjectIds.includes(project._id);
+        const isMember = memberProjectIds.has(project.id);
 
         if (!(isOwner || isMember)) {
           return false;
         }
 
-        // Apply archive filter
         if (input.includeArchived) {
-          // When includeArchived is true, show ONLY archived projects
           return project.archived;
         }
-        // When includeArchived is false/undefined, show ONLY non-archived projects
+
         return !project.archived;
       })
-      .paginate(paginationOpts);
+      .paginate({
+        cursor: input.cursor,
+        limit: input.limit,
+      });
 
-    // Transform results with additional data
+    const projectIds = results.page.map((p) => p.id);
+    const stats = await getProjectStats(projectIds);
+
     return {
       ...results,
-      page: await asyncMap(results.page, async (project) => ({
-        ...project,
-        memberCount: (
-          await ctx.table('projectMembers', 'projectId', (q) =>
-            q.eq('projectId', project._id)
-          )
-        ).length,
-        todoCount: await aggregateTodosByProject.count(ctx, {
-          namespace: project._id,
-          bounds: {},
-        }),
-        completedTodoCount: (
-          await ctx
-            .table('todos', 'projectId', (q) => q.eq('projectId', project._id))
-            .filter((q) => q.eq(q.field('completed'), true))
-        ).length,
-        isOwner: project.ownerId === userId,
-      })),
+      page: withProjectStats({
+        projects: results.page,
+        stats,
+        currentUserId: userId,
+      }),
     };
   });
 
 // Get project with members and todo count - public projects viewable by all
 export const get = optionalAuthQuery
-  .input(z.object({ projectId: zid('projects') }))
+  .input(z.object({ projectId: z.string() }))
   .output(
     z
       .object({
-        _id: zid('projects'),
-        _creationTime: z.number(),
+        id: z.string(),
+        createdAt: z.date(),
         name: z.string(),
-        description: z.string().optional(),
-        ownerId: zid('user'),
+        description: z.string().nullish(),
+        ownerId: z.string(),
         isPublic: z.boolean(),
         archived: z.boolean(),
         owner: z.object({
-          _id: zid('user'),
+          id: z.string(),
           name: z.string().nullable(),
           email: z.string(),
         }),
         members: z.array(
           z.object({
-            _id: zid('user'),
+            id: z.string(),
             name: z.string().nullable(),
             email: z.string(),
-            joinedAt: z.number(),
+            joinedAt: z.date(),
           })
         ),
         todoCount: z.number(),
@@ -159,15 +188,16 @@ export const get = optionalAuthQuery
       .nullable()
   )
   .query(async ({ ctx, input }) => {
-    const project = await ctx.table('projects').get(input.projectId);
+    const project = await ctx.orm.query.projects.findFirst({
+      where: { id: input.projectId },
+      with: { owner: true },
+    });
     if (!project) {
       return null;
     }
 
-    // Check access - get session to check if authenticated
     const isOwner = ctx.userId === project.ownerId;
 
-    // For private projects, check membership
     if (!(project.isPublic || isOwner)) {
       if (!ctx.userId) {
         throw new CRPCError({
@@ -176,47 +206,59 @@ export const get = optionalAuthQuery
         });
       }
 
-      // Is not member, throw error
-      await ctx
-        .table('projectMembers', 'projectId_userId', (q) =>
-          q.eq('projectId', input.projectId).eq('userId', ctx.userId!)
-        )
-        .firstX();
+      await ctx.orm.query.projectMembers
+        .findFirstOrThrow({
+          where: { projectId: input.projectId, userId: ctx.userId },
+        })
+        .catch(() => {
+          throw new CRPCError({
+            code: 'FORBIDDEN',
+            message: 'You do not have access to this project',
+          });
+        });
     }
 
-    const owner = await ctx.table('user').getX(project.ownerId);
+    const owner = project.owner;
+    if (!owner) {
+      throw new CRPCError({
+        code: 'NOT_FOUND',
+        message: 'Project owner not found',
+      });
+    }
 
-    const members = await ctx
-      .table('projectMembers', 'projectId', (q) =>
-        q.eq('projectId', project._id)
-      )
-      .map(async (member) => {
-        const user = await ctx.table('user').getX(member.userId);
+    const memberRows = await ctx.orm.query.projectMembers.findMany({
+      where: { projectId: project.id },
+      limit: 1000,
+      with: { user: true },
+    });
+    const members = memberRows
+      .map((member) => {
+        const user = member.user;
+        if (!user) return null;
 
         return {
-          _id: user._id,
+          id: user.id,
           name: user.name ?? null,
           email: user.email,
-          joinedAt: member._creationTime,
+          joinedAt: member.createdAt,
         };
-      });
+      })
+      .filter((r): r is NonNullable<typeof r> => !!r);
 
     const todoCount = await aggregateTodosByProject.count(ctx, {
-      namespace: project._id,
+      namespace: project.id,
       bounds: {},
     });
 
-    // Get completed todo count
-    const completedTodoCount = (
-      await ctx
-        .table('todos', 'projectId', (q) => q.eq('projectId', project._id))
-        .filter((q) => q.eq(q.field('completed'), true))
-    ).length;
+    const completedTodoCount = await aggregateTodosByProject.count(ctx, {
+      namespace: project.id,
+      bounds: { prefix: [true] },
+    });
 
     return {
-      ...project.doc(),
+      ...project,
       owner: {
-        _id: owner._id,
+        id: owner.id,
         name: owner.name ?? null,
         email: owner.email,
       },
@@ -236,17 +278,22 @@ export const create = authMutation
       isPublic: z.boolean().optional(),
     })
   )
-  .output(zid('projects'))
+  .output(z.string())
   .mutation(async ({ ctx, input }) => {
-    const projectId = await ctx.table('projects').insert({
+    const values: Insert<'projects'> = {
       name: input.name,
       description: input.description,
       ownerId: ctx.userId,
       isPublic: input.isPublic ?? false,
       archived: false,
-    });
+    };
 
-    return projectId;
+    const [project] = await ctx.orm
+      .insert(projectsTable)
+      .values(values)
+      .returning();
+
+    return project.id;
   });
 
 // Update project
@@ -254,7 +301,7 @@ export const update = authMutation
   .meta({ rateLimit: 'project/update' })
   .input(
     z.object({
-      projectId: zid('projects'),
+      projectId: z.string(),
       name: z.string().min(1).max(100).optional(),
       description: z.string().max(500).nullable().optional(),
       isPublic: z.boolean().optional(),
@@ -262,9 +309,10 @@ export const update = authMutation
   )
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const project = await ctx.table('projects').getX(input.projectId);
+    const project = await ctx.orm.query.projects.findFirstOrThrow({
+      where: { id: input.projectId },
+    });
 
-    // Check ownership
     if (project.ownerId !== ctx.userId) {
       throw new CRPCError({
         code: 'FORBIDDEN',
@@ -272,33 +320,28 @@ export const update = authMutation
       });
     }
 
-    const updates: Partial<EntWriter<'projects'>> = {};
-    if (input.name !== undefined) {
-      updates.name = input.name;
-    }
-    if (input.description !== undefined) {
-      updates.description = input.description ?? undefined;
-    }
-    if (input.isPublic !== undefined) {
-      updates.isPublic = input.isPublic;
-    }
-
-    if (Object.keys(updates).length > 0) {
-      await ctx.table('projects').getX(input.projectId).patch(updates);
-    }
+    await ctx.orm
+      .update(projectsTable)
+      .set({
+        name: input.name,
+        description:
+          input.description === null ? unsetToken : input.description,
+        isPublic: input.isPublic,
+      })
+      .where(eq(projectsTable.id, input.projectId));
 
     return null;
   });
 
-// Archive project (soft delete)
 export const archive = authMutation
   .meta({ rateLimit: 'project/update' })
-  .input(z.object({ projectId: zid('projects') }))
+  .input(z.object({ projectId: z.string() }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const project = await ctx.table('projects').getX(input.projectId);
+    const project = await ctx.orm.query.projects.findFirstOrThrow({
+      where: { id: input.projectId },
+    });
 
-    // Check ownership
     if (project.ownerId !== ctx.userId) {
       throw new CRPCError({
         code: 'FORBIDDEN',
@@ -306,22 +349,23 @@ export const archive = authMutation
       });
     }
 
-    await ctx.table('projects').getX(input.projectId).patch({
-      archived: true,
-    });
+    await ctx.orm
+      .update(projectsTable)
+      .set({ archived: true })
+      .where(eq(projectsTable.id, input.projectId));
 
     return null;
   });
 
-// Restore archived project
 export const restore = authMutation
   .meta({ rateLimit: 'project/update' })
-  .input(z.object({ projectId: zid('projects') }))
+  .input(z.object({ projectId: z.string() }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const project = await ctx.table('projects').getX(input.projectId);
+    const project = await ctx.orm.query.projects.findFirstOrThrow({
+      where: { id: input.projectId },
+    });
 
-    // Check ownership
     if (project.ownerId !== ctx.userId) {
       throw new CRPCError({
         code: 'FORBIDDEN',
@@ -329,27 +373,28 @@ export const restore = authMutation
       });
     }
 
-    await ctx.table('projects').getX(input.projectId).patch({
-      archived: false,
-    });
+    await ctx.orm
+      .update(projectsTable)
+      .set({ archived: false })
+      .where(eq(projectsTable.id, input.projectId));
 
     return null;
   });
 
-// Add project member
 export const addMember = authMutation
   .meta({ rateLimit: 'project/member' })
   .input(
     z.object({
-      projectId: zid('projects'),
+      projectId: z.string(),
       userEmail: z.email(),
     })
   )
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const project = await ctx.table('projects').getX(input.projectId);
+    const project = await ctx.orm.query.projects.findFirstOrThrow({
+      where: { id: input.projectId },
+    });
 
-    // Check ownership
     if (project.ownerId !== ctx.userId) {
       throw new CRPCError({
         code: 'FORBIDDEN',
@@ -357,47 +402,49 @@ export const addMember = authMutation
       });
     }
 
-    // Find user by email
-    const userToAdd = await ctx.table('user').getX('email', input.userEmail);
+    const userToAdd = await ctx.orm.query.user.findFirstOrThrow({
+      where: { email: input.userEmail },
+    });
 
-    // Check if already member or owner
-    if (userToAdd._id === project.ownerId) {
+    if (userToAdd.id === project.ownerId) {
       throw new CRPCError({
         code: 'BAD_REQUEST',
         message: 'User is already the owner of this project',
       });
     }
 
-    // existing?
-    await ctx
-      .table('projectMembers', 'projectId_userId', (q) =>
-        q.eq('projectId', input.projectId).eq('userId', userToAdd._id)
-      )
-      .firstX();
+    const existing = await ctx.orm.query.projectMembers.findFirst({
+      where: { projectId: input.projectId, userId: userToAdd.id },
+    });
+    if (existing) {
+      throw new CRPCError({
+        code: 'CONFLICT',
+        message: 'User is already a member of this project',
+      });
+    }
 
-    // Add member
-    await ctx.table('projectMembers').insert({
+    await ctx.orm.insert(projectMembersTable).values({
       projectId: input.projectId,
-      userId: userToAdd._id,
+      userId: userToAdd.id,
     });
 
     return null;
   });
 
-// Remove project member
 export const removeMember = authMutation
   .meta({ rateLimit: 'project/member' })
   .input(
     z.object({
-      projectId: zid('projects'),
-      userId: zid('user'),
+      projectId: z.string(),
+      userId: z.string(),
     })
   )
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const project = await ctx.table('projects').getX(input.projectId);
+    const project = await ctx.orm.query.projects.findFirstOrThrow({
+      where: { id: input.projectId },
+    });
 
-    // Check ownership
     if (project.ownerId !== ctx.userId) {
       throw new CRPCError({
         code: 'FORBIDDEN',
@@ -405,48 +452,47 @@ export const removeMember = authMutation
       });
     }
 
-    const member = await ctx
-      .table('projectMembers', 'projectId_userId', (q) =>
-        q.eq('projectId', input.projectId).eq('userId', input.userId)
-      )
-      .firstX();
+    const member = await ctx.orm.query.projectMembers.findFirstOrThrow({
+      where: { projectId: input.projectId, userId: input.userId },
+    });
 
-    await ctx.table('projectMembers').getX(member._id).delete();
+    await ctx.orm
+      .delete(projectMembersTable)
+      .where(eq(projectMembersTable.id, member.id));
 
     return null;
   });
 
-// Leave project as member
 export const leave = authMutation
   .meta({ rateLimit: 'project/member' })
-  .input(z.object({ projectId: zid('projects') }))
+  .input(z.object({ projectId: z.string() }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const member = await ctx
-      .table('projectMembers', 'projectId_userId', (q) =>
-        q.eq('projectId', input.projectId).eq('userId', ctx.userId)
-      )
-      .firstX();
+    const member = await ctx.orm.query.projectMembers.findFirstOrThrow({
+      where: { projectId: input.projectId, userId: ctx.userId },
+    });
 
-    await ctx.table('projectMembers').getX(member._id).delete();
+    await ctx.orm
+      .delete(projectMembersTable)
+      .where(eq(projectMembersTable.id, member.id));
 
     return null;
   });
 
-// Transfer project ownership
 export const transfer = authMutation
   .meta({ rateLimit: 'project/update' })
   .input(
     z.object({
-      projectId: zid('projects'),
-      newOwnerId: zid('user'),
+      projectId: z.string(),
+      newOwnerId: z.string(),
     })
   )
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const project = await ctx.table('projects').getX(input.projectId);
+    const project = await ctx.orm.query.projects.findFirstOrThrow({
+      where: { id: input.projectId },
+    });
 
-    // Check ownership
     if (project.ownerId !== ctx.userId) {
       throw new CRPCError({
         code: 'FORBIDDEN',
@@ -454,40 +500,45 @@ export const transfer = authMutation
       });
     }
 
-    // Check new owner exists
-    await ctx.table('user').getX(input.newOwnerId);
+    await ctx.orm.query.user.findFirstOrThrow({
+      where: { id: input.newOwnerId },
+    });
 
-    // If new owner is currently a member, remove them
-    const memberRecord = await ctx
-      .table('projectMembers', 'projectId_userId', (q) =>
-        q.eq('projectId', input.projectId).eq('userId', input.newOwnerId)
-      )
-      .first();
+    // No need to check existence first: delete with no match is a no-op.
+    await ctx.orm
+      .delete(projectMembersTable)
+      .where(
+        and(
+          eq(projectMembersTable.projectId, input.projectId),
+          eq(projectMembersTable.userId, input.newOwnerId)
+        )!
+      );
 
-    if (memberRecord) {
-      await ctx.table('projectMembers').getX(memberRecord._id).delete();
+    const currentOwnerMembership = await ctx.orm.query.projectMembers.findFirst(
+      {
+        where: { projectId: input.projectId, userId: ctx.userId },
+      }
+    );
+    if (!currentOwnerMembership) {
+      await ctx.orm.insert(projectMembersTable).values({
+        projectId: input.projectId,
+        userId: ctx.userId,
+      });
     }
 
-    // Add current owner as member
-    await ctx.table('projectMembers').insert({
-      projectId: input.projectId,
-      userId: ctx.userId,
-    });
-
-    // Transfer ownership
-    await ctx.table('projects').getX(input.projectId).patch({
-      ownerId: input.newOwnerId,
-    });
+    await ctx.orm
+      .update(projectsTable)
+      .set({ ownerId: input.newOwnerId })
+      .where(eq(projectsTable.id, input.projectId));
 
     return null;
   });
 
-// Get user's active projects for dropdown
 export const listForDropdown = authQuery
   .output(
     z.array(
       z.object({
-        _id: zid('projects'),
+        id: z.string(),
         name: z.string(),
         isOwner: z.boolean(),
       })
@@ -496,33 +547,40 @@ export const listForDropdown = authQuery
   .query(async ({ ctx }) => {
     const userId = ctx.userId;
 
-    // Get owned projects
-    const ownedProjects = await ctx
-      .table('projects', 'ownerId', (q) => q.eq('ownerId', userId))
-      .filter((q) => q.eq(q.field('archived'), false))
-      .map(async (project) => ({
-        _id: project._id,
-        name: project.name,
-        isOwner: true,
-      }));
+    const owned = await ctx.orm.query.projects.findMany({
+      where: { ownerId: userId, archived: false },
+      limit: 1000,
+      columns: { id: true, name: true },
+      extras: { isOwner: true },
+    });
 
-    // Get member projects
-    const memberProjects = await ctx
-      .table('projectMembers', 'userId', (q) => q.eq('userId', userId))
-      .map(async (member) => {
-        const project = await ctx.table('projects').get(member.projectId);
-        if (!project || project.archived) {
-          return null;
-        }
-        return {
-          _id: project._id,
-          name: project.name,
-          isOwner: false,
-        };
-      });
+    const memberRows = await ctx.orm.query.projectMembers.findMany({
+      where: { userId },
+      limit: 1000,
+      columns: { projectId: true },
+    });
 
-    return [
-      ...ownedProjects,
-      ...memberProjects.filter((p): p is NonNullable<typeof p> => p !== null),
-    ].sort((a, b) => a.name.localeCompare(b.name));
+    const memberProjectIds = Array.from(
+      new Set(memberRows.map((row) => row.projectId))
+    );
+
+    const memberProjects = memberProjectIds.length
+      ? await ctx.orm.query.projects.findMany({
+          where: { id: { in: memberProjectIds }, archived: false },
+          limit: memberProjectIds.length,
+          columns: { id: true, name: true },
+          extras: { isOwner: false },
+        })
+      : [];
+
+    const byId = new Map<
+      string,
+      { id: string; isOwner: boolean; name: string }
+    >();
+    for (const project of memberProjects) byId.set(project.id, project);
+    for (const project of owned) byId.set(project.id, project);
+
+    return Array.from(byId.values()).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
   });

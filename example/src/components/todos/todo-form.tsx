@@ -1,6 +1,6 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
+import type { ApiInputs } from '@convex/types';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
 import { CalendarIcon, Plus } from 'lucide-react';
@@ -27,34 +27,30 @@ import { useCRPC } from '@/lib/convex/crpc';
 import { cn } from '@/lib/utils';
 import { TagPicker } from './tag-picker';
 
+type TodoPriority = NonNullable<ApiInputs['todos']['create']['priority']>;
+
 export function TodoForm({
   onSuccess,
   defaultProjectId,
 }: {
   onSuccess?: () => void;
-  defaultProjectId?: Id<'projects'>;
+  defaultProjectId?: string;
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState<
-    'low' | 'medium' | 'high' | undefined
-  >();
+  const [priority, setPriority] = useState<TodoPriority | undefined>();
   const [dueDate, setDueDate] = useState<Date | undefined>();
-  const [projectId, setProjectId] = useState<Id<'projects'> | undefined>(
+  const [projectId, setProjectId] = useState<string | undefined>(
     defaultProjectId
   );
-  const [selectedTagIds, setSelectedTagIds] = useState<Id<'tags'>[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(false);
 
   const crpc = useCRPC();
   const createTodo = useMutation(crpc.todos.create.mutationOptions());
   const { data: projects } = useQuery(
     crpc.projects.listForDropdown.queryOptions({}, { skipUnauth: true })
-  ) as {
-    data:
-      | Array<{ _id: Id<'projects'>; name: string; isOwner: boolean }>
-      | undefined;
-  };
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,7 +65,7 @@ export function TodoForm({
         title: title.trim(),
         description: description.trim() || undefined,
         priority,
-        dueDate: dueDate?.getTime(),
+        dueDate,
         projectId,
         tagIds: selectedTagIds,
       }),
@@ -136,9 +132,7 @@ export function TodoForm({
             <Label htmlFor="project">Project (optional)</Label>
             <Select
               onValueChange={(v) =>
-                setProjectId(
-                  v === 'no-project' ? undefined : (v as Id<'projects'>)
-                )
+                setProjectId(v === 'no-project' ? undefined : v)
               }
               value={projectId || 'no-project'}
             >
@@ -148,7 +142,7 @@ export function TodoForm({
               <SelectContent>
                 <SelectItem value="no-project">No Project</SelectItem>
                 {projects?.map((project) => (
-                  <SelectItem key={project._id} value={project._id}>
+                  <SelectItem key={project.id} value={project.id}>
                     {project.name} {project.isOwner ? '(Owner)' : '(Member)'}
                   </SelectItem>
                 ))}
@@ -160,9 +154,7 @@ export function TodoForm({
             <div className="space-y-2">
               <Label htmlFor="priority">Priority</Label>
               <Select
-                onValueChange={(v) =>
-                  setPriority(v as 'low' | 'medium' | 'high')
-                }
+                onValueChange={(v) => setPriority(v as TodoPriority)}
                 value={priority}
               >
                 <SelectTrigger id="priority">

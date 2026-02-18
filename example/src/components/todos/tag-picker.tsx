@@ -1,6 +1,5 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
 import { useQuery } from '@tanstack/react-query';
 import { Check, Tags, X } from 'lucide-react';
 import { useState } from 'react';
@@ -23,8 +22,8 @@ import { useCRPC } from '@/lib/convex/crpc';
 import { cn } from '@/lib/utils';
 
 type TagPickerProps = {
-  selectedTagIds: Id<'tags'>[];
-  onTagsChange: (tagIds: Id<'tags'>[]) => void;
+  selectedTagIds: string[];
+  onTagsChange: (tagIds: string[]) => void;
   disabled?: boolean;
 };
 
@@ -37,18 +36,11 @@ export function TagPicker({
   const crpc = useCRPC();
   const { data: tags = [] } = useQuery(
     crpc.tags.list.queryOptions({}, { skipUnauth: true })
-  ) as {
-    data: Array<{
-      _id: Id<'tags'>;
-      name: string;
-      color: string;
-      usageCount: number;
-    }>;
-  };
+  );
 
-  const selectedTags = tags.filter((tag) => selectedTagIds.includes(tag._id));
+  const selectedTags = tags.filter((tag) => selectedTagIds.includes(tag.id));
 
-  const toggleTag = (tagId: Id<'tags'>) => {
+  const toggleTag = (tagId: string) => {
     if (selectedTagIds.includes(tagId)) {
       onTagsChange(selectedTagIds.filter((id) => id !== tagId));
     } else {
@@ -56,7 +48,7 @@ export function TagPicker({
     }
   };
 
-  const removeTag = (tagId: Id<'tags'>) => {
+  const removeTag = (tagId: string) => {
     onTagsChange(selectedTagIds.filter((id) => id !== tagId));
   };
 
@@ -88,14 +80,14 @@ export function TagPicker({
               <CommandGroup>
                 {tags.map((tag) => (
                   <CommandItem
-                    key={tag._id}
-                    onSelect={() => toggleTag(tag._id)}
+                    key={tag.id}
+                    onSelect={() => toggleTag(tag.id)}
                     value={tag.name}
                   >
                     <div
                       className={cn(
                         'flex h-4 w-4 items-center justify-center rounded-sm border border-primary',
-                        selectedTagIds.includes(tag._id)
+                        selectedTagIds.includes(tag.id)
                           ? 'bg-primary text-primary-foreground'
                           : 'opacity-50 [&_svg]:invisible'
                       )}
@@ -127,7 +119,7 @@ export function TagPicker({
           {selectedTags.map((tag) => (
             <Badge
               className="pr-1 pl-2"
-              key={tag._id}
+              key={tag.id}
               style={{
                 backgroundColor: `${tag.color}20`,
                 color: tag.color,
@@ -139,7 +131,7 @@ export function TagPicker({
               <button
                 className="ml-1 rounded-full outline-none ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 disabled={disabled}
-                onClick={() => removeTag(tag._id)}
+                onClick={() => removeTag(tag.id)}
                 type="button"
               >
                 <X className="h-3 w-3" />

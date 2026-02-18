@@ -51,6 +51,7 @@ export type {
 } from 'convex/server';
 // M6: Column Builders (Drizzle-style)
 export type {
+  AnyColumn,
   ColumnBuilder,
   ColumnBuilderBaseConfig,
   ColumnBuilderRuntimeConfig,

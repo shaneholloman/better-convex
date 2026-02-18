@@ -1,6 +1,6 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
+import type { ApiOutputs } from '@convex/types';
 import { useMutation } from '@tanstack/react-query';
 import { Check, Mail, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -9,15 +9,14 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useCRPC } from '@/lib/convex/crpc';
 
+type OrganizationInvitation = NonNullable<
+  NonNullable<
+    ApiOutputs['organization']['getOrganizationOverview']
+  >['invitation']
+>;
+
 type InvitationBannerProps = {
-  invitation: {
-    id: Id<'invitation'>;
-    expiresAt: number;
-    inviterName: string;
-    organizationName: string;
-    organizationSlug: string;
-    role: string;
-  };
+  invitation: OrganizationInvitation;
 };
 
 export function InvitationBanner({ invitation }: InvitationBannerProps) {
@@ -47,7 +46,11 @@ export function InvitationBanner({ invitation }: InvitationBannerProps) {
     })
   );
 
-  const isExpired = invitation.expiresAt < now;
+  const expiresAtMs =
+    invitation.expiresAt instanceof Date
+      ? invitation.expiresAt.getTime()
+      : invitation.expiresAt;
+  const isExpired = (expiresAtMs ?? Number.POSITIVE_INFINITY) < now;
 
   if (isExpired) {
     return (

@@ -327,15 +327,20 @@ function getPayloadConfigFromPayload(
     key in payload &&
     typeof payload[key as keyof typeof payload] === 'string'
   ) {
-    configLabelKey = payload[key as keyof typeof payload] as string;
+    const payloadValue = payload[key as keyof typeof payload];
+    if (typeof payloadValue === 'string') {
+      configLabelKey = payloadValue;
+    }
   } else if (
     payloadPayload &&
     key in payloadPayload &&
     typeof payloadPayload[key as keyof typeof payloadPayload] === 'string'
   ) {
-    configLabelKey = payloadPayload[
-      key as keyof typeof payloadPayload
-    ] as string;
+    const payloadNestedValue =
+      payloadPayload[key as keyof typeof payloadPayload];
+    if (typeof payloadNestedValue === 'string') {
+      configLabelKey = payloadNestedValue;
+    }
   }
 
   return configLabelKey in config

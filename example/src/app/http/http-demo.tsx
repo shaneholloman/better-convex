@@ -1,12 +1,12 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
 import {
   useMutation,
   useQueryClient,
   useSuspenseQuery,
 } from '@tanstack/react-query';
 import { useState } from 'react';
+import { env } from '@/env';
 import { useCRPC, useCRPCClient } from '@/lib/convex/crpc';
 
 /**
@@ -83,12 +83,12 @@ export function HttpDemo() {
     createTodo.mutate({ title: newTitle.trim() });
   };
 
-  const handleToggle = (id: Id<'todos'>, completed: boolean) => {
+  const handleToggle = (id: string, completed: boolean) => {
     // Path params explicit, JSON body at root
     updateTodo.mutate({ params: { id }, completed: !completed });
   };
 
-  const handleDelete = (id: Id<'todos'>) => {
+  const handleDelete = (id: string) => {
     // Path params only
     deleteTodo.mutate({ params: { id } });
   };
@@ -166,7 +166,7 @@ export function HttpDemo() {
             {todos.data.map((todo) => (
               <li
                 className="flex items-center gap-3 rounded border px-3 py-2"
-                key={todo._id}
+                key={todo.id}
               >
                 <button
                   aria-label={
@@ -175,9 +175,9 @@ export function HttpDemo() {
                   className="size-5 rounded border text-xs disabled:opacity-50"
                   disabled={
                     updateTodo.isPending &&
-                    updateTodo.variables?.params?.id === todo._id
+                    updateTodo.variables?.params?.id === todo.id
                   }
-                  onClick={() => handleToggle(todo._id, todo.completed)}
+                  onClick={() => handleToggle(todo.id, todo.completed)}
                   type="button"
                 >
                   {todo.completed && '✓'}
@@ -197,9 +197,9 @@ export function HttpDemo() {
                   className="text-destructive hover:text-destructive/80 disabled:opacity-50"
                   disabled={
                     deleteTodo.isPending &&
-                    deleteTodo.variables?.params?.id === todo._id
+                    deleteTodo.variables?.params?.id === todo.id
                   }
-                  onClick={() => handleDelete(todo._id)}
+                  onClick={() => handleDelete(todo.id)}
                   type="button"
                 >
                   ✕
@@ -216,7 +216,7 @@ export function HttpDemo() {
   );
 }
 
-const SITE_URL = process.env.NEXT_PUBLIC_CONVEX_SITE_URL!;
+const SITE_URL = env.NEXT_PUBLIC_CONVEX_SITE_URL;
 
 function ExamplesSection() {
   const crpc = useCRPC();
@@ -239,14 +239,14 @@ function ExamplesSection() {
   // GET with params only
   const _paramsExample = useSuspenseQuery(
     crpc.http.examples.paramsExample.queryOptions({
-      params: { id: 'k57a9gkc0dgfnvgptp2vc4sc2d7b248j' as Id<'todos'> },
+      params: { id: 'k57a9gkc0dgfnvgptp2vc4sc2d7b248j' },
     })
   );
 
   // GET with params + searchParams
   const _paramsSearchExample = useSuspenseQuery(
     crpc.http.examples.paramsSearchParamsExample.queryOptions({
-      params: { id: 'k57a9gkc0dgfnvgptp2vc4sc2d7b248j' as Id<'todos'> },
+      params: { id: 'k57a9gkc0dgfnvgptp2vc4sc2d7b248j' },
       searchParams: { limit: '5', offset: '0' },
     })
   );
@@ -315,7 +315,11 @@ function ExamplesSection() {
     const data = await client.http.todos.download.query({ params: { format } });
 
     const content =
-      format === 'json' ? JSON.stringify(data, null, 2) : (data as string);
+      format === 'json'
+        ? JSON.stringify(data, null, 2)
+        : typeof data === 'string'
+          ? data
+          : JSON.stringify(data);
     const mimeType = format === 'json' ? 'application/json' : 'text/csv';
 
     const blob = new Blob([content], { type: mimeType });

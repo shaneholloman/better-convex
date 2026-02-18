@@ -1,62 +1,115 @@
+import { eq, unsetToken } from 'better-convex/orm';
 import { CRPCError } from 'better-convex/server';
-import { zid } from 'convex-helpers/server/zod4';
 import { z } from 'zod';
 import { authMutation, authQuery, optionalAuthQuery } from '../lib/crpc';
-import type { EntWriter } from '../lib/ents';
-import type { Id } from './_generated/dataModel';
+import type { OrmQueryCtx } from '../lib/orm';
+import { todosTable, todoTagsTable } from './schema';
 
 // Schema for todo list items
 const TodoListItemSchema = z.object({
-  _id: zid('todos'),
-  _creationTime: z.number(),
-  userId: zid('user'),
+  id: z.string(),
+  createdAt: z.date(),
+  userId: z.string(),
   title: z.string(),
-  description: z.string().optional(),
+  description: z.string().nullish(),
   completed: z.boolean(),
-  priority: z.enum(['low', 'medium', 'high']).optional(),
-  dueDate: z.number().optional(),
-  projectId: zid('projects').optional(),
-  deletionTime: z.number().optional(),
+  priority: z.enum(['low', 'medium', 'high']).nullish(),
+  dueDate: z.date().nullish(),
+  projectId: z.string().nullish(),
+  deletionTime: z.date().nullish(),
   tags: z.array(
     z.object({
-      _id: zid('tags'),
-      _creationTime: z.number(),
+      id: z.string(),
+      createdAt: z.date(),
       name: z.string(),
       color: z.string(),
-      createdBy: zid('user'),
+      createdBy: z.string(),
     })
   ),
   project: z
     .object({
-      _id: zid('projects'),
-      _creationTime: z.number(),
+      id: z.string(),
+      createdAt: z.date(),
       name: z.string(),
-      description: z.string().optional(),
+      description: z.string().nullish(),
       isPublic: z.boolean(),
       archived: z.boolean(),
-      ownerId: zid('user'),
+      ownerId: z.string(),
     })
     .nullable(),
 });
+
+function emptyPaginatedResult<T>(cursor: string | null): {
+  page: T[];
+  isDone: boolean;
+  continueCursor: string;
+} {
+  return { page: [], isDone: true, continueCursor: cursor ?? '' };
+}
+
+async function validateTagIds(
+  ctx: OrmQueryCtx,
+  userId: string,
+  tagIds: string[]
+): Promise<string[]> {
+  const deduped = Array.from(new Set(tagIds));
+  const tags = await ctx.orm.query.tags.findMany({
+    where: { id: { in: deduped }, createdBy: userId },
+    limit: deduped.length,
+    columns: { id: true },
+  });
+
+  if (tags.length !== deduped.length) {
+    throw new CRPCError({
+      code: 'BAD_REQUEST',
+      message: "Some tags are invalid or don't belong to you",
+    });
+  }
+
+  return deduped;
+}
+
+async function assertProjectAccess(
+  ctx: OrmQueryCtx,
+  projectId: string,
+  userId: string
+) {
+  const project = await ctx.orm.query.projects.findFirstOrThrow({
+    where: { id: projectId },
+  });
+
+  const isOwner = project.ownerId === userId;
+  const isMember = !!(await ctx.orm.query.projectMembers.findFirst({
+    where: { projectId, userId },
+  }));
+
+  if (!(isOwner || isMember)) {
+    throw new CRPCError({
+      code: 'FORBIDDEN',
+      message: "You don't have access to this project",
+    });
+  }
+
+  return project;
+}
 
 // List todos - shows user's todos when authenticated, public project todos when not
 export const list = optionalAuthQuery
   .input(
     z.object({
       completed: z.boolean().optional(),
-      projectId: zid('projects').optional(),
+      projectId: z.string().optional(),
       priority: z.enum(['low', 'medium', 'high']).optional(),
+      showDeleted: z.boolean().optional(),
     })
   )
   .paginated({ limit: 20, item: TodoListItemSchema })
   .query(async ({ ctx, input }) => {
-    const paginationOpts = { cursor: input.cursor, numItems: input.limit };
-
-    // If projectId is specified, check if it's a public project
     if (input.projectId) {
-      const project = await ctx.table('projects').getX(input.projectId);
+      const project = await ctx.orm.query.projects.findFirstOrThrow({
+        where: { id: input.projectId },
+      });
 
-      // Check access
       if (!project.isPublic) {
         if (!ctx.userId) {
           throw new CRPCError({
@@ -65,91 +118,57 @@ export const list = optionalAuthQuery
           });
         }
 
-        // Check if user is owner or member
-        const isOwner = project.ownerId === ctx.userId;
-        const isMember = await ctx
-          .table('projectMembers', 'projectId_userId', (q) =>
-            q.eq('projectId', input.projectId!).eq('userId', ctx.userId!)
-          )
-          .first();
-
-        if (!(isOwner || isMember)) {
-          throw new CRPCError({
-            code: 'FORBIDDEN',
-            message: 'You do not have access to this project',
-          });
-        }
+        await assertProjectAccess(ctx, input.projectId, ctx.userId);
       }
 
-      // For public projects or authorized users, show all project todos
-      let query = ctx
-        .table('todos', 'projectId', (q) => q.eq('projectId', input.projectId))
-        .filter((q) => q.eq(q.field('deletionTime'), undefined));
+      const projectForOutput = project;
 
-      // Apply filters
-      if (input.completed !== undefined) {
-        query = query.filter((q) =>
-          q.eq(q.field('completed'), input.completed!)
-        );
-      }
+      const results = await ctx.orm.query.todos.findMany({
+        where: {
+          projectId: input.projectId,
+          deletionTime: input.showDeleted
+            ? { isNotNull: true }
+            : { isNull: true },
+          ...(input.completed !== undefined
+            ? { completed: input.completed }
+            : {}),
+          ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        },
+        cursor: input.cursor,
+        limit: input.limit,
+        with: { tags: true },
+      });
 
-      if (input.priority !== undefined) {
-        query = query.filter((q) => q.eq(q.field('priority'), input.priority!));
-      }
-
-      // Order by creation time (newest first) and paginate
-      return await query
-        .order('desc')
-        .paginate(paginationOpts)
-        .map(async (todo) => ({
-          ...todo.doc(),
-          tags: await todo.edge('tags').map((tag) => tag.doc()),
-          project: await ctx.table('projects').get(todo.projectId!),
-        }));
+      return {
+        ...results,
+        page: results.page.map((todo) => ({
+          ...todo,
+          project: projectForOutput,
+        })),
+      };
     }
 
-    // No projectId specified - show user's todos only (must be authenticated)
     if (!ctx.userId) {
-      // Return empty paginated result using a filter that matches nothing
-      return await ctx
-        .table('todos')
-        .filter((q) =>
-          q.eq(q.field('userId'), 'impossible-user-id' as unknown as Id<'user'>)
-        )
-        .paginate(paginationOpts)
-        .map(async (todo) => ({
-          ...todo.doc(),
-          tags: await todo.edge('tags').map((tag) => tag.doc()),
-          project: null,
-        }));
+      return emptyPaginatedResult(input.cursor);
     }
 
-    // Start with user's todos (exclude soft-deleted)
-    let query = ctx
-      .table('todos', 'userId', (q) => q.eq('userId', ctx.userId!))
-      .filter((q) => q.eq(q.field('deletionTime'), undefined));
+    const results = await ctx.orm.query.todos.findMany({
+      where: {
+        userId: ctx.userId,
+        deletionTime: input.showDeleted
+          ? { isNotNull: true }
+          : { isNull: true },
+        ...(input.completed !== undefined
+          ? { completed: input.completed }
+          : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+      },
+      cursor: input.cursor,
+      limit: input.limit,
+      with: { tags: true, project: true },
+    });
 
-    // Apply completed filter if specified
-    if (input.completed !== undefined) {
-      query = query.filter((q) => q.eq(q.field('completed'), input.completed!));
-    }
-
-    // Apply priority filter if specified
-    if (input.priority !== undefined) {
-      query = query.filter((q) => q.eq(q.field('priority'), input.priority!));
-    }
-
-    // Order by creation time (newest first) and paginate
-    return await query
-      .order('desc')
-      .paginate(paginationOpts)
-      .map(async (todo) => ({
-        ...todo.doc(),
-        tags: await todo.edge('tags').map((tag) => tag.doc()),
-        project: todo.projectId
-          ? await ctx.table('projects').get(todo.projectId)
-          : null,
-      }));
+    return results;
   });
 
 // Search todos - works for public projects when not authenticated
@@ -158,18 +177,17 @@ export const search = optionalAuthQuery
     z.object({
       query: z.string().min(1),
       completed: z.boolean().optional(),
-      projectId: zid('projects').optional(),
+      projectId: z.string().optional(),
+      showDeleted: z.boolean().optional(),
     })
   )
   .paginated({ limit: 20, item: TodoListItemSchema })
   .query(async ({ ctx, input }) => {
-    const paginationOpts = { cursor: input.cursor, numItems: input.limit };
-
-    // If projectId is specified, check if it's a public project
     if (input.projectId) {
-      const project = await ctx.table('projects').getX(input.projectId);
+      const project = await ctx.orm.query.projects.findFirstOrThrow({
+        where: { id: input.projectId },
+      });
 
-      // Check access
       if (!project.isPublic) {
         if (!ctx.userId) {
           throw new CRPCError({
@@ -178,46 +196,36 @@ export const search = optionalAuthQuery
           });
         }
 
-        // Check if user is owner or member
-        const isOwner = project.ownerId === ctx.userId;
-        const isMember = await ctx
-          .table('projectMembers', 'projectId_userId', (q) =>
-            q.eq('projectId', input.projectId!).eq('userId', ctx.userId!)
-          )
-          .first();
-
-        if (!(isOwner || isMember)) {
-          throw new CRPCError({
-            code: 'FORBIDDEN',
-            message: 'You do not have access to this project',
-          });
-        }
+        await assertProjectAccess(ctx, input.projectId, ctx.userId);
       }
 
-      // Search within the project (exclude soft-deleted)
-      return await ctx
-        .table('todos')
-        .search('search_title_description', (q) => {
-          let searchQuery = q
-            .search('title', input.query)
-            .eq('projectId', input.projectId);
+      const projectForOutput = project;
 
-          if (input.completed !== undefined) {
-            searchQuery = searchQuery.eq('completed', input.completed);
-          }
+      const results = await ctx.orm.query.todos.findMany({
+        search: { index: 'search_title_description', query: input.query },
+        where: {
+          projectId: input.projectId,
+          deletionTime: input.showDeleted
+            ? { isNotNull: true }
+            : { isNull: true },
+          ...(input.completed !== undefined
+            ? { completed: input.completed }
+            : {}),
+        },
+        cursor: input.cursor,
+        limit: input.limit,
+        with: { tags: true },
+      });
 
-          return searchQuery;
-        })
-        .filter((q) => q.eq(q.field('deletionTime'), undefined))
-        .paginate(paginationOpts)
-        .map(async (todo) => ({
-          ...todo.doc(),
-          tags: await todo.edge('tags').map((tag) => tag.doc()),
-          project: await ctx.table('projects').get(todo.projectId!),
-        }));
+      return {
+        ...results,
+        page: results.page.map((todo) => ({
+          ...todo,
+          project: projectForOutput,
+        })),
+      };
     }
 
-    // No projectId - search user's todos only (must be authenticated)
     if (!ctx.userId) {
       throw new CRPCError({
         code: 'UNAUTHORIZED',
@@ -225,70 +233,64 @@ export const search = optionalAuthQuery
       });
     }
 
-    // Exclude soft-deleted
-    return await ctx
-      .table('todos')
-      .search('search_title_description', (q) => {
-        let searchQuery = q
-          .search('title', input.query)
-          .eq('userId', ctx.userId!);
+    const results = await ctx.orm.query.todos.findMany({
+      search: { index: 'search_title_description', query: input.query },
+      where: {
+        userId: ctx.userId,
+        deletionTime: input.showDeleted
+          ? { isNotNull: true }
+          : { isNull: true },
+        ...(input.completed !== undefined
+          ? { completed: input.completed }
+          : {}),
+      },
+      cursor: input.cursor,
+      limit: input.limit,
+      with: { tags: true, project: true },
+    });
 
-        if (input.completed !== undefined) {
-          searchQuery = searchQuery.eq('completed', input.completed);
-        }
-
-        return searchQuery;
-      })
-      .filter((q) => q.eq(q.field('deletionTime'), undefined))
-      .paginate(paginationOpts)
-      .map(async (todo) => ({
-        ...todo.doc(),
-        tags: await todo.edge('tags').map((tag) => tag.doc()),
-        project: todo.projectId
-          ? await ctx.table('projects').get(todo.projectId)
-          : null,
-      }));
+    return results;
   });
 
 // Get a single todo with all relations
 export const get = authQuery
-  .input(z.object({ id: zid('todos') }))
+  .input(z.object({ id: z.string() }))
   .output(
     z
       .object({
-        _id: zid('todos'),
-        _creationTime: z.number(),
-        userId: zid('user'),
+        id: z.string(),
+        createdAt: z.date(),
+        userId: z.string(),
         title: z.string(),
-        description: z.string().optional(),
+        description: z.string().nullish(),
         completed: z.boolean(),
-        priority: z.enum(['low', 'medium', 'high']).optional(),
-        dueDate: z.number().optional(),
-        projectId: zid('projects').optional(),
-        deletionTime: z.number().optional(),
+        priority: z.enum(['low', 'medium', 'high']).nullish(),
+        dueDate: z.date().nullish(),
+        projectId: z.string().nullish(),
+        deletionTime: z.date().nullish(),
         tags: z.array(
           z.object({
-            _id: zid('tags'),
-            _creationTime: z.number(),
+            id: z.string(),
+            createdAt: z.date(),
             name: z.string(),
             color: z.string(),
-            createdBy: zid('user'),
+            createdBy: z.string(),
           })
         ),
         project: z
           .object({
-            _id: zid('projects'),
-            _creationTime: z.number(),
+            id: z.string(),
+            createdAt: z.date(),
             name: z.string(),
-            description: z.string().optional(),
+            description: z.string().nullish(),
             isPublic: z.boolean(),
             archived: z.boolean(),
-            ownerId: zid('user'),
+            ownerId: z.string(),
           })
           .nullable(),
         user: z.object({
-          _id: zid('user'),
-          _creationTime: z.number(),
+          id: z.string(),
+          createdAt: z.date(),
           name: z.string().optional(),
           email: z.string(),
           image: z.string().nullish(),
@@ -297,19 +299,27 @@ export const get = authQuery
       .nullable()
   )
   .query(async ({ ctx, input }) => {
-    const todo = await ctx.table('todos').get(input.id);
+    const todo = await ctx.orm.query.todos.findFirst({
+      where: { id: input.id, userId: ctx.userId },
+      with: { tags: true, project: true, user: true },
+    });
+    if (!todo) return null;
 
-    if (!todo || todo.userId !== ctx.userId) {
-      return null;
+    if (!todo.user) {
+      // Shouldn't happen (todos.userId is NOT NULL), but keeps failures explicit.
+      throw new CRPCError({ code: 'NOT_FOUND', message: 'User not found' });
     }
 
     return {
-      ...todo.doc(),
-      tags: await todo.edge('tags').map((tag) => tag.doc()),
-      project: todo.projectId
-        ? await ctx.table('projects').get(todo.projectId)
-        : null,
-      user: (await todo.edge('user'))?.doc(),
+      ...todo,
+      project: todo.project,
+      user: {
+        id: todo.user.id,
+        createdAt: todo.user.createdAt,
+        name: todo.user.name,
+        email: todo.user.email,
+        image: todo.user.image,
+      },
     };
   });
 
@@ -321,55 +331,39 @@ export const create = authMutation
       title: z.string().min(1).max(200),
       description: z.string().max(1000).optional(),
       priority: z.enum(['low', 'medium', 'high']).optional(),
-      dueDate: z.number().optional(),
-      projectId: zid('projects').optional(),
-      tagIds: z.array(zid('tags')).max(10).optional(),
+      dueDate: z.date().optional(),
+      projectId: z.string().optional(),
+      tagIds: z.array(z.string()).max(10).optional(),
     })
   )
-  .output(zid('todos'))
+  .output(z.string())
   .mutation(async ({ ctx, input }) => {
     // Validate project access if provided
     if (input.projectId) {
-      const project = await ctx.table('projects').getX(input.projectId);
-
-      // Check if user is owner or member
-      const isOwner = project.ownerId === ctx.userId;
-      const isMember = await project.edge('members').has(ctx.userId);
-
-      if (!(isOwner || isMember)) {
-        throw new CRPCError({
-          code: 'FORBIDDEN',
-          message: "You don't have access to this project",
-        });
-      }
+      await assertProjectAccess(ctx, input.projectId, ctx.userId);
     }
 
     // Validate tags if provided
-    if (input.tagIds && input.tagIds.length > 0) {
-      const tags = await ctx.table('tags').getMany(input.tagIds);
-      const validTags = tags.filter(
-        (tag) => tag && tag.createdBy === ctx.userId
-      );
+    const tagIds = input.tagIds?.length
+      ? await validateTagIds(ctx, ctx.userId, input.tagIds)
+      : [];
 
-      if (validTags.length !== input.tagIds.length) {
-        throw new CRPCError({
-          code: 'BAD_REQUEST',
-          message: "Some tags are invalid or don't belong to you",
-        });
-      }
+    const [{ id: todoId }] = await ctx.orm
+      .insert(todosTable)
+      .values({
+        title: input.title,
+        description: input.description,
+        completed: false,
+        priority: input.priority,
+        dueDate: input.dueDate,
+        projectId: input.projectId,
+        userId: ctx.userId,
+      })
+      .returning({ id: todosTable.id });
+
+    for (const tagId of tagIds) {
+      await ctx.orm.insert(todoTagsTable).values({ todoId, tagId });
     }
-
-    // Create the todo
-    const todoId = await ctx.table('todos').insert({
-      title: input.title,
-      description: input.description,
-      completed: false,
-      priority: input.priority,
-      dueDate: input.dueDate,
-      projectId: input.projectId,
-      userId: ctx.userId,
-      tags: input.tagIds || [],
-    });
 
     return todoId;
   });
@@ -379,100 +373,64 @@ export const update = authMutation
   .meta({ rateLimit: 'todo/update' })
   .input(
     z.object({
-      id: zid('todos'),
+      id: z.string(),
       title: z.string().min(1).max(200).optional(),
       description: z.string().max(1000).optional(),
       priority: z.enum(['low', 'medium', 'high']).nullable().optional(),
-      dueDate: z.number().nullable().optional(),
-      projectId: zid('projects').nullable().optional(),
-      tagIds: z.array(zid('tags')).max(10).optional(),
+      dueDate: z.date().nullable().optional(),
+      projectId: z.string().nullable().optional(),
+      tagIds: z.array(z.string()).max(10).optional(),
     })
   )
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const todo = await ctx.table('todos').getX(input.id);
+    await ctx.orm.query.todos.findFirstOrThrow({
+      where: { id: input.id, userId: ctx.userId },
+    });
 
-    if (todo.userId !== ctx.userId) {
-      throw new CRPCError({
-        code: 'NOT_FOUND',
-        message: 'Todo not found',
-      });
+    if (input.projectId) {
+      await assertProjectAccess(ctx, input.projectId, ctx.userId);
     }
 
-    // Build update object
-    const updates: Partial<EntWriter<'todos'>> = {};
-
-    if (input.title !== undefined) {
-      updates.title = input.title;
-    }
-    if (input.description !== undefined) {
-      updates.description = input.description;
-    }
-    if (input.priority !== undefined) {
-      updates.priority = input.priority || undefined;
-    }
-    if (input.dueDate !== undefined) {
-      updates.dueDate = input.dueDate || undefined;
-    }
-
-    // Handle project update
-    if (input.projectId !== undefined) {
-      if (input.projectId) {
-        const project = await ctx.table('projects').getX(input.projectId);
-
-        const isOwner = project.ownerId === ctx.userId;
-        const isMember = await project.edge('members').has(ctx.userId);
-
-        if (!(isOwner || isMember)) {
-          throw new CRPCError({
-            code: 'FORBIDDEN',
-            message: "You don't have access to this project",
-          });
-        }
-        updates.projectId = input.projectId;
-      } else {
-        updates.projectId = undefined;
-      }
-    }
-
-    // Handle tag updates (edge, must be done before patch)
     if (input.tagIds !== undefined) {
-      if (input.tagIds.length > 0) {
-        const tags = await ctx.table('tags').getMany(input.tagIds);
-        const validTags = tags.filter(
-          (tag) => tag && tag.createdBy === ctx.userId
-        );
+      const newTagIds = input.tagIds.length
+        ? await validateTagIds(ctx, ctx.userId, input.tagIds)
+        : [];
 
-        if (validTags.length !== input.tagIds.length) {
-          throw new CRPCError({
-            code: 'BAD_REQUEST',
-            message: "Some tags are invalid or don't belong to you",
-          });
+      const current = await ctx.orm.query.todoTags.findMany({
+        where: { todoId: input.id },
+      });
+
+      const currentTagIds = new Set(current.map((j) => j.tagId));
+      const desiredTagIds = new Set(newTagIds);
+
+      for (const join of current) {
+        if (!desiredTagIds.has(join.tagId)) {
+          await ctx.orm
+            .delete(todoTagsTable)
+            .where(eq(todoTagsTable.id, join.id));
         }
       }
 
-      // Update tag edges using ents
-      const currentTags = await todo.edge('tags');
-      const currentTagIds = new Set(currentTags.map((t) => t._id));
-      const newTagIds = new Set(input.tagIds);
-
-      // Remove tags no longer in the list
-      const toRemove = currentTags
-        .filter((t) => !newTagIds.has(t._id))
-        .map((t) => t._id);
-      // Add new tags
-      const toAdd = input.tagIds.filter((id) => !currentTagIds.has(id));
-
-      if (toRemove.length > 0) {
-        await todo.patch({ tags: { remove: toRemove } });
-      }
-      if (toAdd.length > 0) {
-        await todo.patch({ tags: { add: toAdd } });
+      for (const tagId of desiredTagIds) {
+        if (!currentTagIds.has(tagId)) {
+          await ctx.orm
+            .insert(todoTagsTable)
+            .values({ todoId: input.id, tagId });
+        }
       }
     }
 
-    // Apply updates
-    await todo.patch(updates);
+    await ctx.orm
+      .update(todosTable)
+      .set({
+        title: input.title,
+        description: input.description,
+        priority: input.priority === null ? unsetToken : input.priority,
+        dueDate: input.dueDate === null ? unsetToken : input.dueDate,
+        projectId: input.projectId === null ? unsetToken : input.projectId,
+      })
+      .where(eq(todosTable.id, input.id));
 
     return null;
   });
@@ -480,20 +438,18 @@ export const update = authMutation
 // Toggle todo completion status
 export const toggleComplete = authMutation
   .meta({ rateLimit: 'todo/update' })
-  .input(z.object({ id: zid('todos') }))
+  .input(z.object({ id: z.string() }))
   .output(z.boolean())
   .mutation(async ({ ctx, input }) => {
-    const todo = await ctx.table('todos').getX(input.id);
-
-    if (todo.userId !== ctx.userId) {
-      throw new CRPCError({
-        code: 'NOT_FOUND',
-        message: 'Todo not found',
-      });
-    }
+    const todo = await ctx.orm.query.todos.findFirstOrThrow({
+      where: { id: input.id, userId: ctx.userId },
+    });
 
     const newStatus = !todo.completed;
-    await todo.patch({ completed: newStatus });
+    await ctx.orm
+      .update(todosTable)
+      .set({ completed: newStatus })
+      .where(eq(todosTable.id, input.id));
 
     return newStatus;
   });
@@ -501,20 +457,17 @@ export const toggleComplete = authMutation
 // Soft delete a todo
 export const deleteTodo = authMutation
   .meta({ rateLimit: 'todo/delete' })
-  .input(z.object({ id: zid('todos') }))
+  .input(z.object({ id: z.string() }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const todo = await ctx.table('todos').getX(input.id);
+    await ctx.orm.query.todos.findFirstOrThrow({
+      where: { id: input.id, userId: ctx.userId },
+    });
 
-    if (todo.userId !== ctx.userId) {
-      throw new CRPCError({
-        code: 'NOT_FOUND',
-        message: 'Todo not found',
-      });
-    }
-
-    // Soft delete sets deletionTime
-    await todo.delete();
+    await ctx.orm
+      .update(todosTable)
+      .set({ deletionTime: new Date() })
+      .where(eq(todosTable.id, input.id));
 
     return null;
   });
@@ -522,17 +475,12 @@ export const deleteTodo = authMutation
 // Restore a soft-deleted todo
 export const restore = authMutation
   .meta({ rateLimit: 'todo/update' })
-  .input(z.object({ id: zid('todos') }))
+  .input(z.object({ id: z.string() }))
   .output(z.null())
   .mutation(async ({ ctx, input }) => {
-    const todo = await ctx.table('todos').getX(input.id);
-
-    if (todo.userId !== ctx.userId) {
-      throw new CRPCError({
-        code: 'NOT_FOUND',
-        message: 'Todo not found',
-      });
-    }
+    const todo = await ctx.orm.query.todos.findFirstOrThrow({
+      where: { id: input.id, userId: ctx.userId },
+    });
 
     if (!todo.deletionTime) {
       throw new CRPCError({
@@ -541,8 +489,10 @@ export const restore = authMutation
       });
     }
 
-    // Restore by removing deletionTime
-    await todo.patch({ deletionTime: undefined });
+    await ctx.orm
+      .update(todosTable)
+      .set({ deletionTime: unsetToken })
+      .where(eq(todosTable.id, input.id));
 
     return null;
   });
@@ -550,7 +500,7 @@ export const restore = authMutation
 // Bulk delete todos
 export const bulkDelete = authMutation
   .meta({ rateLimit: 'todo/delete' })
-  .input(z.object({ ids: z.array(zid('todos')).min(1).max(100) }))
+  .input(z.object({ ids: z.array(z.string()).min(1).max(100) }))
   .output(
     z.object({
       deleted: z.number(),
@@ -563,10 +513,15 @@ export const bulkDelete = authMutation
 
     for (const id of input.ids) {
       try {
-        const todo = await ctx.table('todos').get(id);
+        const todo = await ctx.orm.query.todos.findFirst({
+          where: { id, userId: ctx.userId },
+        });
 
-        if (todo && todo.userId === ctx.userId) {
-          await todo.delete();
+        if (todo) {
+          await ctx.orm
+            .update(todosTable)
+            .set({ deletionTime: new Date() })
+            .where(eq(todosTable.id, id));
           deleted++;
         } else {
           errors.push(`Todo ${id} not found or unauthorized`);
@@ -577,37 +532,4 @@ export const bulkDelete = authMutation
     }
 
     return { deleted, errors };
-  });
-
-// Reorder todos (for drag-and-drop support)
-export const reorder = authMutation
-  .meta({ rateLimit: 'todo/update' })
-  .input(
-    z.object({
-      todoId: zid('todos'),
-      targetIndex: z.number().min(0),
-      projectId: zid('projects').optional(),
-    })
-  )
-  .output(z.null())
-  .mutation(async ({ ctx, input }) => {
-    // This is a placeholder for reordering logic
-    // In a real implementation, you would:
-    // 1. Add an "order" field to the schema
-    // 2. Update the order of todos within the same project/list
-    // 3. Ensure consistent ordering
-
-    const todo = await ctx.table('todos').getX(input.todoId);
-
-    if (todo.userId !== ctx.userId) {
-      throw new CRPCError({
-        code: 'NOT_FOUND',
-        message: 'Todo not found',
-      });
-    }
-
-    // For now, just validate the todo exists and belongs to the user
-    // Real implementation would update order fields
-
-    return null;
   });

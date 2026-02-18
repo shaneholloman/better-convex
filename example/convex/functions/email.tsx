@@ -5,11 +5,12 @@ import { render } from '@react-email/render';
 import z from 'zod';
 import { privateAction } from '../lib/crpc';
 import OrganizationInviteEmail from '../lib/emails/organization-invite';
+import { getEnv } from '../lib/get-env';
 import { components } from './_generated/api';
 
 // Initialize Resend component
 const resend: Resend = new Resend(components.resend, {
-  testMode: process.env.NODE_ENV !== 'production',
+  testMode: getEnv().DEPLOY_ENV !== 'production',
 });
 
 // Send organization invitation email action
@@ -46,5 +47,5 @@ export const sendOrganizationInviteEmail = privateAction
       to: args.to,
     });
 
-    return emailId as string; // Return the email ID for tracking
+    return emailId;
   });

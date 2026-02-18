@@ -1,6 +1,5 @@
 'use client';
 
-import type { Id } from '@convex/dataModel';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Archive, Crown, Settings, UserMinus } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
@@ -29,7 +28,7 @@ import { useCRPC } from '@/lib/convex/crpc';
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const projectId = params.id as Id<'projects'>;
+  const projectId = Array.isArray(params.id) ? params.id[0] : (params.id ?? '');
 
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [_showDeleteDialog, _setShowDeleteDialog] = useState(false);
@@ -46,15 +45,15 @@ export default function ProjectDetailPage() {
       { projectId },
       {
         placeholderData: {
-          _id: '0' as Id<'projects'>,
-          _creationTime: new Date('2025-11-04').getTime(),
+          id: '0',
+          createdAt: new Date('2025-11-04'),
           name: 'Loading Project',
           description: 'Loading description...',
-          ownerId: '0' as Id<'user'>,
+          ownerId: '0',
           isPublic: false,
           archived: false,
           owner: {
-            _id: '0' as Id<'user'>,
+            id: '0',
             name: 'Loading',
             email: 'loading@example.com',
           },
@@ -142,7 +141,7 @@ export default function ProjectDetailPage() {
     leaveProject.mutate({ projectId });
   };
 
-  const isOwner = !!project && project.owner._id === project.ownerId;
+  const isOwner = !!project && project.owner.id === project.ownerId;
   const completionRate =
     project && project.todoCount > 0
       ? Math.round((project.completedTodoCount / project.todoCount) * 100)

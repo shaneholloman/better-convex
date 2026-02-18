@@ -25,7 +25,9 @@ export default privateMutation
 
     for (const adminEmail of adminEmails) {
       // Check if user exists in our app table by email
-      const existingUser = await ctx.table('user').get('email', adminEmail);
+      const existingUser = await ctx.orm.query.user.findFirst({
+        where: { email: adminEmail },
+      });
 
       if (existingUser) {
         isFirstInit = false;

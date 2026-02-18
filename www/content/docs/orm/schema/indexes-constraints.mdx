@@ -141,6 +141,21 @@ export const memberships = convexTable(
 );
 ```
 
+#### Self-Referencing Foreign Keys
+
+When a table references itself (e.g. a tree of comments), annotate the callback return type with `AnyColumn` to avoid circular-reference errors:
+
+```ts showLineNumbers {1,6-8}
+import { type AnyColumn, convexTable, text } from 'better-convex/orm';
+
+export const comments = convexTable('comments', {
+  body: text().notNull(),
+  parentId: text().references((): AnyColumn => comments.id, {
+    onDelete: 'cascade',
+  }),
+});
+```
+
 #### Actions (`onDelete` / `onUpdate`)
 
 The ORM supports Drizzle-style foreign key actions, enforced at runtime by ORM mutations.
