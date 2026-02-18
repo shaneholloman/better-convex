@@ -361,7 +361,7 @@ describe('httpAdapter', () => {
     ).rejects.toThrow('ctx is not a mutation ctx');
   });
 
-  test('update throws when where clause is not a single eq', async () => {
+  test('update throws when where clause uses unsupported operator', async () => {
     const runMutation = mock(async () => ({ _id: 'user-1', ok: true }));
 
     const adapterFactory = httpAdapter(
@@ -376,15 +376,7 @@ describe('httpAdapter', () => {
       adapter.update({
         model: 'user',
         update: { name: 'alice' },
-        where: [
-          { field: 'id', operator: 'eq', value: 'user-1' },
-          {
-            connector: 'AND',
-            field: 'email',
-            operator: 'eq',
-            value: 'a@b.com',
-          },
-        ],
+        where: [{ field: 'id', operator: 'gt', value: 'user-1' }],
       })
     ).rejects.toThrow('where clause not supported');
   });
