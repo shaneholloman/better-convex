@@ -100,6 +100,7 @@ export type {
   SystemFields,
 } from './builders';
 export {
+  arrayOf,
   bigint,
   boolean,
   bytes,
@@ -108,6 +109,7 @@ export {
   id,
   integer,
   json,
+  objectOf,
   text,
   textEnum,
   timestamp,
@@ -274,10 +276,12 @@ export {
   scheduledMutationBatchFactory,
 } from './scheduled-mutation-batch';
 export { defineSchema } from './schema';
+export type { OrmSchemaPlugin } from './symbols';
 // M1: Schema Foundation
 export {
   Brand,
   Columns,
+  OrmSchemaPluginTables,
   TableName,
 } from './symbols';
 export type { ConvexTable, TableConfig } from './table';
