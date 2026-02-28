@@ -109,7 +109,7 @@ export class Ratelimit {
       }
 
       const waitMs = Math.max(1, Math.min(latest.reset, deadline) - Date.now());
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      await sleep(waitMs);
     }
 
     return latest;
@@ -451,29 +451,18 @@ export class Ratelimit {
       return operation();
     }
 
-    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-    const timeoutResult = this.timeoutResponse(this.failureMode === 'open');
-    let timerUnavailable = false;
-    const timeoutPromise = new Promise<RatelimitResponse>((resolve) => {
-      try {
-        timeoutHandle = setTimeout(() => resolve(timeoutResult), this.timeout);
-      } catch {
-        timerUnavailable = true;
-        resolve(timeoutResult);
-      }
-    });
-
-    if (timerUnavailable) {
-      // Some environments (tests/sandboxes) may not expose timers reliably.
-      return operation();
-    }
-
+    const startedAt = Date.now();
     try {
-      return await Promise.race([operation(), timeoutPromise]);
-    } finally {
-      if (timeoutHandle !== undefined) {
-        clearTimeout(timeoutHandle);
+      const result = await operation();
+      if (Date.now() - startedAt > this.timeout) {
+        return this.timeoutResponse(this.failureMode === 'open');
       }
+      return result;
+    } catch (error) {
+      if (Date.now() - startedAt > this.timeout) {
+        return this.timeoutResponse(this.failureMode === 'open');
+      }
+      throw error;
     }
   }
 
@@ -543,6 +532,32 @@ function pickSampleShards(total: number, sample: number): number[] {
   }
 
   return selected.length > 0 ? selected : [0];
+}
+
+async function sleep(ms: number): Promise<void> {
+  try {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, ms);
+    });
+  } catch (error) {
+    if (isTimerUnsupportedError(error)) {
+      throw new Error(
+        'blockUntilReady is not supported in Convex queries/mutations. Use an action or non-Convex runtime.'
+      );
+    }
+    throw error;
+  }
+}
+
+function isTimerUnsupportedError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("can't use settimeout in queries and mutations") ||
+    message.includes('settimeout')
+  );
 }
 
 async function resolveIdentifier(

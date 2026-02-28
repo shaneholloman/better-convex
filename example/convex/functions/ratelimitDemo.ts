@@ -347,22 +347,27 @@ function buildCoverageProbes(
       return current;
     },
     'deny-list-reason': async () => {
+      const deniedIp = '10.0.0.1';
       const limiter = new Ratelimit({
         db,
         prefix: createProbePrefix(userId, 'deny'),
         enableProtection: true,
         denyList: {
-          ips: ['10.0.0.1'],
+          ips: [deniedIp],
         },
         limiter: Ratelimit.fixedWindow(2, MINUTE),
       });
 
-      const denied = await limiter.limit(userId, { ip: '10.0.0.1' });
+      const denied = await limiter.limit(userId, { ip: deniedIp });
       if (denied.success || denied.reason !== 'denyList') {
         throw new Error('Expected deny list rejection');
       }
 
-      return denied;
+      return {
+        passedIp: deniedIp,
+        deniedValue: denied.deniedValue ?? null,
+        denied,
+      };
     },
     'timeout-open-mode': async () => {
       const slowLimiter = new Ratelimit({
@@ -379,16 +384,6 @@ function buildCoverageProbes(
       }
 
       return result;
-    },
-    'block-until-ready-mutation-blocked': async () => {
-      const limiter = new Ratelimit({
-        db,
-        prefix: createProbePrefix(userId, 'block-until-ready'),
-        limiter: Ratelimit.fixedWindow(1, MINUTE),
-      });
-
-      await limiter.limit(userId);
-      return limiter.blockUntilReady(userId, 100);
     },
     'get-value-snapshot': async () => {
       const limiter = new Ratelimit({

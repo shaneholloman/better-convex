@@ -28,7 +28,7 @@ We'll end with a full API reference so you can tune behavior without guesswork.
 
 | What you get | Why it matters |
 | --- | --- |
-| Upstash-style API | Easier migration if your team already knows Upstash (`limit`, `check`, `getRemaining`, `resetUsedTokens`, `blockUntilReady`) |
+| Upstash-style API | Easier migration if your team already knows Upstash (`limit`, `check`, `getRemaining`, `resetUsedTokens`) |
 | Convex-first tables | No component registration and no component migration path to manage |
 | Read dedupe helpers | Common repeated reads may reuse cached results and reduce duplicate DB fetches |
 | React hook support | `hookAPI()` + `useRateLimit()` gives accurate client countdown and button states |
@@ -258,24 +258,25 @@ The `identifier` option can be a static string, or an async callback that receiv
 
 Then wire it up in your component with `useRateLimit`:
 
-```tsx title="src/components/send-button.tsx" showLineNumbers {1,3-7,9-10}
+```tsx title="src/components/send-button.tsx" showLineNumbers {1,3-10,12-13}
 import { useRateLimit } from 'better-convex/plugins/ratelimit/react';
 
-const { status, check } = useRateLimit(api.ratelimit.getRateLimit, {
-  identifier: userId,
+const rateLimitRef = 'ratelimitDemo:getInteractiveRateLimit' as const;
+const serverTimeRef = 'ratelimitDemo:getInteractiveServerTime' as const;
+
+const { status, check } = useRateLimit(rateLimitRef, {
+  identifier: sessionId,
   count: 1,
-  getServerTimeMutation: api.ratelimit.getServerTime,
+  getServerTimeMutation: serverTimeRef,
 });
 
 const blocked = status?.ok === false;
 const retryAt = status?.retryAt;
-
-return (
-  <button disabled={blocked}>
-    {blocked ? `Try again at ${new Date(retryAt!).toLocaleTimeString()}` : 'Send'}
-  </button>
-);
 ```
+
+`useRateLimit` accepts either:
+- a Convex function path string (`'module:functionName'`) — this is what the `/ratelimit` demo uses.
+- a generated `FunctionReference` from `api`.
 
 The hook returns:
 
@@ -507,18 +508,6 @@ Read the current dynamic override. Returns `{ dynamicLimit: number | null }`. Re
 getDynamicLimit(): Promise<DynamicLimitResponse>
 ```
 
-#### `blockUntilReady(identifier, timeoutMs)`
-
-Wait for tokens to become available, retrying automatically. Returns as soon as `limit()` succeeds or the timeout is reached.
-
-```ts
-blockUntilReady(identifier: string, timeoutMs: number): Promise<RatelimitResponse>
-```
-
-<Callout icon={<InfoIcon />}>
-  **Important:** `blockUntilReady` uses `setTimeout` internally. Use it only in **actions** or non-Convex runtimes. Do not call it inside queries or mutations — Convex does not support timers in those contexts.
-</Callout>
-
 #### `hookAPI(options?)`
 
 Export a `getRateLimit` query and `getServerTime` mutation for the React hook.
@@ -554,7 +543,7 @@ Same as `LimitRequest` but `reserve` defaults to not consuming tokens (since `ch
 
 #### `RatelimitResponse`
 
-Returned by `limit()`, `check()`, and `blockUntilReady()`.
+Returned by `limit()` and `check()`.
 
 | Field | Type | Description |
 | --- | --- | --- |
@@ -603,12 +592,19 @@ Options for `hookAPI()`.
 
 Options for the `useRateLimit()` React hook.
 
+```ts
+useRateLimit(
+  getRateLimitValueQuery: FunctionReference<'query'> | string,
+  options?: UseRateLimitOptions
+)
+```
+
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
 | `identifier` | `string` | — | Passed to the `getRateLimit` query |
 | `count` | `number` | `1` | Tokens to project for status calculation |
 | `sampleShards` | `number` | — | Override sampleShards from hook API |
-| `getServerTimeMutation` | `FunctionReference` | — | Enables clock-skew correction between client and server |
+| `getServerTimeMutation` | `FunctionReference \| string` | — | Enables clock-skew correction between client and server |
 
 ### Time constants
 

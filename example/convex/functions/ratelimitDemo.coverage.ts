@@ -14,7 +14,6 @@ export type RateLimitCoverageId =
   | 'dynamic-limit-override'
   | 'deny-list-reason'
   | 'timeout-open-mode'
-  | 'block-until-ready-mutation-blocked'
   | 'get-value-snapshot';
 
 export type RateLimitCoverageDefinition = {
@@ -103,16 +102,6 @@ export const RATELIMIT_COVERAGE_DEFINITIONS: readonly RateLimitCoverageDefinitio
       example: 'timeout:0.0001 + failureMode:open',
     },
     {
-      id: 'block-until-ready-mutation-blocked',
-      feature: 'blockUntilReady in mutations',
-      status: 'blocked',
-      reason:
-        'Uses timers internally and should run in actions/non-Convex runtimes, not queries/mutations.',
-      errorCode: 'PROBE_FAILED',
-      example:
-        'blockUntilReady() from mutation context throws because setTimeout is disallowed',
-    },
-    {
       id: 'get-value-snapshot',
       feature: 'getValue snapshot API',
       status: 'supported',
@@ -127,6 +116,7 @@ export const RATELIMIT_LIVE_PROBE_IDS = new Set<RateLimitCoverageId>([
   'check-non-consuming',
   'token-bucket-reserve',
   'get-remaining',
+  'deny-list-reason',
 ]);
 
 export function createStaticProbeResult(

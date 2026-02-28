@@ -97,6 +97,36 @@ function expectedPass(entry: CoverageEntry): boolean {
   return entry.probe.ok;
 }
 
+function getDenyIpProof(entry: CoverageEntry): string | null {
+  if (entry.id !== 'deny-list-reason') {
+    return null;
+  }
+  const value = entry.probe.value;
+  if (typeof value !== 'object' || value === null) {
+    return null;
+  }
+
+  const proof = value as {
+    passedIp?: unknown;
+    deniedValue?: unknown;
+    denied?: { deniedValue?: unknown };
+  };
+
+  const passedIp =
+    typeof proof.passedIp === 'string' ? proof.passedIp : undefined;
+  const deniedValue =
+    typeof proof.deniedValue === 'string'
+      ? proof.deniedValue
+      : typeof proof.denied?.deniedValue === 'string'
+        ? proof.denied.deniedValue
+        : undefined;
+
+  if (!passedIp && !deniedValue) {
+    return null;
+  }
+  return `passed ${passedIp ?? '—'} -> denied ${deniedValue ?? '—'}`;
+}
+
 function JsonBox({ label, value }: { label: string; value: unknown }) {
   return (
     <div className="rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100 shadow-inner">
@@ -385,6 +415,7 @@ export default function RatelimitPage() {
                   .filter((entry) => entry.status === status)
                   .map((entry) => {
                     const passed = expectedPass(entry);
+                    const denyIpProof = getDenyIpProof(entry);
                     return (
                       <tr
                         className="border-border/50 border-t align-top"
@@ -424,6 +455,11 @@ export default function RatelimitPage() {
                             {entry.probe.error ? (
                               <span className="text-rose-600 text-xs">
                                 {entry.probe.error}
+                              </span>
+                            ) : null}
+                            {denyIpProof ? (
+                              <span className="font-mono text-[11px] text-muted-foreground">
+                                {denyIpProof}
                               </span>
                             ) : null}
                           </div>

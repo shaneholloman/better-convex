@@ -1052,7 +1052,6 @@ export declare const internal: {
           | "dynamic-limit-override"
           | "deny-list-reason"
           | "timeout-open-mode"
-          | "block-until-ready-mutation-blocked"
           | "get-value-snapshot";
         userId: string;
       },

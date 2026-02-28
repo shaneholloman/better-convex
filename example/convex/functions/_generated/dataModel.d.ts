@@ -705,7 +705,6 @@ export type DataModel = {
       expiresAt: number;
       impersonatedBy?: null | string;
       ipAddress?: null | string;
-      test: string;
       token: string;
       updatedAt: number;
       userAgent?: null | string;
@@ -721,7 +720,6 @@ export type DataModel = {
       | "expiresAt"
       | "impersonatedBy"
       | "ipAddress"
-      | "test"
       | "token"
       | "updatedAt"
       | "userAgent"
@@ -962,6 +960,7 @@ export type DataModel = {
       recursivePatchCount: number;
       runId: string;
       status?: null | "draft" | "active" | "archived";
+      test: string;
       updatedAt: number;
       _id: Id<"triggerDemoRecord">;
       _creationTime: number;
@@ -978,6 +977,7 @@ export type DataModel = {
       | "recursivePatchCount"
       | "runId"
       | "status"
+      | "test"
       | "updatedAt";
     indexes: {
       by_id: ["_id"];

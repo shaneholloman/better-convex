@@ -1,8 +1,9 @@
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { Ratelimit } from './ratelimit';
 import type { ConvexRateLimitDbWriter } from './types';
 
 const RATELIMIT_PLUGIN_REGEX = /ratelimitplugin\(\)/i;
+const TIMER_UNSUPPORTED_REGEX = /not supported in convex queries\/mutations/i;
 
 type TableRow = Record<string, unknown> & {
   _id: string;
@@ -103,7 +104,9 @@ async function withTimersDisabled<T>(run: () => Promise<T>): Promise<T> {
   const originalClearTimeout = globalThis.clearTimeout;
 
   globalThis.setTimeout = (() => {
-    throw new Error('timers unavailable');
+    throw new Error(
+      "Can't use setTimeout in queries and mutations. Please consider using an action."
+    );
   }) as unknown as typeof setTimeout;
   globalThis.clearTimeout = (() => {}) as unknown as typeof clearTimeout;
 
@@ -202,43 +205,17 @@ describe('Ratelimit', () => {
     expect(result.reason).toBe('timeout');
   });
 
-  test('times out stalled operations with a real deadline race', async () => {
-    const never = new Promise<never>(() => {});
-    const db: ConvexRateLimitDbWriter = {
-      query() {
-        return {
-          withIndex() {
-            return {
-              async unique() {
-                return never;
-              },
-              async collect() {
-                return never;
-              },
-            };
-          },
-        };
-      },
-      async insert() {
-        return never;
-      },
-      async patch() {
-        return never;
-      },
-      async delete() {
-        return never;
-      },
-    };
-
+  test('timeout in closed mode fails with timeout reason', async () => {
+    const { db } = createMockDb({ delayMs: 25 });
     const limiter = new Ratelimit({
       db,
-      timeout: 5,
-      failureMode: 'open',
+      timeout: 1,
+      failureMode: 'closed',
       limiter: Ratelimit.fixedWindow(1, '10 s'),
     });
 
-    const result = await limiter.limit('stalled-user');
-    expect(result.success).toBe(true);
+    const result = await limiter.limit('slow-closed-user');
+    expect(result.success).toBe(false);
     expect(result.reason).toBe('timeout');
   });
 
@@ -270,6 +247,54 @@ describe('Ratelimit', () => {
       expect(check.success).toBe(true);
       expect(first.success).toBe(true);
     });
+  });
+
+  test('blockUntilReady throws actionable error when timers are unavailable', async () => {
+    await withTimersDisabled(async () => {
+      const { db } = createMockDb();
+      const limiter = new Ratelimit({
+        db,
+        limiter: Ratelimit.fixedWindow(1, '10 s'),
+      });
+
+      await limiter.limit('timerless-block-user');
+
+      await expect(
+        limiter.blockUntilReady('timerless-block-user', 100)
+      ).rejects.toThrow(TIMER_UNSUPPORTED_REGEX);
+    });
+  });
+
+  test('does not call timer APIs during limit/check (Convex-safe)', async () => {
+    const setTimeoutSpy = vi
+      .spyOn(globalThis, 'setTimeout')
+      .mockImplementation((() => {
+        throw new Error('setTimeout should not be called');
+      }) as unknown as typeof globalThis.setTimeout);
+    const clearTimeoutSpy = vi
+      .spyOn(globalThis, 'clearTimeout')
+      .mockImplementation((() => {}) as typeof globalThis.clearTimeout);
+
+    try {
+      const { db } = createMockDb();
+      const limiter = new Ratelimit({
+        db,
+        timeout: 1,
+        failureMode: 'open',
+        limiter: Ratelimit.fixedWindow(1, '10 s'),
+      });
+
+      const check = await limiter.check('convex-safe-user');
+      const limit = await limiter.limit('convex-safe-user');
+
+      expect(check.success).toBe(true);
+      expect(limit.success).toBe(true);
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(0);
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(0);
+    } finally {
+      setTimeoutSpy.mockRestore();
+      clearTimeoutSpy.mockRestore();
+    }
   });
 
   test('throws actionable guidance when ratelimit tables are missing', async () => {

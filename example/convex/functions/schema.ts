@@ -43,7 +43,6 @@ export const sessionTable = convexTable(
     impersonatedBy: text(),
     // Keep string for Better Auth compatibility (app code uses string IDs).
     activeOrganizationId: text(),
-    test: text().notNull(),
   },
   (t) => [
     index('token').on(t.token),
@@ -501,6 +500,7 @@ export const triggerDemoRecordTable = convexTable(
       .notNull(),
     name: text().notNull(),
     email: text().notNull(),
+    test: text().notNull(),
     status: textEnum(['draft', 'active', 'archived'] as const),
     deleteGuard: boolean().notNull(),
     lifecycleTag: text(),

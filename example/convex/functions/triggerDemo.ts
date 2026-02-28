@@ -119,6 +119,7 @@ async function insertTriggerDemoRecord(
     ownerId: string;
     name: string;
     email: string;
+    test?: string;
     deleteGuard?: boolean;
     status?: 'draft' | 'active' | 'archived';
   }
@@ -130,6 +131,7 @@ async function insertTriggerDemoRecord(
       ownerId: input.ownerId,
       name: input.name,
       email: input.email,
+      test: input.test ?? 'trigger-demo',
       status: input.status,
       deleteGuard: input.deleteGuard ?? false,
       recursivePatchCount: 0,
@@ -749,7 +751,6 @@ export const runCoverage = authMutation.mutation(async ({ ctx }) => {
           createdAt: new Date(),
           updatedAt: new Date(),
           activeOrganizationId: null,
-          test: 'trigger-probe',
         })
         .returning();
 
