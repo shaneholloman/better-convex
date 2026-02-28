@@ -559,9 +559,9 @@ Source coverage mapping used to build this runbook:
 | `www/content/docs/tanstack-start.mdx`                | Section 8.B                      |
 | `www/content/docs/server/http.mdx`                   | Sections 6.6, 9.6                |
 | `www/content/docs/server/server-side-calls.mdx`      | Section 8.A.1, 8.B.3             |
-| `www/content/docs/server/advanced/rate-limiting.mdx` | Section 9.4                      |
-| `www/content/docs/server/advanced/aggregates.mdx`    | Section 9.3                      |
-| `www/content/docs/server/advanced/scheduling.mdx`    | Section 9.5                      |
+| `www/content/docs/plugins/ratelimit.mdx`             | Section 9.4                      |
+| `www/content/docs/orm/queries/aggregates.mdx`        | Section 9.3                      |
+| `www/content/docs/server/scheduling.mdx`             | Section 9.5                      |
 | `www/content/docs/orm/queries/index.mdx`             | Sections 5, 12                   |
 | `www/content/docs/orm/mutations/index.mdx`           | Sections 5, 12                   |
 | `www/content/docs/orm/triggers.mdx`                  | Sections 9.2, 9.3                |

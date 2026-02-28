@@ -1,5 +1,0 @@
-{
-  "title": "Advanced",
-  "defaultOpen": true,
-  "pages": ["scheduling", "rate-limiting"]
-}

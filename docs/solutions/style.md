@@ -2,7 +2,7 @@
 
 Reference: `@docs/solutions/style.md`, `@www/content/docs/server/http.mdx`
 
-Write verbose, educational documentation. Guide the reader step by step.
+Write verbose, educational documentation. Guide the reader step by step. Advanced / low-level documentation should be written in a last section `## API Reference` (if any).
 
 ## Writing Principles
 

@@ -2,7 +2,7 @@
 title: Rate Limiting
 description: Upstash-style rate limiting with Convex-first storage and middleware-friendly DX.
 links:
-  doc: /docs/server/advanced/rate-limiting
+  doc: /docs/plugins/ratelimit
 ---
 
 import { InfoIcon } from "lucide-react"
@@ -10,6 +10,17 @@ import { InfoIcon } from "lucide-react"
 In this guide, we'll set up `better-convex/plugins/ratelimit` with an Upstash-parity API, Convex-first storage, and a UI-friendly hook.
 
 We'll keep it practical: a reusable server guard, middleware wiring, algorithm choices, and client-side button disabling with live countdowns.
+
+## Approach
+
+We'll build this in four steps so you can ship quickly and keep things maintainable:
+
+1. Enable the schema plugin so internal storage tables exist.
+2. Add one reusable server guard for all protected mutations.
+3. Wire the guard into middleware so handlers stay focused.
+4. Add optional client-side UX with `useRateLimit()` for disabled states and retry timers.
+
+We'll end with a full API reference so you can tune behavior without guesswork.
 
 ## Why this package
 
@@ -365,7 +376,7 @@ Recommended production posture:
 - Put network-layer controls (Cloudflare or equivalent) in front when IP-based mitigation is required.
 - Alert on request spikes and fail safely (`failureMode: "closed"` by default).
 
-## API reference for advanced stuff
+## API Reference
 
 ### Constructor options
 
@@ -654,7 +665,7 @@ The response includes both `success` and `ok`. They are always identical. `ok` e
 ## Next steps
 
 <Cards>
-  <Card title="Metadata" href="/docs/orm/schema/column-types" />
+  <Card title="Plugins Overview" href="/docs/plugins" />
   <Card title="Error Handling" href="/docs/server/error-handling" />
   <Card title="Middlewares" href="/docs/server/middlewares" />
 </Cards>
