@@ -1,6 +1,16 @@
 'use client';
 
-import { Code2, Database, Globe, Lock, Server, Shield } from 'lucide-react';
+import {
+  BarChart3,
+  Code2,
+  Database,
+  Globe,
+  Lock,
+  Puzzle,
+  Route,
+  Server,
+  Shield,
+} from 'lucide-react';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
@@ -51,6 +61,30 @@ const features = [
       'Fire-and-forget prefetch or awaited preloading. Hydration included.',
     color: 'bg-sky-500/10 text-sky-500',
     href: '/docs/nextjs',
+  },
+  {
+    icon: Puzzle,
+    title: 'Plugins',
+    description:
+      'Cross-cutting features that span schema and API. Inspired by Better Auth.',
+    color: 'bg-violet-500/10 text-violet-500',
+    href: '/docs/plugins',
+  },
+  {
+    icon: BarChart3,
+    title: 'Aggregates',
+    description:
+      'O(log n) counts, sums, min/max, and ranked leaderboards. Zero-scan, index-backed.',
+    color: 'bg-amber-500/10 text-amber-500',
+    href: '/docs/orm/queries/aggregates',
+  },
+  {
+    icon: Route,
+    title: 'Migrations',
+    description:
+      'Versioned, resumable data migrations with up/down, dry-run, and drift detection.',
+    color: 'bg-teal-500/10 text-teal-500',
+    href: '/docs/orm/migrations',
   },
 ];
 

@@ -27,15 +27,15 @@ Here's a quick reference for choosing the right approach:
 | Scenario | Cron Jobs | Scheduled Functions |
 |----------|-----------|---------------------|
 | Daily cleanup | ✅ Fixed schedule | ❌ |
-| Send email after signup | ❌ | ✅ `runAfter(0)` |
-| Subscription expiration | ❌ | ✅ `runAt(timestamp)` |
+| Send email after signup | ❌ | ✅ `schedule.now` |
+| Subscription expiration | ❌ | ✅ `schedule.at(timestamp)` |
 | Hourly analytics | ✅ Fixed schedule | ❌ |
-| Reminder notifications | ❌ | ✅ User-defined time |
+| Reminder notifications | ❌ | ✅ `schedule.at(time)` |
 | Database maintenance | ✅ Off-peak hours | ❌ |
-| Order processing delay | ❌ | ✅ `runAfter(5000)` |
+| Order processing delay | ❌ | ✅ `schedule.after(5000)` |
 
 <Callout icon={<InfoIcon />}>
-**Tip:** Use `runAfter(0)` to trigger [actions](/docs/server/procedures#actions) immediately after a mutation commits - perfect for sending emails, webhooks, or other side effects.
+**Tip:** Use `schedule.now` to trigger [actions](/docs/server/procedures#actions) immediately after a mutation commits — perfect for sending emails, webhooks, or other side effects.
 </Callout>
 
 Let's explore both approaches.
@@ -153,9 +153,9 @@ Scheduled functions run once at a specific time or after a delay. Let's explore 
 
 Key behavioral constraints: scheduling from mutations is atomic (failure cancels the schedule), limits are 1000 functions / 8MB args per function, and results are retained for 7 days. See [Scheduled Function Behavior](#scheduled-function-behavior) in the API Reference.
 
-### scheduler.runAfter
+### schedule.after
 
-Use `runAfter` to schedule a function to run after a delay (in milliseconds):
+Use `schedule.after(delayMs)` to schedule a function to run after a delay (in milliseconds):
 
 ```ts title="convex/functions/orders.ts" showLineNumbers {3,12-14}
 import { z } from 'zod';
@@ -181,9 +181,9 @@ export const processOrder = authMutation
   });
 ```
 
-### Immediate Execution
+### schedule.now
 
-Use `runAfter(0)` to trigger actions immediately after a mutation commits:
+Use `schedule.now` to trigger actions immediately after a mutation commits:
 
 ```ts title="convex/functions/items.ts" showLineNumbers {1,8-11}
 import { createItemsCaller } from './generated/items.runtime';
@@ -208,9 +208,9 @@ export const createItem = authMutation
 
 This is perfect for sending emails, webhooks, or other side effects that shouldn't block the mutation.
 
-### scheduler.runAt
+### schedule.at
 
-Use `runAt` to schedule a function to run at a specific Unix timestamp:
+Use `schedule.at(timestamp)` to schedule a function to run at a specific Unix timestamp:
 
 ```ts title="convex/functions/reminders.ts" showLineNumbers {1,10-13}
 import { CRPCError } from 'better-convex/server';
@@ -403,7 +403,7 @@ Here are key practices to follow when using scheduling:
 3. **Check conditions** - Target may be deleted before execution
 4. **Consider idempotency** - Scheduled functions might run multiple times
 5. **Pass auth info** - Auth not propagated, pass user data as arguments
-6. **Use runAfter(0)** - Trigger actions after mutation commits
+6. **Use `schedule.now`** - Trigger actions after mutation commits
 
 ## Next Steps
 

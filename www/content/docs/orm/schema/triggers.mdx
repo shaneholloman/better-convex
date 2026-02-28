@@ -164,7 +164,7 @@ For runtime behavior, see [API Reference](#api-reference) below.
 ## Best Practices
 
 1. Keep hooks deterministic and table-local.
-2. Keep expensive work in `scheduler.runAfter`.
+2. Keep expensive work in `caller.schedule.after()` or `caller.schedule.now`.
 3. Index every query path used inside hooks.
 4. Prefer `create/update/delete` for specific rules; use `change` for cross-operation logic.
 

@@ -25,16 +25,21 @@ Better Convex integrates Convex for realtime data, TanStack Query for caching, a
 
 ## What's Included
 
-| Layer | Feature | Description |
-|-------|---------|-------------|
-| **Server** | cRPC | tRPC-style procedure builder with `.input()`, `.use()`, middleware |
-| **Database** | Drizzle ORM | Drizzle-style queries, relations, runtime constraints, `ctx.orm` |
-| **Database** | Triggers | Automatic side effects on data changes |
-| **Database** | Aggregates | O(log n) counts, sums, leaderboards |
-| **Client** | React | TanStack Query integration with real-time sync |
-| **Client** | Next.js | RSC prefetching, hydration, server caller |
-| **Auth** | Better Auth | Triggers, session management, guards |
-| **CLI** | Codegen | Procedure metadata for auth-aware queries |
+| Export | Description | Depends on |
+|--------|-------------|------------|
+| `better-convex` (CLI) | Codegen, `better-convex dev` | — |
+| `better-convex/server` | cRPC builder, middleware, server caller | — |
+| `better-convex/orm` | Drizzle-style ORM schema and query helpers | — |
+| `better-convex/react` | React client, providers, auth hooks | `server` |
+| `better-convex/rsc` | RSC prefetching, hydration | `server`, `react`, `next` |
+| `better-convex/auth` | Better Auth adapter | — |
+| `better-convex/auth/client` | Better Auth client plugins | `react` |
+| `better-convex/auth/config` | Convex auth config provider | `auth` |
+| `better-convex/auth/http` | Auth HTTP helpers | `auth` |
+| `better-convex/auth/nextjs` | Better Auth Next.js adapter | `server`, `next` |
+| `better-convex/plugins/ratelimit` | Rate limiting plugin | `orm` |
+
+`server`, `orm`, and `auth` are standalone foundations — everything else builds on one or more. You can use `server` or `auth` without `orm`, `orm` and `plugins` without `server`.
 
 ## Quick Look
 
@@ -49,8 +54,6 @@ export const list = authQuery
 // Client: Use it with TanStack Query
 const { data: posts } = useQuery(crpc.posts.list.queryOptions({ limit: 10 }));
 ```
-
-See [Packages](#packages) for the full list of package exports.
 
 ## Requirements
 
@@ -215,21 +218,3 @@ If you're an AI agent integrating better-convex, **ask the user to select their 
 **Server components (RSC):**
 1. [Next.js Setup](/docs/nextjs) → configure caller
 2. [RSC](/docs/nextjs/rsc) → prefetch and hydrate
-
----
-
-## API Reference
-
-### Packages
-
-| Export | Description |
-|--------|-------------|
-| `better-convex/server` | cRPC builder, middleware, server caller |
-| `better-convex/orm` | Drizzle-style ORM schema and query helpers |
-| `better-convex/react` | React client, providers, auth hooks |
-| `better-convex/rsc` | RSC prefetching, hydration |
-| `better-convex/auth` | Better Auth adapter |
-| `better-convex/auth/client` | Better Auth client plugins |
-| `better-convex/auth/config` | Convex auth config provider |
-| `better-convex/auth/http` | Auth HTTP helpers |
-| `better-convex/auth/nextjs` | Better Auth Next.js adapter |
