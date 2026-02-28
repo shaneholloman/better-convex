@@ -60,24 +60,24 @@ export default function MigrationsPage() {
       },
     })
   );
+  const mutateStatus = status.mutate;
 
   useEffect(() => {
     if (!canRun) {
-      setStatusData(null);
       return;
     }
 
-    status.mutate(undefined);
+    mutateStatus(undefined);
     const interval = window.setInterval(() => {
-      status.mutate(undefined);
+      mutateStatus(undefined);
     }, 2000);
 
     return () => window.clearInterval(interval);
-  }, [canRun, status.mutate]);
+  }, [canRun, mutateStatus]);
 
   const invalidateStatus = () => {
     if (canRun) {
-      status.mutate(undefined);
+      mutateStatus(undefined);
     }
   };
 
@@ -117,10 +117,11 @@ export default function MigrationsPage() {
     })
   );
 
-  const runs = statusData?.runs ?? EMPTY_RUNS;
-  const states = statusData?.states ?? EMPTY_STATES;
+  const visibleStatusData = canRun ? statusData : null;
+  const runs = visibleStatusData?.runs ?? EMPTY_RUNS;
+  const states = visibleStatusData?.states ?? EMPTY_STATES;
   const latestRun = runs[0] ?? null;
-  const activeRun = statusData?.activeRun ?? null;
+  const activeRun = visibleStatusData?.activeRun ?? null;
   const stateSummary = useMemo(() => {
     return {
       total: states.length,
