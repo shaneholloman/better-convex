@@ -33,7 +33,9 @@
   },
   "dependencies": {
     "@convex-dev/better-auth": "0.10.11",
+    "@tanstack/query-core": "5.90.20",
     "@tanstack/react-query": "5.90.21",
+    "@tanstack/solid-query": "5.90.23",
     "convex": "1.32.0",
     "hono": "4.12.2",
     "next": "16.1.6",
@@ -49,6 +51,7 @@
     "@fast-check/vitest": "^0.2.4",
     "@happy-dom/global-registrator": "^20.7.0",
     "@rollup/plugin-babel": "^6.1.0",
+    "@solidjs/testing-library": "^0.8.10",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.3.1",
@@ -67,6 +70,7 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.56.1",
     "ultracite": "7.2.4",
+    "vite-plugin-solid": "^2.11.10",
     "vitest": "^4.0.18",
     "yauzl": "^3.2.0",
     "yazl": "^3.3.1"

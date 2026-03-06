@@ -1,21 +1,19 @@
-/** biome-ignore-all lint/suspicious/noExplicitAny: Convex type compatibility */
-
 /**
- * Query options factories for Convex functions.
- * Forked from @convex-dev/react-query to support auth-aware error handling.
+ * Query options factories for Convex functions (SolidJS).
+ * Port of the React version — uses ConvexClient directly instead of convex/react hooks.
+ *
+ * Note: In @tanstack/solid-query, UseMutationOptions and UseQueryOptions are
+ * Accessor wrappers. We use SolidMutationOptions and SolidQueryOptions (plain
+ * object types) for parameters and return values.
  */
 
 import {
   type DefaultError,
   type SkipToken,
+  type SolidMutationOptions,
+  type SolidQueryOptions,
   skipToken,
-  type UseMutationOptions,
-  type UseQueryOptions,
-} from '@tanstack/react-query';
-import {
-  useAction as useConvexActionBase,
-  useMutation as useConvexMutationBase,
-} from 'convex/react';
+} from '@tanstack/solid-query';
 import type {
   FunctionArgs,
   FunctionReference,
@@ -37,10 +35,10 @@ import type {
   ConvexQueryMeta,
   InfiniteQueryInput,
 } from '../crpc/types';
-import { useAuthSkip } from '../internal/auth';
 import type { DistributiveOmit } from '../internal/types';
+import { useAuthSkip, useFnMeta, useMeta } from './auth';
 import { useAuthGuard } from './auth-store';
-import { useFnMeta, useMeta } from './context';
+import { useConvex } from './convex-solid';
 import type {
   ConvexActionOptions,
   ConvexInfiniteQueryOptions,
@@ -81,7 +79,7 @@ export function useConvexQueryOptions<T extends FunctionReference<'query'>>(
   args: FunctionArgs<T> | SkipToken,
   options?: ConvexQueryHookOptions &
     DistributiveOmit<
-      UseQueryOptions<FunctionReturnType<T>, DefaultError>,
+      SolidQueryOptions<FunctionReturnType<T>, DefaultError>,
       ReservedQueryOptions
     >
 ): ConvexQueryOptions<T> & { meta: ConvexQueryMeta } {
@@ -91,7 +89,7 @@ export function useConvexQueryOptions<T extends FunctionReference<'query'>>(
   // Convert enabled to boolean (TanStack Query allows function)
   const enabled =
     typeof options?.enabled === 'function' ? undefined : options?.enabled;
-  const { authType, shouldSkip } = useAuthSkip(funcRef, {
+  const authSkip = useAuthSkip(funcRef, {
     enabled: isSkipped ? false : enabled,
     skipUnauth: options?.skipUnauth,
   });
@@ -108,10 +106,10 @@ export function useConvexQueryOptions<T extends FunctionReference<'query'>>(
   return {
     ...baseOptions,
     ...queryOptions, // Spread user options
-    enabled: isSkipped ? false : !shouldSkip,
+    enabled: isSkipped ? false : !authSkip.shouldSkip,
     meta: {
       ...baseOptions.meta,
-      authType,
+      authType: authSkip.authType,
       subscribe: subscribe !== false,
     },
   };
@@ -156,13 +154,13 @@ export function useConvexInfiniteQueryOptions<
   const enabledOpt =
     typeof opts.enabled === 'function' ? undefined : opts.enabled;
 
-  const { authType, shouldSkip } = useAuthSkip(funcRef, {
+  const authSkip = useAuthSkip(funcRef, {
     enabled: isSkipped ? false : enabledOpt,
     skipUnauth: opts.skipUnauth,
   });
 
   // Determine final enabled state
-  const enabled = isSkipped || shouldSkip ? false : enabledOpt;
+  const enabled = isSkipped || authSkip.shouldSkip ? false : enabledOpt;
 
   const baseOptions = convexInfiniteQueryOptions(
     funcRef,
@@ -175,7 +173,7 @@ export function useConvexInfiniteQueryOptions<
     ...baseOptions,
     meta: {
       ...baseOptions.meta,
-      authType,
+      authType: authSkip.authType,
     },
   } as ConvexInfiniteQueryOptions<T>;
 }
@@ -205,7 +203,7 @@ export function useConvexActionQueryOptions<
   action: Action,
   args: FunctionArgs<Action> | SkipToken,
   options?: { skipUnauth?: boolean } & DistributiveOmit<
-    UseQueryOptions<FunctionReturnType<Action>, DefaultError>,
+    SolidQueryOptions<FunctionReturnType<Action>, DefaultError>,
     ReservedQueryOptions
   >
 ): ConvexActionOptions<Action> {
@@ -214,7 +212,7 @@ export function useConvexActionQueryOptions<
   // Convert enabled to boolean (TanStack Query allows function)
   const enabled =
     typeof options?.enabled === 'function' ? undefined : options?.enabled;
-  const { shouldSkip } = useAuthSkip(action, {
+  const authSkip = useAuthSkip(action, {
     enabled: isSkipped ? false : enabled,
     skipUnauth: options?.skipUnauth,
   });
@@ -231,7 +229,7 @@ export function useConvexActionQueryOptions<
   return {
     ...baseOptions,
     ...queryOptions,
-    enabled: isSkipped ? false : !shouldSkip,
+    enabled: isSkipped ? false : !authSkip.shouldSkip,
   };
 }
 
@@ -258,7 +256,7 @@ export function useConvexMutationOptions<
 >(
   mutation: Mutation,
   options?: DistributiveOmit<
-    UseMutationOptions<
+    SolidMutationOptions<
       FunctionReturnType<Mutation>,
       DefaultError,
       FunctionArgs<Mutation>
@@ -266,7 +264,7 @@ export function useConvexMutationOptions<
     ReservedMutationOptions
   >,
   transformer?: DataTransformerOptions
-): UseMutationOptions<
+): SolidMutationOptions<
   FunctionReturnType<Mutation>,
   DefaultError,
   FunctionArgs<Mutation>
@@ -276,7 +274,7 @@ export function useConvexMutationOptions<
   const name = getFunctionName(mutation);
   const [namespace, fnName] = name.split(':');
   const authType = getMeta(namespace, fnName)?.auth as AuthType;
-  const convexMutation = useConvexMutationBase(mutation);
+  const convex = useConvex();
   const resolvedTransformer = getTransformer(transformer);
 
   return {
@@ -290,7 +288,8 @@ export function useConvexMutationOptions<
         });
       }
 
-      return convexMutation(
+      return convex.mutation(
+        mutation,
         resolvedTransformer.input.serialize(args) as FunctionArgs<Mutation>
       );
     },
@@ -318,7 +317,7 @@ export function useConvexActionOptions<
 >(
   action: Action,
   options?: DistributiveOmit<
-    UseMutationOptions<
+    SolidMutationOptions<
       FunctionReturnType<Action>,
       DefaultError,
       FunctionArgs<Action>
@@ -326,7 +325,7 @@ export function useConvexActionOptions<
     ReservedMutationOptions
   >,
   transformer?: DataTransformerOptions
-): UseMutationOptions<
+): SolidMutationOptions<
   FunctionReturnType<Action>,
   DefaultError,
   FunctionArgs<Action>
@@ -336,7 +335,7 @@ export function useConvexActionOptions<
   const name = getFunctionName(action);
   const [namespace, fnName] = name.split(':');
   const authType = getMeta(namespace, fnName)?.auth as AuthType;
-  const convexAction = useConvexActionBase(action);
+  const convex = useConvex();
   const resolvedTransformer = getTransformer(transformer);
 
   return {
@@ -350,7 +349,8 @@ export function useConvexActionOptions<
         });
       }
 
-      return convexAction(
+      return convex.action(
+        action,
         resolvedTransformer.input.serialize(args) as FunctionArgs<Action>
       );
     },
@@ -384,24 +384,25 @@ export function useUploadMutationOptions<
 >(
   generateUrlMutation: TGenerateUrlMutation,
   options?: DistributiveOmit<
-    UseMutationOptions<
+    SolidMutationOptions<
       FunctionReturnType<TGenerateUrlMutation>,
       DefaultError,
       { file: File } & FunctionArgs<TGenerateUrlMutation>
     >,
     ReservedMutationOptions
   >
-): UseMutationOptions<
+): SolidMutationOptions<
   FunctionReturnType<TGenerateUrlMutation>,
   DefaultError,
   { file: File } & FunctionArgs<TGenerateUrlMutation>
 > {
-  const generateUrl = useConvexMutationBase(generateUrlMutation);
+  const convex = useConvex();
 
   return {
     ...options,
     mutationFn: async ({ file, ...args }) => {
-      const result = await generateUrl(
+      const result = await convex.mutation(
+        generateUrlMutation,
         args as FunctionArgs<TGenerateUrlMutation>
       );
       const { url } = result;

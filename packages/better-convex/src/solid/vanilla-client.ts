@@ -2,7 +2,7 @@
  * Vanilla CRPC Client
  *
  * Creates a tRPC-like proxy for direct procedural calls to Convex functions.
- * Unlike the options proxy, this allows imperative usage outside React Query.
+ * Unlike the options proxy, this allows imperative usage outside Solid Query.
  *
  * @example
  * ```ts
@@ -12,7 +12,7 @@
  * ```
  */
 
-import type { ConvexReactClient, WatchQueryOptions } from 'convex/react';
+import type { ConvexClient } from 'convex/browser';
 import type { FunctionReference } from 'convex/server';
 import {
   type CombinedDataTransformer,
@@ -34,7 +34,7 @@ function createRecursiveVanillaProxy(
   api: Record<string, unknown>,
   path: string[],
   meta: CallerMeta,
-  convexClient: ConvexReactClient,
+  convexClient: ConvexClient,
   transformer: CombinedDataTransformer
 ): unknown {
   return new Proxy(() => {}, {
@@ -67,17 +67,22 @@ function createRecursiveVanillaProxy(
         };
       }
 
-      // Terminal method: watchQuery (for queries - subscription)
-      if (prop === 'watchQuery') {
+      // Terminal method: onUpdate (for queries - subscription)
+      if (prop === 'onUpdate') {
         return (
           args: Record<string, unknown> = {},
-          opts?: WatchQueryOptions
+          callback?: (result: unknown) => void,
+          onError?: (e: Error) => void
         ) => {
           const funcRef = getFuncRef(api, path);
-          return convexClient.watchQuery(
+          return convexClient.onUpdate(
             funcRef as FunctionReference<'query'>,
             transformer.input.serialize(args) as any,
-            opts
+            callback
+              ? (result: unknown) =>
+                  callback(transformer.output.deserialize(result))
+              : () => {},
+            onError
           );
         };
       }
@@ -126,14 +131,14 @@ function createRecursiveVanillaProxy(
  *
  * @param api - The Convex API object (from `@convex/api`)
  * @param meta - Generated function metadata for runtime type detection
- * @param convexClient - The ConvexReactClient instance
+ * @param convexClient - The ConvexClient instance
  * @returns A typed proxy with query/mutate methods
  *
  * @example
  * ```tsx
  * const client = createVanillaCRPCProxy(api, meta, convexClient);
  *
- * // Direct calls (no React Query)
+ * // Direct calls (no Solid Query)
  * const user = await client.user.get.query({ id });
  * await client.user.update.mutate({ id, name: 'test' });
  * ```
@@ -141,7 +146,7 @@ function createRecursiveVanillaProxy(
 export function createVanillaCRPCProxy<TApi extends Record<string, unknown>>(
   api: TApi,
   meta: CallerMeta,
-  convexClient: ConvexReactClient,
+  convexClient: ConvexClient,
   transformer?: DataTransformerOptions
 ): VanillaCRPCClient<TApi> {
   const resolvedTransformer = getTransformer(transformer);

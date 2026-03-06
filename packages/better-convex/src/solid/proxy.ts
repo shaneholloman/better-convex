@@ -16,7 +16,7 @@ import {
   type QueryFilters,
   type SkipToken,
   skipToken,
-} from '@tanstack/react-query';
+} from '@tanstack/solid-query';
 import type { FunctionArgs, FunctionReference } from 'convex/server';
 import { getFunctionName } from 'convex/server';
 import { convexAction, convexQuery } from '../crpc/query-options';
