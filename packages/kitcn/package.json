@@ -28,6 +28,7 @@
     "./auth/http": "./dist/auth/http/index.js",
     "./auth/nextjs": "./dist/auth/nextjs/index.js",
     "./auth/start": "./dist/auth/start/index.js",
+    "./auth/start/server": "./dist/auth/start/server/index.js",
     "./crpc": "./dist/crpc/index.js",
     "./orm": "./dist/orm/index.js",
     "./plugins": "./dist/plugins/index.js",
@@ -80,6 +81,7 @@
     "@rollup/plugin-babel": "^6.1.0",
     "@tanstack/intent": "0.0.23",
     "@tanstack/query-core": "5.90.20",
+    "@tanstack/react-start": "1.166.15",
     "@types/common-tags": "^1.8.4",
     "babel-plugin-react-compiler": "^1.0.0",
     "rolldown-plugin-solid": "^0.2.1",
@@ -88,6 +90,7 @@
   "peerDependencies": {
     "@tanstack/query-core": ">=5",
     "@tanstack/react-query": ">=5",
+    "@tanstack/react-start": ">=1",
     "@tanstack/solid-query": ">=5",
     "better-auth": "1.6.9",
     "convex": ">=1.38",
@@ -99,6 +102,9 @@
   },
   "peerDependenciesMeta": {
     "@tanstack/react-query": {
+      "optional": true
+    },
+    "@tanstack/react-start": {
       "optional": true
     },
     "@tanstack/solid-query": {

@@ -1,11 +1,49 @@
 import { describe, expect, mock, test } from 'bun:test';
-import {
-  convexBetterAuthReactStart,
-  syncConvexAuthForStartLoader,
-} from './index';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { build } from 'esbuild';
+import { syncConvexAuthForStartLoader } from './index';
+import { convexBetterAuthReactStart } from './server';
 
 describe('auth/start', () => {
-  test('re-exports the react-start helper surface', () => {
+  test('keeps the server import traceable without poisoning the shared entry', () => {
+    const sharedSource = readFileSync(
+      path.join(import.meta.dir, 'index.ts'),
+      'utf8'
+    );
+    const serverSource = readFileSync(
+      path.join(import.meta.dir, 'server.ts'),
+      'utf8'
+    );
+
+    expect(sharedSource).not.toContain('@tanstack/react-start/server');
+    expect(serverSource).toContain("from '@tanstack/react-start/server'");
+  });
+
+  test('keeps the shared loader entry browser-bundleable', async () => {
+    const result = await build({
+      bundle: true,
+      format: 'esm',
+      logLevel: 'silent',
+      platform: 'browser',
+      stdin: {
+        contents: `
+          import { syncConvexAuthForStartLoader } from './index';
+          console.log(syncConvexAuthForStartLoader);
+        `,
+        loader: 'ts',
+        resolveDir: import.meta.dir,
+        sourcefile: 'entry.ts',
+      },
+      write: false,
+    });
+    const code = result.outputFiles[0]?.text ?? '';
+
+    expect(code).not.toContain('@tanstack/react-start/server');
+    expect(code).not.toContain('node:async_hooks');
+  });
+
+  test('exports the react-start server helper surface', () => {
     expect(typeof convexBetterAuthReactStart).toBe('function');
   });
 
