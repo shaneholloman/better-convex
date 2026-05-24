@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "autoreview": {
+      "source": "openclaw/agent-skills",
+      "sourceType": "github",
+      "computedHash": "b65c6f42c3f6cc87c993666796c2e79f978e89e34430ebd594d678c98a30a86e"
+    },
     "ce:brainstorm": {
       "source": "EveryInc/compound-engineering-plugin",
       "sourceType": "github",
