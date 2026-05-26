@@ -4,13 +4,16 @@ import { isFieldReference } from './filter-expression';
 import { getIndexes } from './index-utils';
 import {
   applyIncomingForeignKeyActionsOnUpdate,
+  canUsePrimaryIdLookupCursor,
   collectMutationRowsBounded,
+  collectPrimaryIdLookupRows,
   encodeUndefinedDeep,
   enforceCheckConstraints,
   enforceForeignKeys,
   enforcePolymorphicWrite,
   enforceUniqueIndexes,
   evaluateFilter,
+  extractPrimaryIdLookup,
   getMutationAsyncDelayMs,
   getMutationCollectionLimits,
   getMutationExecutionMode,
@@ -239,32 +242,6 @@ export class ConvexUpdateBuilder<
     return this as any;
   }
 
-  private getIdEquality():
-    | { matched: true; value: unknown }
-    | { matched: false } {
-    const expression = this.whereExpression;
-    if (!expression || expression.type !== 'binary') {
-      return { matched: false };
-    }
-    if (expression.operator !== 'eq') {
-      return { matched: false };
-    }
-    const [left, right] = expression.operands;
-    if (isFieldReference(left) && left.fieldName === '_id') {
-      if (isFieldReference(right)) {
-        return { matched: false };
-      }
-      return { matched: true, value: right };
-    }
-    if (isFieldReference(right) && right.fieldName === '_id') {
-      if (isFieldReference(left)) {
-        return { matched: false };
-      }
-      return { matched: true, value: left };
-    }
-    return { matched: false };
-  }
-
   executeAsync(
     this: ConvexUpdateExecutableThis<TTable, TReturning, TMode>,
     ...args: TMode extends 'single'
@@ -474,17 +451,24 @@ export class ConvexUpdateBuilder<
     let rows: Record<string, unknown>[];
     let continueCursor: string | null = null;
     let isDone = true;
-    const idEquality = this.getIdEquality();
-    if (idEquality.matched) {
-      const idValue = idEquality.value;
-      if (isPaginated && pagination.cursor !== null) {
-        rows = [];
-      } else if (idValue === null || idValue === undefined) {
-        rows = [];
-      } else {
-        const row = await this.db.get(idValue as any);
-        rows = row ? [row as Record<string, unknown>] : [];
-      }
+    const primaryIdLookup = canUsePrimaryIdLookupCursor(pagination?.cursor)
+      ? extractPrimaryIdLookup(this.whereExpression)
+      : null;
+    if (primaryIdLookup) {
+      const primaryIdRows = await collectPrimaryIdLookupRows(
+        this.db,
+        tableName,
+        primaryIdLookup,
+        {
+          operation: 'update',
+          pagination,
+          batchSize,
+          maxRows,
+        }
+      );
+      continueCursor = primaryIdRows.continueCursor;
+      isDone = primaryIdRows.isDone;
+      rows = primaryIdRows.rows;
     } else if (this.whereExpression) {
       const compiler = new WhereClauseCompiler(
         tableName,

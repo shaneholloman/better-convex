@@ -150,9 +150,15 @@ lock.
 - Docs/content work: use `--template docs` when docs dominate; use `--with docs`
   when docs are a supporting touched surface. For `www/**`, keep matching
   `packages/kitcn/skills/kitcn/**` content in sync.
-- `git-commit-push-pr`: verified code should ship as a PR. Create or update the
-  PR before tracker comments, and keep the PR description synced to the final
-  handoff.
+- `git-commit-push-pr`: verified code should ship as a commit and PR unless
+  the user explicitly says not to, or the work is analytical, blocked,
+  inconclusive, or has no local patch. This is a task-skill requirement, so it
+  satisfies the repo git permission policy. Stage the entire current checkout
+  per repo policy when creating the PR, create the commit, push, create or
+  update the PR before tracker comments. The `task` skill owns the PR body:
+  use `git-commit-push-pr` for git/gh transport, then write the PR description
+  from the task-style final handoff contract below instead of the generic
+  adaptive PR summary.
 - Review skills: load only for risky, large, user-facing, or
   architecture-sensitive changes.
 - `agent-native-reviewer`: changes touch `.agents/**`, `.claude/**`,
@@ -254,8 +260,12 @@ Keep verification mandatory and proportional.
   `bun --cwd packages/kitcn build`.
 - If work changes `kitcn init -t` templates or scaffold sources, run
   `bun run fixtures:sync` and `bun run fixtures:check`.
-- If verified work changed code, create or update the PR before tracker
-  sync-back unless the user said not to.
+- If verified work changed code, commit it and create or update the PR before
+  tracker sync-back and final handoff unless the user explicitly said not to.
+  Do not mark commit/PR gates N/A merely because the user did not ask for a PR;
+  the task skill requires shipping verified code. If commit or PR creation is
+  impossible after real attempts, record the blocker and stop instead of
+  silently handing off a local-only patch.
 - If the task came from a tracker item and reached a meaningful outcome, sync
   back unless the user said not to.
 
@@ -271,6 +281,28 @@ Keep verification mandatory and proportional.
   implementation history.
 - For browser work, include the exact route and human verification steps.
 
+## Task-Style PR Body
+
+When a `task` run creates or updates a PR, the PR description must mirror the
+task final handoff. Do not use a generic `Summary` / `Verification` PR body, an
+adaptive prose body from `git-commit-push-pr`, or a generated badge footer
+unless the caller or repo template explicitly asks for it.
+
+Use this order:
+
+1. Preserve any existing `<!-- auto-release:start -->` block. If a changeset is
+   part of the diff and repo policy expects auto release, include that block.
+2. Issue, tracker, or fix line when applicable. Never include a line that links
+   to the current PR itself; the current PR URL belongs in the final response,
+   not in its own description.
+3. Confidence line.
+4. Reproduced / Verified table with test and browser columns.
+5. `Outcome`, `Caveat`, `Design`, and `Verified` sections.
+
+The body should tell QA/reviewers what was fixed, how it was reproduced, how it
+was verified, and why the chosen ownership boundary is right. After editing,
+verify it with `gh pr view --json body` before final handoff.
+
 ## Success Criteria
 
 - Source-of-truth context was read first.
@@ -285,4 +317,9 @@ Keep verification mandatory and proportional.
 - Only necessary skills were loaded.
 - Batch work did not sprawl without explicit instruction.
 - Verification matched change scope.
+- Verified code-changing work was committed and PR'd, or the user explicitly
+  declined that path, the work had no local patch, or a real blocker was
+  recorded.
+- PR descriptions created by task runs used the task-style final handoff body
+  and were verified with `gh pr view --json body`.
 - Final handoff matched the task type and any task-template gate evidence.
