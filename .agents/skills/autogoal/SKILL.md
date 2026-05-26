@@ -94,6 +94,15 @@ into the generated plan's `Start Gates`, `Work Checklist`, and
 `Completion Gates`. After creation, the generated plan is the truth; the checker
 validates that materialized plan only.
 
+The generated plan is the dedicated plan shell. Fill that exact file
+immediately after generation: replace placeholders, resolve every gate row, and
+mark non-applicable generated rows as `N/A: <reason>` with evidence. Do not
+delete, wholesale replace, or hand-narrow the generated plan into an ad hoc
+smaller plan after durable work has started. If the selected template is plainly
+wrong and no substantive work has started, regenerate once with the right
+template and record why. If work has already started, keep the generated plan
+and close it honestly.
+
 Use packs like this:
 
 ```bash
@@ -413,14 +422,14 @@ Target selection order:
 
 Repair scope matrix:
 
-| Miss | Primary repair owner |
-|------|----------------------|
-| Current plan has wrong status, row, evidence, or handoff fields | active `docs/plans/*` plan |
-| Future generated plans need a recurring section, gate, row, or placeholder | `docs/plans/templates/<owner>.md` |
-| Agent chose the wrong workflow, target, proof standard, or completion rule | `.agents/rules/<owner>.mdc` |
-| Prose keeps failing and the miss is mechanically checkable | `.agents/rules/autogoal/scripts/*` plus focused script proof |
-| Derived skill adds lane-specific ceremony or policy | derived skill rule/template, not `autogoal` |
-| Universal lifecycle rule is missing across goal-backed work | `.agents/rules/autogoal.mdc` |
+| Miss                                                                       | Primary repair owner                                         |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Current plan has wrong status, row, evidence, or handoff fields            | active `docs/plans/*` plan                                   |
+| Future generated plans need a recurring section, gate, row, or placeholder | `docs/plans/templates/<owner>.md`                            |
+| Agent chose the wrong workflow, target, proof standard, or completion rule | `.agents/rules/<owner>.mdc`                                  |
+| Prose keeps failing and the miss is mechanically checkable                 | `.agents/rules/autogoal/scripts/*` plus focused script proof |
+| Derived skill adds lane-specific ceremony or policy                        | derived skill rule/template, not `autogoal`                  |
+| Universal lifecycle rule is missing across goal-backed work                | `.agents/rules/autogoal.mdc`                                 |
 
 Repair workflow:
 
@@ -438,6 +447,7 @@ Repair workflow:
    ```
 
    If a repair is truly trivial, record why no separate repair plan is needed.
+
 5. Patch source-of-truth files only. Never hand-edit generated
    `.agents/skills/*/SKILL.md`; after changing `.agents/rules/**`, run
    `bun install`.
@@ -550,11 +560,14 @@ Gate closure rules:
    honestly complete or fit within the current active goal.
 8. Create the `docs/plans` goal plan from the checklist template before
    substantive work.
-9. Record the flow mode and goal plan path in the goal plan, then use that exact
-   path for
-   `check-complete.mjs`.
-10. Do not start durable work until the goal is set, verified as already matching,
-   or the user explicitly resolves the missing-goal path.
+9. Fill the generated plan itself before substantive work: write the objective,
+   threshold, verification surface, constraints, boundaries, blocked condition,
+   flow mode, and goal plan path; resolve generated gates as yes/no/N/A instead
+   of deleting or replacing the template output.
+10. Use that exact path for
+    `check-complete.mjs`.
+11. Do not start durable work until the goal is set, verified as already matching,
+    or the user explicitly resolves the missing-goal path.
 
 Set the goal before mutable lane state when the workflow depends on a goal. For
 pass-gated planning or accepted-plan execution lanes, the goal is the first
@@ -597,6 +610,14 @@ blocked condition through CLI flags. The CLI only creates the static plan shell.
 After creation, edit the generated `docs/plans` file and write the active goal
 objective, completion threshold, verification surface, constraints, boundaries,
 blocked condition, and remaining goal-specific rows into the file.
+
+Editing the generated file means filling and resolving that materialized shell,
+not replacing it with a hand-made mini-plan. Keep generated sections and rows
+unless the row is truly irrelevant, then mark it complete with `N/A: <reason>`.
+If a template choice is wrong before work starts, regenerate with the correct
+template and record the replacement. If any durable work has already started,
+do not swap the plan out from under the work; close the generated plan with
+honest evidence, N/A rows, or a blocker.
 
 The default project template is generic:
 
@@ -753,27 +774,34 @@ Primary template:
 <docs/plans/templates/name.md>
 
 Applied packs:
+
 - <pack or none>
 
 Completion threshold:
+
 - <quantitative or auditable done row>
 
 Verification surface:
+
 - <tests/artifacts/browser proof/source audit>
 
 Constraints:
+
 - <must preserve / must not touch>
 
 Boundaries:
+
 - <allowed files/packages/tools>
 
 Blocked condition:
+
 - <condition that stops autonomous work>
 
 Start Gates:
 | Gate | Applies | Evidence |
 
 Work Checklist:
+
 - [ ] Actual work item or pass-specific requirement with evidence.
 - [ ] ...
 
@@ -784,27 +812,33 @@ Phase / pass table:
 | Phase | Status | Evidence | Next |
 
 Findings:
+
 - <research, source reads, browser/visual findings as data>
 
 Timeline:
+
 - <timestamp> <action/evidence>
 
 Decisions and tradeoffs:
+
 - <decision> -> <reason> -> <risk>
 
 Review fixes:
+
 - <finding> -> <accepted/rejected> -> <change or reason>
 
 Error attempts:
 | Error / failed attempt | Count | Next different move | Resolution |
 
 Verification evidence:
+
 - <command/artifact> -> <result>
 
 Reboot status:
 | Where am I? | Where am I going? | What is the goal? | What learned? | What done? |
 
 Open risks:
+
 - <risk or none>
 ```
 
