@@ -1,8 +1,7 @@
 ---
 name: kitcn
-description: ALWAYS use this skill when working with convex or kitcn. Covers both setup and e2e feature paths using cRPC + ORM + auth + React.
+description: Use for Convex/kitcn setup and feature work: cRPC, ORM, auth, React.
 sources: [www/content/docs/concepts.mdx, www/content/docs/orm/index.mdx, www/content/docs/orm/schema/relations.mdx, www/content/docs/orm/schema/triggers.mdx, www/content/docs/orm/queries/aggregates.mdx, www/content/docs/orm/queries/pagination.mdx, www/content/docs/server/error-handling.mdx, www/content/docs/server/http.mdx, www/content/docs/server/middlewares.mdx, www/content/docs/server/procedures.mdx, www/content/docs/server/server-side-calls.mdx, www/content/docs/react/queries.mdx, www/content/docs/react/mutations.mdx, www/content/docs/react/infinite-queries.mdx, www/content/docs/auth/client.mdx, www/content/docs/auth/server.mdx]
-metadata: { sources: [www/content/docs/concepts.mdx, www/content/docs/orm/index.mdx, www/content/docs/orm/schema/relations.mdx, www/content/docs/orm/schema/triggers.mdx, www/content/docs/orm/queries/aggregates.mdx, www/content/docs/orm/queries/pagination.mdx, www/content/docs/server/error-handling.mdx, www/content/docs/server/http.mdx, www/content/docs/server/middlewares.mdx, www/content/docs/server/procedures.mdx, www/content/docs/server/server-side-calls.mdx, www/content/docs/react/queries.mdx, www/content/docs/react/mutations.mdx, www/content/docs/react/infinite-queries.mdx, www/content/docs/auth/client.mdx, www/content/docs/auth/server.mdx] }
 ---
 # kitcn Core Skill (80% Path)
 Use this file first for everyday feature delivery in an already configured kitcn app.
@@ -25,7 +24,7 @@ Out of scope:
 4. Use `CRPCError` for expected failures.
 5. Prefer schema triggers for cross-row invariants, but move invariant maintenance to explicit mutation helpers if trigger execution is unstable (for example init/seed hangs or recursive write paths).
 6. Keep auth/rate-limit checks server-side.
-7. **Inter-procedure calls**: `create<Module>Handler(ctx)` in queries/mutations (zero overhead) unless validation is relevant, `create<Module>Caller(ctx)` in actions/HTTP routes. In action context use `caller.actions.*` for action procedures and `caller.schedule.*` for scheduling. Import from `./generated/<module>.runtime`. Never call `ctx.runQuery`/`ctx.runMutation`/`ctx.runAction` directly for module procedures.
+7. **Inter-procedure calls**: use generated runtime helpers: `create<Module>Handler(ctx)` in queries/mutations, `create<Module>Caller(ctx)` in actions/HTTP routes, `caller.actions.*` for action procedures, and `caller.schedule.*` for scheduling. Never call `ctx.runQuery`/`ctx.runMutation`/`ctx.runAction` directly for module procedures.
 ## Shortcut Mode (tRPC + Drizzle Mental Model)
 Default assumption:
 - cRPC behavior is tRPC-like (builder chain + middleware + TanStack options).
@@ -50,9 +49,9 @@ Only remember these non-parity deltas:
 17. In RSC, `prefetch` hydrates client, `caller` is server-only and not hydrated, `preloadQuery` hydrates but can cause stale split ownership if also rendered client-side.
 18. Better Auth Next.js shortcut is `convexBetterAuth(...)`; generic server-only shortcut is `createCallerFactory(...)`.
 19. On the kitcn auth client path, use `createAuthMutations(authClient)` wrappers so logout unsubscribes auth queries before sign out. Raw Convex preset keeps a smaller plain `authClient`.
-20. **NEVER** use `ctx.runQuery`/`ctx.runMutation`/`ctx.runAction` directly for module-to-module calls. Use `create<Module>Handler(ctx)` or `create<Module>Caller(ctx)` from `convex/functions/generated/<module>.runtime` instead.
-21. **`create<Module>Handler(ctx)`** — default choice for queries/mutations. Bypasses input validation, middleware, output validation → zero overhead. Query/mutation ctx only. Import from `./generated/<module>.runtime`.
-22. **`create<Module>Caller(ctx)`** — use in actions and HTTP routes (where handler is unavailable). Goes through validation + middleware. Root caller exposes query+mutation procedures. In `ActionCtx`, action procedures are under `caller.actions.*`; scheduling is under `caller.schedule.now|after|at` with `caller.schedule.cancel(id)`. Use `requireActionCtx(ctx)` only when the callback truly runs in `ActionCtx` and you need `caller.actions.*`. If the callback can run from `MutationCtx | ActionCtx` or generic scheduler-capable context, keep the seam honest: use `requireSchedulerCtx(ctx)` and `caller.schedule.*` instead of pretending the path is action-only. Import from `./generated/<module>.runtime`. Each caller/handler eagerly loads every procedure in its module (no lazy loading) — split large modules to keep bundles lean.
+20. **NEVER** use `ctx.runQuery`/`ctx.runMutation`/`ctx.runAction` directly for module-to-module calls. Use the generated runtime helpers from `convex/functions/generated/<module>.runtime`.
+21. **`create<Module>Handler(ctx)`** is the default in queries/mutations: zero overhead, query/mutation ctx only, and no redundant validation or middleware.
+22. **`create<Module>Caller(ctx)`** is for actions and HTTP routes. Action procedures live under `caller.actions.*`; scheduling lives under `caller.schedule.now|after|at|cancel`. Use `requireActionCtx(ctx)` only for true `ActionCtx` callbacks; use `requireSchedulerCtx(ctx)` when mutation or action contexts can schedule. Each caller/handler eagerly loads its module, so split large modules.
 23. API types (`Api`, `ApiInputs`, `ApiOutputs`, `Select`, `Insert`, `TableName`) import from `@convex/api` — no manual `inferApiInputs<typeof api>`.
 24. HTTP router must export as `httpRouter` (not `appRouter`) for codegen.
 25. Server wiring imports come from `convex/functions/generated/` directory: `getAuth`, `defineAuth` from `generated/auth`; `initCRPC`, `QueryCtx`, `MutationCtx`, `OrmCtx` from `generated/server`; `create<Module>Caller`, `create<Module>Handler` from `generated/<module>.runtime`. No manual `convex/lib/orm.ts`.
@@ -61,7 +60,7 @@ Only remember these non-parity deltas:
 28. Async mutation batching is the default (codegen wires it). Customize per call: `execute({ batchSize, delayMs })`. Opt into sync: `execute({ mode: 'sync' })` or `defineSchema(..., { defaults: { mutationExecutionMode: 'sync' } })`. Relevant defaults: `mutationBatchSize`, `mutationLeafBatchSize`, `mutationMaxRows`, `mutationScheduleCallCap`.
 29. Polymorphic unions are schema-first: use `actionType: discriminator({ variants, as? })` in `convexTable(...)`. Query config does not include a `polymorphic` option. Writes stay flat; reads synthesize nested `details` (or custom alias). Use `withVariants: true` to auto-load all `one()` relations on discriminator tables.
 30. Do not add manual ORM mutation batching loops in app/plugin code by default. Convex runtime batching already handles mutation execution. Prefer set-based deletes/updates over per-row loops. Only add explicit chunking when batching external side effects (for example Resend API calls) or bounded cleanup sweeps.
-## Directory Boundary (Important)
+## Directory Boundary
 Use `references/setup/` when the task needs:
 1. Project/file structure setup → `setup/index.md` + `setup/server.md`
 2. Auth bootstrap → `setup/auth.md`

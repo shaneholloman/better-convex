@@ -617,60 +617,32 @@ if (ctx.isAuthenticated) await ctx.caller.todos.create({ title: "New task" });
 
 ### Route Builder Patterns
 
-| Pattern                                  | Use Case                 |
-| ---------------------------------------- | ------------------------ |
-| `publicRoute.get('/path').query()`       | Public GET endpoint      |
-| `authRoute.post('/path').mutation()`     | Auth-required POST       |
-| `optionalAuthRoute.get('/path').query()` | Optional auth endpoint   |
-| `.params(z.object({id}))`                | Path params `/todos/:id` |
-| `.searchParams(z.object({limit}))`       | Query params `?limit=10` |
-| `.input(z.object({...}))`                | JSON body (POST/PATCH)   |
-| `.form(z.object({file, description}))`   | FormData uploads         |
-| `.output(z.object({...}))`               | Response validation      |
-| `.meta({ ratelimit: 'api/heavy' })`      | Procedure metadata       |
-| `.use(middleware)`                       | Custom middleware        |
-| `router({ endpoint1, endpoint2 })`       | Group endpoints          |
+- `publicRoute.get("/path").query()` for public GET.
+- `authRoute.post("/path").mutation()` for authenticated writes.
+- `optionalAuthRoute.get("/path").query()` for optional-auth reads.
+- Chain `.params(...)`, `.searchParams(...)`, `.input(...)`, `.form(...)`,
+  `.output(...)`, `.meta(...)`, and `.use(...)` as needed.
+- Use `router({ endpoint })` for feature-level endpoint groups.
 
 ### HTTP Methods
 
-| Method | Builder                | Use Case          | Has Body |
-| ------ | ---------------------- | ----------------- | -------- |
-| GET    | `.get().query()`       | Read operations   | No       |
-| POST   | `.post().mutation()`   | Create operations | Yes      |
-| PATCH  | `.patch().mutation()`  | Partial updates   | Yes      |
-| DELETE | `.delete().mutation()` | Delete operations | No       |
+Use `.get().query()` for reads, `.post().mutation()` for creates,
+`.patch().mutation()` for partial updates, and `.delete().mutation()` for
+deletes. GET/DELETE should not carry JSON bodies.
 
 ### Error Codes
 
-| Code                    | HTTP Status | Use Case                          |
-| ----------------------- | ----------- | --------------------------------- |
-| `BAD_REQUEST`           | 400         | Invalid request format            |
-| `UNAUTHORIZED`          | 401         | Missing or invalid authentication |
-| `FORBIDDEN`             | 403         | Authenticated but not authorized  |
-| `NOT_FOUND`             | 404         | Resource doesn't exist            |
-| `CONFLICT`              | 409         | Resource conflict (duplicate)     |
-| `UNPROCESSABLE_CONTENT` | 422         | Validation failed                 |
-| `TOO_MANY_REQUESTS`     | 429         | Rate limit exceeded               |
-| `INTERNAL_SERVER_ERROR` | 500         | Unexpected server error           |
+Map expected failures through `CRPCError`: `BAD_REQUEST` 400, `UNAUTHORIZED`
+401, `FORBIDDEN` 403, `NOT_FOUND` 404, `CONFLICT` 409,
+`UNPROCESSABLE_CONTENT` 422, `TOO_MANY_REQUESTS` 429, and
+`INTERNAL_SERVER_ERROR` 500.
 
 ### Input Args
 
-| Property       | Type                                    | Description                           |
-| -------------- | --------------------------------------- | ------------------------------------- |
-| `params`       | `Record<string, string>`                | Path parameters (`:id`)               |
-| `searchParams` | `Record<string, string \| string[]>`    | Query string params                   |
-| `form`         | `z.infer<TForm>`                        | Typed FormData (if `.form()` defined) |
-| `fetch`        | `typeof fetch`                          | Custom fetch function                 |
-| `init`         | `RequestInit`                           | Request options                       |
-| `headers`      | `Record<string, string> \| (() => ...)` | Headers (incl. cookies)               |
-| `[key]`        | `unknown`                               | JSON body fields at root              |
+Client args can include `params`, `searchParams`, `form`, custom `fetch`,
+`init`, `headers`, and root JSON body fields.
 
 ### Client Methods
 
-| Method               | Signature             | Description                               |
-| -------------------- | --------------------- | ----------------------------------------- |
-| `queryOptions`       | `(args?, queryOpts?)` | Options for `useQuery`/`useSuspenseQuery` |
-| `staticQueryOptions` | `(args?, queryOpts?)` | For event handlers/prefetching (no hooks) |
-| `mutationOptions`    | `(mutationOpts?)`     | Options for `useMutation`                 |
-| `queryKey`           | `(args?)`             | Get query key for cache operations        |
-| `queryFilter`        | `(args?, filters?)`   | Filter for `invalidateQueries`            |
+Generated clients expose `queryOptions`, `staticQueryOptions`,
+`mutationOptions`, `queryKey`, and `queryFilter`.

@@ -1127,24 +1127,6 @@ await authClient.organization.setActiveTeam({ teamId });
 
 ## API Reference
 
-| Operation          | Method          | Multi-table |
-| ------------------ | --------------- | ----------- |
-| Create org         | Better Auth API | Yes         |
-| Update org         | Better Auth API | No          |
-| Delete org         | Better Auth API | Yes         |
-| List orgs          | ORM             | No          |
-| Check slug         | ORM             | No          |
-| Invite member      | Better Auth API | Yes         |
-| Accept invite      | Better Auth API | Yes         |
-| Reject invite      | Better Auth API | Yes         |
-| Cancel invite      | Better Auth API | Yes         |
-| List user invites  | ORM             | No          |
-| Add member         | Better Auth API | Yes         |
-| Update role        | Better Auth API | Yes         |
-| Remove member      | Better Auth API | Yes         |
-| Leave org          | Better Auth API | Yes         |
-| Create team        | Better Auth API | Yes         |
-| Add team member    | Better Auth API | Yes         |
-| Remove team member | Better Auth API | Yes         |
-
-Use Better Auth API for multi-table operations. Use `ctx.orm` for simple single-table reads/updates.
+Use Better Auth API for multi-table org, invitation, member, role, and team
+operations. Use `ctx.orm` for simple single-table reads such as list orgs,
+check slug, and list user invitations.

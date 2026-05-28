@@ -425,22 +425,6 @@ const canDelete = authClient.admin.checkRolePermission({
 
 ## API Reference
 
-| Operation | Method | Admin Required |
-|-----------|--------|----------------|
-| Create user | `authClient.admin.createUser` | Yes |
-| List users | `authClient.admin.listUsers` | Yes |
-| Set role | `authClient.admin.setRole` | Yes |
-| Set password | `authClient.admin.setUserPassword` | Yes |
-| Update user | `authClient.admin.updateUser` | Yes |
-| Ban user | `authClient.admin.banUser` | Yes |
-| Unban user | `authClient.admin.unbanUser` | Yes |
-| List sessions | `authClient.admin.listUserSessions` | Yes |
-| Revoke session | `authClient.admin.revokeUserSession` | Yes |
-| Revoke all sessions | `authClient.admin.revokeUserSessions` | Yes |
-| Impersonate | `authClient.admin.impersonateUser` | Yes |
-| Stop impersonating | `authClient.admin.stopImpersonating` | Yes |
-| Remove user | `authClient.admin.removeUser` | Yes |
-| Check permission | `authClient.admin.hasPermission` | No |
-| Check role permission | `authClient.admin.checkRolePermission` | No |
-
-Use Convex functions for custom admin operations. Use Better Auth client API for standard operations like user management, banning, and session management.
+Use Better Auth client admin methods for standard user management, roles,
+passwords, bans, sessions, impersonation, removal, and permission checks. Use
+Convex functions only for custom admin operations.

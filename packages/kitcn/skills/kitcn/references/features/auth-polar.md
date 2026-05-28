@@ -561,19 +561,8 @@ Example-parity helper module:
 
 ## API Reference
 
-| Operation | Method | Type |
-|-----------|--------|------|
-| Checkout | `authClient.checkout` | Client |
-| Customer portal | `authClient.customer.portal` | Client |
-| Customer state | `authClient.customer.state` | Client |
-| List benefits | `authClient.customer.benefits.list` | Client |
-| List orders | `authClient.customer.orders.list` | Client |
-| List subscriptions | `authClient.customer.subscriptions.list` | Client |
-| Event ingestion | `authClient.usage.ingestion` | Client |
-| List meters | `authClient.usage.meters.list` | Client |
-| Create customer | `internal.polarCustomer.createCustomer` | Internal action |
-| Link customer ID | `internal.polarCustomer.updateUserPolarCustomerId` | Internal mutation |
-| Create subscription | `internal.polarSubscription.createSubscription` | Internal mutation |
-| Update subscription | `internal.polarSubscription.updateSubscription` | Internal mutation |
-| Cancel subscription | Convex action | User action |
-| Resume subscription | Convex action | User action |
+Client operations: checkout, portal, customer state, benefits, orders,
+subscriptions, usage ingestion, and meter listing.
+
+Internal operations: create/link Polar customers and create/update
+subscriptions. User-facing cancellation/resume flows should be Convex actions.

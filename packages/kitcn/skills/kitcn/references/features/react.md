@@ -657,11 +657,6 @@ Don't render `preloadQuery` data in BOTH Server and Client components — the se
 
 ### Infinite Query Return Value
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `data` | `T[]` | Flattened array of all items |
-| `pages` | `T[][]` | Raw page arrays |
-| `fetchNextPage` | `(limit?) => void` | Load next page |
-| `hasNextPage` | `boolean` | More pages exist |
-| `status` | `PaginationStatus` | `'LoadingFirstPage' \| 'LoadingMore' \| 'CanLoadMore' \| 'Exhausted'` |
-| `isPlaceholderData` | `boolean` | Showing placeholder |
+Return fields: flattened `data`, raw `pages`, `fetchNextPage(limit?)`,
+`hasNextPage`, `status`, and `isPlaceholderData`. Status is one of
+`LoadingFirstPage`, `LoadingMore`, `CanLoadMore`, or `Exhausted`.

@@ -501,12 +501,8 @@ Auth triggers (`defineAuth(...).triggers`) handle auth lifecycle events. DB trig
 
 Nested `{ create, update, delete, change }` per table, matching ORM `defineTriggers` pattern:
 
-| Hook | Signature | Return |
-|------|-----------|--------|
-| `create.before` | `(data, ctx) => void \| { data } \| false` | Merge / cancel |
-| `create.after` | `(doc, ctx) => void` | Side effects |
-| `update.before` | `(update, ctx) => void \| { data } \| false` | Merge / cancel |
-| `update.after` | `(newDoc, ctx) => void` | Sync changes |
-| `delete.before` | `(doc, ctx) => void \| { data } \| false` | Guard / cancel |
-| `delete.after` | `(doc, ctx) => void` | Cleanup |
-| `change` | `(change, ctx) => void` | Cross-operation |
+- `create.before(data, ctx)` / `update.before(update, ctx)` /
+  `delete.before(doc, ctx)` may return `{ data }` or `false`.
+- `create.after(doc, ctx)`, `update.after(newDoc, ctx)`, and
+  `delete.after(doc, ctx)` run side effects.
+- `change(change, ctx)` handles cross-operation sync.

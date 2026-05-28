@@ -1120,56 +1120,34 @@ export default defineSchema(tables, {
 
 ### Column Types
 
-All from `kitcn/orm`:
+All come from `kitcn/orm`: `text`, `textEnum`, `integer`, `boolean`,
+`bigint`, `timestamp`, `date`, `id`, `vector`, `bytes`, `unionOf`, `objectOf`,
+`json`, and `custom`.
 
-| Builder                         | TS Type       | Convex                 | Notes                                      |
-| ------------------------------- | ------------- | ---------------------- | ------------------------------------------ |
-| `text()`                        | `string`      | `v.string()`           |                                            |
-| `textEnum(['a','b'] as const)`  | `'a' \| 'b'`  | `v.string()`           | Runtime-validated                          |
-| `integer()`                     | `number`      | `v.number()`           | Float64                                    |
-| `boolean()`                     | `boolean`     | `v.boolean()`          |                                            |
-| `bigint()`                      | `bigint`      | `v.int64()`            |                                            |
-| `timestamp()`                   | `Date`        | `v.number()`           | `.defaultNow()` for createdAt              |
-| `timestamp({ mode: 'string' })` | `string`      | `v.number()`           |                                            |
-| `date()`                        | `string`      | `v.string()`           | YYYY-MM-DD, or `{ mode: 'date' }` → `Date` |
-| `id('table')`                   | `Id<'table'>` | `v.id('table')`        | Typed reference                            |
-| `vector(dims)`                  | `number[]`    | `v.array(v.float64())` | For vectorIndex                            |
-| `bytes()`                       | `ArrayBuffer` | `v.bytes()`            |                                            |
-| `unionOf(text(), integer())`    | `string \| number` | `v.union(...)`    | Builder-only scalar union sugar            |
-| `objectOf(text().notNull())`    | `Record<string, string>` | `v.record(...)` | Homogeneous record values                  |
-| `json<T>()`                     | `T`           | `v.any()`              | Type-only, no runtime validation           |
-| `custom(validator)`             | inferred      | any `v.*`              | Full Convex validator                      |
+Key type notes: `timestamp()` stores Convex numbers and exposes `Date`;
+`timestamp({ mode: "string" })` exposes `string`; `date()` is YYYY-MM-DD unless
+`{ mode: "date" }`; `json<T>()` is type-only over `v.any()`; `custom(...)`
+keeps the provided Convex validator.
 
 ### Operators
 
-| Category            | Operators                                                                    |
-| ------------------- | ---------------------------------------------------------------------------- |
-| Comparison          | `eq`, `ne`, `gt`, `gte`, `lt`, `lte`                                         |
-| Range               | `between` (inclusive), `notBetween` (strict outside)                         |
-| Set                 | `in`, `notIn`                                                                |
-| Null                | `isNull`, `isNotNull`                                                        |
-| Logical             | `AND`, `OR`, `NOT`                                                           |
-| String (post-fetch) | `like`, `ilike`, `notLike`, `notIlike`, `startsWith`, `endsWith`, `contains` |
-| Array (post-fetch)  | `arrayContains`, `arrayContained`, `arrayOverlaps`                           |
+- Comparison: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`
+- Range/set/null: `between`, `notBetween`, `in`, `notIn`, `isNull`, `isNotNull`
+- Logical: `AND`, `OR`, `NOT`
+- Post-fetch string/array: `like`, `ilike`, `notLike`, `notIlike`,
+  `startsWith`, `endsWith`, `contains`, `arrayContains`, `arrayContained`,
+  `arrayOverlaps`
 
 ### Select Composition Limitations
 
-| Combination               | Status        |
-| ------------------------- | ------------- |
-| `select() + search`       | Not supported |
-| `select() + vectorSearch` | Not supported |
-| `select() + offset`       | Not supported |
-| `select() + with`         | Not supported |
-| `select() + extras`       | Not supported |
-| `select() + columns`      | Not supported |
+Do not combine `select()` with `search`, `vectorSearch`, `offset`, `with`,
+`extras`, or `columns`.
 
 ### Full-Scan Operator Workarounds
 
-| Operator                           | Scalable workaround                                |
-| ---------------------------------- | -------------------------------------------------- |
-| `arrayContains/Contained/Overlaps` | Inverted/join table keyed by element               |
-| `contains`                         | `withSearchIndex` or tokenized denormalized field  |
-| `endsWith`                         | Store reversed column, use `startsWith`            |
-| `ilike`/`notIlike`                 | Lowercase column + `startsWith`/`like('prefix%')`  |
-| `notLike`                          | Indexed positive pre-filter + `notLike` post-fetch |
-| `NOT` (general)                    | Rewrite to positive predicates; cap with `maxScan` |
+- Array membership/overlap: use an inverted or join table keyed by element.
+- `contains`: use `withSearchIndex` or tokenized denormalized fields.
+- `endsWith`: store a reversed column and query with `startsWith`.
+- `ilike` / `notIlike`: lowercase a query column and use prefix/like filters.
+- `notLike` and general `NOT`: rewrite to positive indexed predicates and cap
+  fallback scans with `maxScan`.

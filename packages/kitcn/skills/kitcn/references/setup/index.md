@@ -728,58 +728,19 @@ Then sanity-check auth runtime paths:
 16. Phase A gate (Section 11.2) passes before any auth implementation.
 17. If auth enabled: Phase B auth sign-in gate (Section 11.3) passes before optional modules/plugins.
 18. No legacy Ents patterns in setup code.
-19. NEVER use `@ts-nocheck` in app/convex source files.
+19. Do not use `@ts-nocheck` in app/convex source files.
 
 ## 13. Troubleshooting
 
 See the [Troubleshooting Reference](#troubleshooting-reference) at the bottom of this document for the full symptom/cause/fix matrix.
 
-## Coverage Matrix
+## Coverage Notes
 
-Source coverage mapping used to build this runbook:
-
-| Source                                            | Mapped In Setup      |
-| ------------------------------------------------- | -------------------- |
-| `www/content/docs/cli/registry.mdx`               | Sections 3, 11       |
-| `www/content/docs/quickstart.mdx`                 | Sections 3, 4, 11, 12 |
-| `www/content/docs/server/setup.mdx`               | Section 5.3          |
-| `www/content/docs/auth/server.mdx`                | Sections 6.1 - 6.10  |
-| `www/content/docs/auth/client.mdx`                | Section 7.1          |
-| `www/content/docs/auth/server.mdx#triggers`       | Section 6.3, 9.2     |
-| `www/content/docs/react/index.mdx`                | Sections 7.2 - 7.4   |
-| `www/content/docs/nextjs/index.mdx`               | Section 8.A          |
-| `www/content/docs/tanstack-start.mdx`             | Section 8.B          |
-| `www/content/docs/server/http.mdx`                | Sections 6.6, 9.6    |
-| `www/content/docs/server/server-side-calls.mdx`   | Section 8.A.1, 8.B.3 |
-| `www/content/docs/plugins/ratelimit.mdx`          | Section 9.4          |
-| `www/content/docs/orm/queries/aggregates.mdx`     | Section 9.3          |
-| `www/content/docs/server/scheduling.mdx`          | Section 9.5          |
-| `www/content/docs/orm/queries/index.mdx`          | Sections 5, 12       |
-| `www/content/docs/orm/mutations/index.mdx`        | Sections 5, 12       |
-| `www/content/docs/orm/triggers.mdx`               | Sections 9.2, 9.3    |
-| `www/content/docs/orm/rls.mdx`                    | Section 9.1          |
-| `www/content/docs/auth/plugins/admin.mdx`         | Section 10.1         |
-| `www/content/docs/auth/plugins/organizations.mdx` | Section 10.2         |
-| `www/content/docs/auth/plugins/polar.mdx`         | Section 10.3         |
-| `www/content/docs/cli/backend.mdx`                | Section 11           |
-
-### Template Coverage (Recreation Target)
-
-This runbook + references map to the canonical template shape as follows:
-
-| Example Group                                                                                             | Primary Setup Section           | Additional Reference                     |
-| --------------------------------------------------------------------------------------------------------- | ------------------------------- | ---------------------------------------- |
-| Core infra (`schema.ts`, `functions/generated/`, `crpc.ts`, `http.ts`)                                    | Sections 5, 6.6, 9.6            | `orm.md`, `http.md`                      |
-| Shared contracts (`shared/api.ts`, `shared/auth-shared.ts`, `shared/polar-shared.ts`)                     | Sections 5.4, 6.3.2, 10.2, 10.3 | `auth-organizations.md`                  |
-| Auth core (`auth.config.ts`, `auth.ts`)                                                                   | Section 6                       | `auth.md`                                |
-| Auth plugins (`admin.ts`, `organization.ts`, `polar*`)                                                    | Section 10                      | `auth-admin.md`, `auth-organizations.md` |
-| Feature modules (`user.ts`, `projects.ts`, `tags.ts`, `todoComments.ts`, `public.ts`, `items/queries.ts`) | Sections 5, 6.3.1, 9            | core `SKILL.md`, `orm.md`                |
-| HTTP routers (`routers/health.ts`, `routers/todos.ts`, `routers/examples.ts`)                             | Section 9.6                     | `http.md`                                |
-| Aggregates + rate limits (`aggregates.ts`, `lib/plugins/ratelimit/plugin.ts`)                             | Sections 9.3, 9.4               | `aggregates.md`, `orm.md`                |
-| Scheduling + internals (`todoInternal.ts`, delayed jobs)                                                  | Sections 9.5, 11.1              | `scheduling.md`                          |
-| Email + Resend (`functions/plugins/email.tsx`, `lib/plugins/resend/*`)                                    | Section 9.7                     | `auth-organizations.md`                  |
-| Dev bootstrap (`init.ts`, `seed.ts`, `reset.ts`)                                                          | Section 11.1                    | `testing.md` (for verification)          |
-| Generated outputs (`functions/_generated/*`, `functions/generated/`, `shared/api.ts`)                     | Section 5.5                     | n/a (generated by CLI)                   |
+This setup runbook compresses the CLI registry, quickstart, server setup,
+auth, React, Next.js, TanStack Start, HTTP, scheduling, aggregate, ORM,
+RLS/trigger, plugin, and backend CLI docs. Use the feature references for
+domain depth: `orm.md`, `http.md`, `react.md`, `aggregates.md`,
+`scheduling.md`, `testing.md`, `auth*.md`, and `create-plugins.md`.
 
 ## Troubleshooting Reference
 
